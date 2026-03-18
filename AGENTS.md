@@ -19,6 +19,10 @@ deep-research-engine/
 ├── configs/                      # Workflow configs
 ├── docs/                         # Documentation
 ├── design/                       # Architecture docs
+├── reference/                    # External library docs (cloned)
+│   ├── langgraph/                # LangGraph reference
+│   ├── deepagents/               # DeepAgents reference
+│   └── langchain/                # LangChain reference
 └── tests/                        # Tests (TODO)
 ```
 
@@ -118,7 +122,10 @@ def build_workflow_graph(config):
     return graph.compile()
 ```
 
-**Reference**: `../../text/unified-llm-interface/backend/src/extensions/content/deep_research/graph/`
+**Reference Documentation**:
+- `reference/langgraph/docs/concepts/` - LangGraph concepts
+- `reference/langgraph/docs/how-to/` - How-to guides
+- `../../text/unified-llm-interface/backend/src/extensions/content/deep_research/graph/` - Existing implementation
 
 ---
 
@@ -146,7 +153,10 @@ class WebResearcherWorker(BaseWorker):
 - `multimodal.py` - ASR/VLM/face processing
 - `scraper.py` - Web scraping (make-llmstxt)
 
-**Reference**: `../../text/unified-llm-interface/.../agents/flash_explorer.py`
+**Reference Documentation**:
+- `reference/deepagents/docs/` - DeepAgents patterns
+- `reference/langchain/docs/` - LangChain tools
+- `../../text/unified-llm-interface/.../agents/flash_explorer.py` - Flash Explorer
 
 ---
 
@@ -176,7 +186,9 @@ class PostgresStorage(StorageBackend):
 - `neo4j.py` - Knowledge graph
 - `minio.py` - S3-compatible object storage
 
-**Reference**: `../../operations/tracer/src/tracer/store/`
+**Reference Documentation**:
+- `reference/langchain/docs/` - LangChain vector stores
+- `../../operations/tracer/src/tracer/store/` - Tracer storage
 
 ---
 
@@ -236,6 +248,45 @@ except Exception as e:
 
 ---
 
+## Reference Documentation
+
+### External Libraries (Cloned)
+**Location**: `reference/`
+
+| Library | Path | Key Docs |
+|---------|------|----------|
+| **LangGraph** | `reference/langgraph/` | `docs/concepts/`, `docs/how-to/` |
+| **DeepAgents** | `reference/deepagents/` | `docs/`, `examples/` |
+| **LangChain** | `reference/langchain/` | `docs/`, `libs/core/` |
+
+See `reference/README.md` for detailed guide.
+
+### Infrastructure Documentation
+**Location**: `../../shared-docker-infra/docs/`
+
+| Section | Path |
+|---------|------|
+| **Services** | `../../shared-docker-infra/docs/services/` |
+| **Integration** | `../../shared-docker-infra/docs/integration/` |
+| **Architecture** | `../../shared-docker-infra/docs/architecture/` |
+| **API Reference** | `../../shared-docker-infra/docs/api-reference/` |
+
+Key services:
+- LiteLLM: Inference gateway
+- PostgreSQL: Vector storage
+- Neo4j: Knowledge graph
+- MongoDB: Media files
+- MinIO: Object storage
+
+### Local Documentation
+- `docs/` - Deep Research Engine docs
+- `AGENTS.md` - This file
+- `CLAUDE.md` - Quick reference
+- `AI_REFERENCE.md` - Detailed guide
+- `design/` - Architecture docs
+
+---
+
 ## Reference Projects
 
 | Project | Location | Purpose |
@@ -263,10 +314,13 @@ Services:
 - MongoDB: `localhost:27017`
 - MinIO: `localhost:9000`
 
+See `../../shared-docker-infra/docs/` for full documentation.
+
 ---
 
 ## Questions?
 
 1. Check `design/` for architecture decisions
-2. Check `AI_REFERENCE.md` for detailed guides
-3. Check existing implementations in `../../text/` and `../../operations/`
+2. Check `reference/` for LangGraph/DeepAgents/LangChain docs
+3. Check `../../shared-docker-infra/docs/` for infrastructure
+4. Check `AI_REFERENCE.md` for detailed implementation guide

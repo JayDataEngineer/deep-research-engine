@@ -96,9 +96,38 @@ Config (YAML) → Engine → LangGraph Workflow
 
 ---
 
+## Reference Documentation
+
+### External Libraries (Cloned for Reference)
+**Location**: `reference/`
+
+- **[LangGraph](reference/langgraph/)** - StateGraph, conditional edges, checkpointers
+  - See: `reference/langgraph/docs/` for concepts and tutorials
+- **[DeepAgents](reference/deepagents/)** - Agent harnesses, middleware
+  - See: `reference/deepagents/docs/` for patterns
+- **[LangChain](reference/langchain/)** - Tools, LLMs, embeddings
+  - See: `reference/langchain/docs/` for API reference
+
+### Infrastructure Documentation
+**Location**: `../../shared-docker-infra/docs/`
+
+- **[Services](../../shared-docker-infra/docs/services/)** - LiteLLM, Postgres, Neo4j, MongoDB, MinIO
+- **[Integration](../../shared-docker-infra/docs/integration/)** - How to connect to services
+- **[Architecture](../../shared-docker-infra/docs/architecture/)** - Network topology, security
+- **[API Reference](../../shared-docker-infra/docs/api-reference/)** - Service APIs
+
+### Local Documentation
+- `docs/` - Deep Research Engine documentation
+- `AGENTS.md` - AI development guide with templates
+- `AI_REFERENCE.md` - Detailed implementation guide
+- `design/` - Architecture documents
+- `reference/README.md` - Guide to reference documentation
+
+---
+
 ## Reference Implementations
 
-```
+```bash
 # Deep Research (Boss/Critic/Synthesis)
 ../../text/unified-llm-interface/backend/src/extensions/content/deep_research/
 
@@ -125,15 +154,6 @@ make db-up
 # Verify
 curl http://litellm.local/v1/models
 ```
-
----
-
-## Key Documents
-
-- `AGENTS.md` - AI development guide
-- `AI_REFERENCE.md` - Detailed implementation guide
-- `IMPLEMENTATION_STATUS.md` - What's done vs TODO
-- `design/` - Architecture documentation
 
 ---
 
