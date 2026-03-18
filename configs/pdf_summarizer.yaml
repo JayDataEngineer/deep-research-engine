@@ -1,0 +1,131 @@
+# PDF Summarizer Workflow
+# Hierarchical PDF processing with filler removal
+
+workflow:
+  name: pdf_summarizer
+  type: ingestion
+  version: 1.0.0
+  description: Hierarchical PDF processing with filler removal
+
+input:
+  type: pdf
+  source: "${PDF_PATH}"
+
+phases:
+  # Phase 1: Boss (Parse + Plan)
+  - name: boss
+    node: BossNode
+    config:
+      strategy: fixed
+      workers:
+        min: 1
+        max: 1
+      custom:
+        parser: pymupdf4llm
+        chunk_strategy: structural
+
+  # Phase 2: Workers (Chunk Processing)
+  - name: workers
+    node: WorkerNode
+    config:
+      worker_type: chunk_processor
+      parallel: true
+      max_concurrent: 5
+      
+      critic:
+        enabled: true
+        type: extraction_quality
+        pass_threshold: 0.6
+        max_retries: 3
+      
+      output:
+        format: processed_chunks
+        accumulate: true
+
+  # Phase 2b: Workers (Deduplication)
+  - name: workers_dedupe
+    node: WorkerNode
+    config:
+      worker_type: dedupe_worker
+      parallel: false
+      
+      workers:
+        - id: dedupe_worker
+          type: dedupe_worker
+          config:
+            similarity_threshold: 0.85
+      
+      output:
+        format: deduplicated_chunks
+
+  # Phase 3: Critic
+  - name: critic
+    node: CriticNode
+    config:
+      evaluate: worker_outputs
+      criteria:
+        - name: completeness
+          weight: 0.5
+          threshold: 0.7
+        - name: conciseness
+          weight: 0.5
+          threshold: 0.6
+      
+      on_fail:
+        action: retry_workers
+        max_retries: 2
+
+  # Phase 4: Synthesis (Hierarchical Summary)
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      sources: worker_outputs
+      strategy: hierarchical
+      output:
+        format: markdown
+        sections:
+          - name: Executive Summary
+            order: 1
+          - name: Chapter Summaries
+            order: 2
+          - name: Key Points
+            order: 3
+
+storage:
+  # PDF doesn't need persistent storage
+  postgres:
+    enabled: false
+  neo4j:
+    enabled: false
+  mongodb:
+    enabled: false
+  minio:
+    enabled: false
+  memory:
+    enabled: true
+    max_size_mb: 500
+
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+    embedding: jina-v5-embed
+
+tools:
+  enabled:
+    - llm_classify
+    - llm_extract
+    - embed
+    - cluster
+
+execution:
+  max_steps: 50
+  timeout: 300
+  streaming:
+    enabled: true
+
+output:
+  destination:
+    type: filesystem
+    path: ./output
+  format: markdown

@@ -1,0 +1,117 @@
+# RAG Research Workflow
+# Multi-agent research with web search + document RAG
+
+workflow:
+  name: rag
+  type: research
+  version: 1.0.0
+  description: Multi-agent RAG research with web + document search
+
+input:
+  type: query
+  source: "${QUERY}"
+
+phases:
+  # Phase 1: Boss (Planning)
+  - name: boss
+    node: BossNode
+    config:
+      strategy: complexity_based
+      workers:
+        min: 1
+        max: 3
+      output:
+        format: research_brief
+
+  # Phase 2: Workers (Web Research)
+  - name: workers
+    node: WorkerNode
+    config:
+      worker_type: web_researcher
+      parallel: true
+      max_concurrent: 10
+      recursion_limit: 50
+      
+      critic:
+        enabled: true
+        type: extraction_quality
+        pass_threshold: 0.7
+        max_retries: 3
+      
+      output:
+        format: findings
+        accumulate: true
+
+  # Phase 3: Critic (Quality Gate)
+  - name: critic
+    node: CriticNode
+    config:
+      evaluate: worker_outputs
+      criteria:
+        - name: completeness
+          weight: 0.4
+          threshold: 0.7
+        - name: accuracy
+          weight: 0.4
+          threshold: 0.8
+      
+      on_fail:
+        action: retry_workers
+        max_retries: 3
+
+  # Phase 4: Synthesis
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      sources: worker_outputs
+      strategy: narrative
+      output:
+        format: markdown
+        citations:
+          enabled: true
+          format: numbered
+
+storage:
+  postgres:
+    enabled: true
+    connection: "${CONTEXT_POSTGRES_URL-postgresql://localhost:5433/deep_research}"
+  
+  neo4j:
+    enabled: true
+    uri: "${NEO4J_URI-bolt://localhost:7687}"
+    username: neo4j
+    password: "${NEO4J_PASSWORD}"
+  
+  mongodb:
+    enabled: false
+  
+  minio:
+    enabled: false
+  
+  memory:
+    enabled: true
+
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+    embedding: jina-v5-embed
+
+tools:
+  enabled:
+    - web_search
+    - web_get
+    - web_research_agent
+    - vector_search
+
+execution:
+  max_steps: 100
+  timeout: 600
+  streaming:
+    enabled: true
+
+output:
+  destination:
+    type: both
+    path: ./output
+  format: markdown

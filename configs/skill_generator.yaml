@@ -1,0 +1,105 @@
+# Skill Generator Workflow
+# Generate llms.txt and skill packages from documentation sites
+
+workflow:
+  name: skill_generator
+  type: generation
+  version: 1.0.0
+  description: Generate llms.txt and skill packages
+
+input:
+  type: url
+  source: "${TARGET_URL}"
+
+phases:
+  # Phase 1: Boss (Plan Scraping)
+  - name: boss
+    node: BossNode
+    config:
+      strategy: fixed
+
+  # Phase 2: Workers (Parallel Scraping)
+  - name: workers
+    node: WorkerNode
+    config:
+      worker_type: scraper
+      parallel: true
+      max_concurrent: 5
+      
+      workers:
+        - id: scraper
+          type: scraper
+          tools: [mcp_scrape, search_docs]
+          config:
+            max_pages: 50
+            max_depth: 3
+      
+      critic:
+        enabled: true
+        type: coverage
+        pass_threshold: 0.7
+        max_retries: 3
+
+  # Phase 3: Critic (Coverage Validation)
+  - name: critic
+    node: CriticNode
+    config:
+      evaluate: worker_outputs
+      criteria:
+        - name: coverage
+          weight: 0.5
+          threshold: 0.7
+        - name: accuracy
+          weight: 0.3
+          threshold: 0.8
+      
+      on_fail:
+        action: retry_workers
+        max_retries: 3
+
+  # Phase 4: Synthesis (Generate Output)
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      sources: worker_outputs
+      strategy: structured_report
+      output:
+        format: markdown
+        template: llms_txt
+
+storage:
+  # Only needs memory
+  postgres:
+    enabled: false
+  neo4j:
+    enabled: false
+  mongodb:
+    enabled: false
+  minio:
+    enabled: false
+  memory:
+    enabled: true
+    max_size_mb: 200
+
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+
+tools:
+  enabled:
+    - mcp_scrape
+    - search_docs
+    - get_doc_by_url
+
+execution:
+  max_steps: 50
+  timeout: 600
+  streaming:
+    enabled: true
+
+output:
+  destination:
+    type: filesystem
+    path: ./output
+  format: markdown
