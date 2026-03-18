@@ -1,0 +1,130 @@
+# Telegram Ingestion Workflow
+# Multimodal processing of Telegram chat exports
+
+workflow:
+  name: telegram_ingest
+  type: ingestion
+  version: 1.0.0
+  description: Telegram export processing with multimodal analysis
+
+input:
+  type: telegram_export
+  source: "${EXPORT_PATH}"
+
+phases:
+  # Phase 1: Boss (Parse Export)
+  - name: boss
+    node: BossNode
+    config:
+      strategy: fixed
+      custom:
+        parser: telegram_html
+
+  # Phase 2: Workers (Multimodal Processing)
+  - name: workers
+    node: WorkerNode
+    config:
+      worker_type: multimodal
+      parallel: true
+      max_concurrent: 10
+      
+      workers:
+        - id: asr_worker
+          type: asr_worker
+          tools: [qwen3_asr]
+        
+        - id: vlm_worker
+          type: vlm_worker
+          tools: [qwen2_5_vl]
+        
+        - id: face_worker
+          type: face_worker
+          tools: [compreface]
+        
+        - id: text_worker
+          type: text_worker
+          tools: [entity_extraction]
+      
+      critic:
+        enabled: true
+        type: multimodal_accuracy
+        pass_threshold: 0.7
+        max_retries: 2
+
+  # Phase 3: Critic
+  - name: critic
+    node: CriticNode
+    config:
+      evaluate: worker_outputs
+      criteria:
+        - name: transcription_quality
+          weight: 0.3
+          threshold: 0.7
+        - name: description_quality
+          weight: 0.3
+          threshold: 0.7
+        - name: entity_extraction
+          weight: 0.4
+          threshold: 0.6
+
+  # Phase 4: Synthesis (Graph Build)
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      sources: worker_outputs
+      strategy: structured_report
+      output:
+        format: graph
+        sections:
+          - name: People
+          - name: Topics
+          - name: Media
+        custom:
+          neo4j_export: true
+
+storage:
+  # Telegram needs ALL backends
+  postgres:
+    enabled: true
+    connection: "${POSTGRES_URL-postgresql://localhost:5433/telegram}"
+  
+  mongodb:
+    enabled: true
+    connection: "${MONGO_URL-mongodb://localhost:27017/telegram}"
+  
+  neo4j:
+    enabled: true
+    uri: "${NEO4J_URI-bolt://localhost:7687}"
+    username: neo4j
+    password: "${NEO4J_PASSWORD}"
+  
+  minio:
+    enabled: true
+    endpoint: "${MINIO_ENDPOINT-http://localhost:9000}"
+    bucket: telegram-exports
+  
+  memory:
+    enabled: true
+
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+
+tools:
+  enabled:
+    - qwen3_asr
+    - qwen2_5_vl
+    - compreface
+    - entity_extraction
+
+execution:
+  max_steps: 200
+  timeout: 1800
+  streaming:
+    enabled: true
+
+output:
+  destination:
+    type: database
+  format: graph
