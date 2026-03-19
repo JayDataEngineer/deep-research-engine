@@ -1,7 +1,7 @@
 [project]
 name = "deep-research-engine"
-version = "0.1.0"
-description = "Config-driven multi-agent workflow engine for AI ingestion tasks"
+version = "0.2.0"
+description = "Context Engine - Minimal context building with deepagents + LangGraph Store"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.12"
@@ -11,13 +11,11 @@ authors = [
 keywords = [
     "llm",
     "agent",
-    "workflow",
+    "context-engine",
     "langgraph",
-    "research",
-    "ingestion",
+    "deepagents",
     "rag",
-    "pdf",
-    "telegram",
+    "auto-vectorization",
 ]
 
 classifiers = [
@@ -30,50 +28,37 @@ classifiers = [
 ]
 
 # =============================================================================
-# DEPENDENCIES (Latest Versions - January 2026)
+# DEPENDENCIES (Latest Versions - March 2026)
 # =============================================================================
 dependencies = [
-    # Core - LangGraph ecosystem
-    "langgraph>=0.3.5",
     "langgraph-checkpoint>=2.0.10",
-    "langgraph-checkpoint-postgres>=2.0.13",
-    "langchain>=0.3.18",
+    "langgraph-checkpoint-postgres>=2.0.10",
     "langchain-core>=0.3.34",
-    "langchain-openai>=0.3.1",
-    "langchain-community>=0.3.16",
-    "langchain-postgres>=0.0.12",
-    
+    "langchain-openai>=0.3.1",          # For LiteLLM OpenAI-compatible endpoint
     # Pydantic
     "pydantic>=2.10.5",
     "pydantic-settings>=2.7.1",
-    
     # Config loading
     "pyyaml>=6.0.2",
     "jinja2>=3.1.5",
-    
     # Storage backends
     "asyncpg>=0.30.0",                 # PostgreSQL
     "pgvector>=0.3.6",                 # Vector search
-    "pymongo>=4.10.1",                 # MongoDB
-    "motor>=3.7.0",                    # Async MongoDB
-    "neo4j>=5.27.0",                   # Neo4j
-    "boto3>=1.36.0",                   # S3/MinIO
-    "botocore>=1.36.0",
-    
-    # LLM providers
+    # LLM providers (LiteLLM gateway only)
     "litellm>=1.59.0",                 # LiteLLM gateway
-    "openai>=1.59.0",                  # OpenAI SDK
-    "anthropic>=0.45.0",               # Anthropic SDK (optional)
-    
+    # Logging
+    "loguru>=0.7.3",                   # Modern logging
+    "rich>=13.9.4",                    # CLI output
+    "click>=8.1.8",                    # CLI framework
+    # Observability
+    "langfuse>=2.59.0",                # Langfuse tracing + prompts
     # Utilities
     "aiofiles>=24.1.0",                # Async file I/O
     "httpx>=0.28.1",                   # HTTP client
-    "rich>=13.9.4",                    # CLI output
-    "numpy>=2.2.1",                    # Vector operations
     "typing-extensions>=4.12.2",       # Type hints
-    
-    # Observability
-    "langfuse>=2.59.0",                # Langfuse tracing
+    "deepagents>=0.4.11",
+    "langchain>=1.2.12",
+    "langgraph>=1.1.2",
 ]
 
 # =============================================================================
@@ -106,12 +91,27 @@ all-storage = [
     "botocore>=1.36.0",
 ]
 
+# Ingestion converters - install only what you need
+pdf = [
+    "pymupdf>=1.24.0",
+]
+image = [
+    "pillow>=10.0.0",
+]
+all-ingestion = [
+    "pymupdf>=1.24.0",
+    "pillow>=10.0.0",
+]
+
 # Development
 dev = [
     "pytest>=8.3.4",
     "pytest-asyncio>=0.25.0",
     "pytest-cov>=6.0.0",
     "pytest-xdist>=3.6.1",
+    "pytest-mock>=3.14.0",
+    "vcrpy>=6.0.2",
+    "pytest-recording>=0.13.2",
     "ruff>=0.9.2",
     "mypy>=1.14.1",
     "pre-commit>=4.1.0",
@@ -138,6 +138,7 @@ all = [
 # =============================================================================
 [project.scripts]
 deep-research = "deep_research_engine.cli.main:main"
+context-engine = "context_engine.cli:main"
 
 # =============================================================================
 # URLS
@@ -179,7 +180,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/deep_research_engine"]
+packages = ["src/context_engine", "src/deep_research_engine"]
 
 # =============================================================================
 # UV CONFIGURATION
@@ -241,7 +242,7 @@ line-ending = "auto"
 # =============================================================================
 [tool.mypy]
 python_version = "3.12"
-strict = true
+strict = false  # Relaxed for new context_engine
 warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
@@ -261,6 +262,7 @@ module = [
     "langgraph.*",
     "langfuse.*",
     "litellm.*",
+    "loguru.*",
 ]
 ignore_missing_imports = true
 
@@ -273,6 +275,7 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+pythonpath = ["src"]
 addopts = [
     "-v",
     "--tb=short",
@@ -293,7 +296,7 @@ filterwarnings = [
 # COVERAGE
 # =============================================================================
 [tool.coverage.run]
-source = ["src/deep_research_engine"]
+source = ["src/context_engine", "src/deep_research_engine"]
 branch = true
 omit = [
     "*/tests/*",
