@@ -1,43 +1,62 @@
 """BaseWorker ABC and WorkerRegistry."""
 
-from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Type
-from dataclasses import dataclass, field
-from datetime import datetime
-import time
+from __future__ import annotations
 
-from ..state import EngineState, WorkerResult as WorkerResultDict
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+from ..state import WorkerResult as WorkerResultDict
+
+if TYPE_CHECKING:
+    from ..state import EngineState
 
 
 # =============================================================================
 # WORKER CONFIGURATION
 # =============================================================================
 
+
 @dataclass
 class WorkerConfig:
     """Configuration for a worker instance.
-    
+
     Passed from YAML config to worker at runtime.
+
+    Attributes:
+        worker_id: Unique identifier for this worker instance.
+        worker_type: Type of worker (e.g., "web_researcher", "chunk_processor").
+        task: Task description for this worker.
+        tools: List of tools available to this worker.
+        tool_config: Configuration for individual tools.
+        max_retries: Maximum number of retry attempts.
+        timeout: Timeout in seconds for worker execution.
+        recursion_limit: Maximum recursion depth.
+        enable_critic: Whether to enable critic evaluation.
+        critic_threshold: Minimum confidence threshold for critic.
+        custom: Custom configuration for worker-specific needs.
     """
+
     worker_id: str
     worker_type: str
     task: str
-    
+
     # Tools
-    tools: List[str] = field(default_factory=list)
-    tool_config: Dict[str, Any] = field(default_factory=dict)
-    
+    tools: list[str] = field(default_factory=list)
+    tool_config: dict[str, Any] = field(default_factory=dict)
+
     # Execution
     max_retries: int = 3
     timeout: int = 300
     recursion_limit: int = 50
-    
+
     # Critic
     enable_critic: bool = True
     critic_threshold: float = 0.7
-    
+
     # Worker-specific (flexible dict for custom config)
-    custom: Dict[str, Any] = field(default_factory=dict)
+    custom: dict[str, Any] = field(default_factory=dict)
 
 
 # =============================================================================
@@ -51,85 +70,131 @@ WorkerResult = WorkerResultDict
 # BASE WORKER ABC
 # =============================================================================
 
+
 class BaseWorker(ABC):
     """Abstract base class for all worker types.
-    
+
     All workers (web_researcher, chunk_processor, multimodal, etc.)
     must implement these methods.
+
+    Attributes:
+        worker_type: Class-level worker type identifier.
+        description: Human-readable description of the worker.
+        required_tools: List of tools required by this worker.
+        config: Worker configuration instance.
+        worker_id: Unique identifier for this worker instance.
+        task: Task description for this worker.
+        start_time: Timestamp when worker execution started.
+        token_usage: Token usage statistics.
     """
-    
+
     # Class-level metadata (override in subclasses)
     worker_type: str = "base"
     description: str = "Base worker"
-    required_tools: List[str] = []
-    
-    def __init__(self, config: WorkerConfig):
-        """Initialize worker with configuration."""
+    required_tools: list[str] = []
+
+    def __init__(self, config: WorkerConfig) -> None:
+        """Initialize worker with configuration.
+
+        Args:
+            config: Worker configuration instance.
+        """
         self.config = config
         self.worker_id = config.worker_id
         self.task = config.task
-        
+
         # Observability
-        self.start_time: Optional[float] = None
-        self.token_usage: Dict[str, int] = {}
-    
+        self.start_time: float | None = None
+        self.token_usage: dict[str, int] = {}
+
     @abstractmethod
     async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
         """Execute the worker's task.
-        
+
         This is the MAIN method that all workers must implement.
-        
+
         Args:
-            state: Current engine state
-            config: Worker configuration
-            
+            state: Current engine state.
+            config: Worker configuration.
+
         Returns:
-            WorkerResult with standardized output
+            WorkerResult with standardized output.
         """
         pass
-    
+
     # -------------------------------------------------------------------------
     # HOOK METHODS (Override as needed)
     # -------------------------------------------------------------------------
-    
+
     async def setup(self, state: EngineState, config: WorkerConfig) -> None:
-        """Setup hook called before execute()."""
-        pass
-    
+        """Setup hook called before execute().
+
+        Args:
+            state: Current engine state.
+            config: Worker configuration.
+        """
+
     async def teardown(self, result: WorkerResult) -> None:
-        """Teardown hook called after execute() (even on failure)."""
-        pass
-    
+        """Teardown hook called after execute() (even on failure).
+
+        Args:
+            result: Worker result from execution.
+        """
+
     async def validate_input(self, state: EngineState, config: WorkerConfig) -> bool:
-        """Validate that input is suitable for this worker."""
+        """Validate that input is suitable for this worker.
+
+        Args:
+            state: Current engine state.
+            config: Worker configuration.
+
+        Returns:
+            True if input is valid, False otherwise.
+        """
         return True
-    
+
     # -------------------------------------------------------------------------
     # UTILITY METHODS
     # -------------------------------------------------------------------------
-    
+
     def _start_timing(self) -> None:
         """Start timing execution."""
         self.start_time = time.time()
-    
+
     def _end_timing(self) -> float:
-        """End timing and return duration."""
+        """End timing and return duration.
+
+        Returns:
+            Duration in seconds since _start_timing was called.
+        """
         if self.start_time is None:
             return 0.0
         return time.time() - self.start_time
-    
+
     def _create_result(
         self,
         success: bool,
         output: Any,
         output_type: str = "generic",
         confidence: float = 0.8,
-        sources: Optional[List[Dict[str, Any]]] = None,
-        error: Optional[str] = None,
+        sources: list[dict[str, Any]] | None = None,
+        error: str | None = None,
     ) -> WorkerResult:
-        """Create a standardized WorkerResult."""
+        """Create a standardized WorkerResult.
+
+        Args:
+            success: Whether the worker completed successfully.
+            output: Worker output data.
+            output_type: Type hint for the output schema.
+            confidence: Confidence score (0-1).
+            sources: List of source citations.
+            error: Error message if failed.
+
+        Returns:
+            WorkerResult with standardized format.
+        """
         duration = self._end_timing()
-        
+
         return WorkerResult(
             worker_id=self.worker_id,
             worker_type=self.config.worker_type,
@@ -152,18 +217,25 @@ class BaseWorker(ABC):
             error_type=None,
             retry_count=0,
         )
-    
-    def _log(self, message: str, level: str = "info", **kwargs) -> None:
-        """Log a message with worker context."""
+
+    def _log(self, message: str, level: str = "info", **kwargs: Any) -> None:
+        """Log a message with worker context.
+
+        Args:
+            message: Log message.
+            level: Logging level (info, warning, error, debug).
+            **kwargs: Additional context for logging.
+        """
         from ..utils.logging import get_logger
+
         logger = get_logger(f"worker.{self.worker_type}")
-        
+
         log_method = getattr(logger, level, logger.info)
         log_method(
             f"[{self.worker_id}] {message}",
             worker_type=self.worker_type,
             task=self.task[:50],
-            **kwargs
+            **kwargs,
         )
 
 
@@ -171,39 +243,60 @@ class BaseWorker(ABC):
 # WORKER REGISTRY (Pluggable Worker Types)
 # =============================================================================
 
+
 class WorkerRegistry:
     """Registry for worker types."""
-    
-    _workers: Dict[str, Type[BaseWorker]] = {}
-    
+
+    _workers: dict[str, type[BaseWorker]] = {}
+
     @classmethod
     def register(cls, name: str) -> callable:
         """Decorator to register a worker type.
-        
-        Usage:
+
+        Args:
+            name: Name to register the worker under.
+
+        Returns:
+            Decorator function that registers the worker class.
+
+        Example:
             @WorkerRegistry.register("web_researcher")
             class WebResearcherWorker(BaseWorker):
                 worker_type = "web_researcher"
         """
-        def decorator(worker_class: Type[BaseWorker]) -> Type[BaseWorker]:
+
+        def decorator(worker_class: type[BaseWorker]) -> type[BaseWorker]:
             cls._workers[name] = worker_class
             worker_class.worker_type = name
             return worker_class
+
         return decorator
-    
+
     @classmethod
-    def get(cls, name: str) -> Type[BaseWorker]:
-        """Get a worker class by name."""
+    def get(cls, name: str) -> type[BaseWorker]:
+        """Get a worker class by name.
+
+        Args:
+            name: Name of the worker type.
+
+        Returns:
+            Worker class.
+
+        Raises:
+            WorkerNotFoundError: If the worker type is not registered.
+        """
         if name not in cls._workers:
             available = ", ".join(cls._workers.keys())
-            raise WorkerNotFoundError(
-                f"Worker type '{name}' not found. Available: {available}"
-            )
+            raise WorkerNotFoundError(f"Worker type '{name}' not found. Available: {available}")
         return cls._workers[name]
-    
+
     @classmethod
-    def list_workers(cls) -> List[str]:
-        """List all registered worker types."""
+    def list_workers(cls) -> list[str]:
+        """List all registered worker types.
+
+        Returns:
+            List of registered worker type names.
+        """
         return list(cls._workers.keys())
 
 
@@ -211,21 +304,26 @@ class WorkerRegistry:
 # WORKER ERRORS
 # =============================================================================
 
+
 class WorkerError(Exception):
     """Base exception for worker errors."""
+
     pass
 
 
 class WorkerSetupError(WorkerError):
     """Raised when worker setup fails."""
+
     pass
 
 
 class WorkerExecutionError(WorkerError):
     """Raised when worker execution fails."""
+
     pass
 
 
 class WorkerNotFoundError(WorkerError):
     """Raised when requested worker type is not registered."""
+
     pass

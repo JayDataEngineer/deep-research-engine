@@ -1,10 +1,20 @@
-"""Worker errors."""
+"""Worker errors.
 
-from .base import WorkerError, WorkerSetupError, WorkerExecutionError, WorkerNotFoundError
+Re-exports from centralized errors module for backward compatibility.
+"""
+
+from deep_research_engine.errors import (
+    WorkerError,
+    WorkerExecutionError,
+    WorkerNotFoundError,
+    WorkerSetupError,
+    WorkerTimeoutError,
+)
 
 __all__ = [
     "WorkerError",
-    "WorkerSetupError",
     "WorkerExecutionError",
     "WorkerNotFoundError",
+    "WorkerSetupError",
+    "WorkerTimeoutError",
 ]
