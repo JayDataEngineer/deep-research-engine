@@ -1,16 +1,20 @@
-"""Storage errors."""
+"""Storage errors.
 
+Re-exports from centralized errors module for backward compatibility.
+"""
 
-class StorageError(Exception):
-    """Base exception for storage errors."""
-    pass
+from deep_research_engine.errors import (
+    StorageConnectionError,
+    StorageError,
+    StorageInitializationError,
+    StorageNotFoundError,
+    StorageQueryError,
+)
 
-
-class StorageInitializationError(StorageError):
-    """Raised when storage initialization fails."""
-    pass
-
-
-class StorageNotFoundError(StorageError):
-    """Raised when storage backend not found."""
-    pass
+__all__ = [
+    "StorageConnectionError",
+    "StorageError",
+    "StorageInitializationError",
+    "StorageNotFoundError",
+    "StorageQueryError",
+]
