@@ -1,33 +1,43 @@
 """Config loading and validation."""
 
+import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
+
 import yaml
 from jinja2 import Template
-import os
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkflowConfig(BaseModel):
-    """Workflow configuration from YAML."""
-    
-    workflow: Dict[str, Any]
-    input: Dict[str, Any]
-    phases: Dict[str, Any]
-    storage: Dict[str, Any] = Field(default_factory=dict)
-    llm: Dict[str, Any] = Field(default_factory=dict)
-    tools: Dict[str, Any] = Field(default_factory=dict)
-    execution: Dict[str, Any] = Field(default_factory=dict)
-    output: Dict[str, Any] = Field(default_factory=dict)
-    
-    class Config:
-        extra = "allow"
+    """Workflow configuration from YAML.
+
+    Attributes:
+        workflow: Workflow configuration settings.
+        input: Input data configuration.
+        phases: Phase configuration (can be dict or list).
+        storage: Storage backend configuration.
+        llm: LLM configuration.
+        tools: Tools configuration.
+        execution: Execution settings.
+        output: Output configuration.
+    """
+
+    workflow: dict[str, Any]
+    input: dict[str, Any]
+    phases: dict[str, Any] | list[dict[str, Any]]  # Can be dict or list
+    storage: dict[str, Any] = Field(default_factory=dict)
+    llm: dict[str, Any] = Field(default_factory=dict)
+    tools: dict[str, Any] = Field(default_factory=dict)
+    execution: dict[str, Any] = Field(default_factory=dict)
+    output: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="allow")
 
 
 def expand_env_vars(value: Any) -> Any:
     """Expand environment variables in config values.
-    
+
     Supports:
     - ${VAR} - Direct substitution
     - ${VAR-default} - With default value
@@ -35,78 +45,78 @@ def expand_env_vars(value: Any) -> Any:
     if isinstance(value, str):
         # Pattern: ${VAR} or ${VAR-default}
         import re
-        
+
         def replace(match):
             var_expr = match.group(1)
-            if '-' in var_expr:
-                var_name, default = var_expr.split('-', 1)
+            if "-" in var_expr:
+                var_name, default = var_expr.split("-", 1)
                 return os.environ.get(var_name, default)
             else:
                 return os.environ.get(var_expr, match.group(0))
-        
-        return re.sub(r'\$\{([^}]+)\}', replace, value)
-    
+
+        return re.sub(r"\$\{([^}]+)\}", replace, value)
+
     elif isinstance(value, dict):
         return {k: expand_env_vars(v) for k, v in value.items()}
-    
+
     elif isinstance(value, list):
         return [expand_env_vars(item) for item in value]
-    
+
     return value
 
 
 def load_config(config_path: str) -> WorkflowConfig:
     """Load workflow configuration from YAML file.
-    
+
     Args:
         config_path: Path to YAML config file
-        
+
     Returns:
         WorkflowConfig object
-        
+
     Raises:
         FileNotFoundError: If config file doesn't exist
         ValidationError: If config validation fails
     """
     path = Path(config_path)
-    
+
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
-    
+
     # Load YAML
-    with open(path, 'r') as f:
+    with path.open() as f:
         config_dict = yaml.safe_load(f)
-    
+
     # Expand environment variables
     config_dict = expand_env_vars(config_dict)
-    
+
     # Validate and return
     return WorkflowConfig(**config_dict)
 
 
-def merge_configs(base_config: Dict[str, Any], override_config: Dict[str, Any]) -> Dict[str, Any]:
+def merge_configs(base_config: dict[str, Any], override_config: dict[str, Any]) -> dict[str, Any]:
     """Deep merge two configs.
-    
+
     Override values take precedence. Lists are replaced, not merged.
     """
     result = base_config.copy()
-    
+
     for key, value in override_config.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = merge_configs(result[key], value)
         else:
             result[key] = value
-    
+
     return result
 
 
 def render_prompt_template(template_str: str, **variables) -> str:
     """Render a Jinja2 prompt template.
-    
+
     Args:
         template_str: Jinja2 template string
         **variables: Variables to inject
-        
+
     Returns:
         Rendered template
     """
