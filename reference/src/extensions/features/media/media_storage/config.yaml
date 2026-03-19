@@ -1,0 +1,29 @@
+extension:
+  name: media_storage
+  type: feature
+  display_name: Media Storage
+  category: feature
+  version: 1.0.0
+  description: 'Handles media file uploads (images, audio, video) with validation
+
+    and storage in the configured upload directory.
+
+    '
+  enabled: true
+capabilities:
+  input_type:
+  - text
+  - image
+  - audio
+  - video
+  output_type:
+  - text
+  streaming: false
+tags:
+- storage
+- media
+- uploads
+dependencies:
+  python_version: '>=3.10'
+  pip_packages: []
+  extensions: []

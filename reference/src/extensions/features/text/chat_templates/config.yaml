@@ -1,0 +1,30 @@
+extension:
+  name: chat_templates
+  type: feature
+  display_name: Chat Templates
+  description: Pre-built chat structures and starter conversations
+  version: 1.0.0
+  author: Unified LLM Interface
+  category: feature
+  enabled: true
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages: []
+  extensions: []
+
+settings:
+  storage_path: inputs/chat_templates
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - templates
+  - chat
+  - starters
+  - structures

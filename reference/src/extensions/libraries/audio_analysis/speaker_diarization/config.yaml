@@ -1,0 +1,77 @@
+extension:
+  name: speaker_diarization
+  type: feature
+  display_name: Speaker Diarization
+  description: Identify speakers and timestamps in audio files using pyannote.audio
+  version: 1.0.0
+  author: "Audio Analysis Team"
+  category: feature
+  enabled: true
+
+python:
+  version: "3.10"
+  use_venv: true
+  requirements: requirements.txt
+
+models:
+  - name: Pyannote Segmentation Model
+    source: hf
+    repo: pyannote/segmentation-3.0
+    destination: models/analysis/pyannote-segmentation
+    size: 1.4GB
+    required: true
+    description: Speaker segmentation model for diarization
+
+  - name: Pyannote Embedding Model
+    source: hf
+    repo: pyannote/speaker-diarization-3.1
+    destination: models/analysis/pyannote-embeddings
+    size: 380MB
+    required: true
+    description: Speaker embedding model
+
+download:
+  type: huggingface
+  # Note: pyannote models require accepting user agreement on HF first
+  # Visit: https://huggingface.co/pyannote/speaker-diarization-3.1
+  # And: https://huggingface.co/pyannote/segmentation-3.0
+  models:
+    - repo: pyannote/segmentation-3.0
+      destination: models/analysis/segmentation-3.0
+      files:
+        - config.yaml
+        - pytorch_model.bin
+      size: 1.4GB
+
+    - repo: pyannote/speaker-diarization-3.1
+      destination: models/analysis/speaker-diarization-3.1
+      files:
+        - config.yaml
+        - pytorch_model.bin
+      size: 380MB
+
+capabilities:
+  input_type:
+    - audio
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - audio
+  - diarization
+  - speakers
+  - transcription
+
+config:
+  # Diarization settings
+  min_speakers: 1
+  max_speakers: 10
+  min_segment_length: 0.5  # seconds
+
+  # Performance settings
+  use_gpu: true
+  batch_size: 32
+
+  # Optional: Run as subprocess for isolation
+  run_as_subprocess: false

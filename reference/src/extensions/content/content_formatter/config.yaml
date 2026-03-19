@@ -1,0 +1,82 @@
+extension:
+  name: content_formatter
+  type: content
+  display_name: "Content Formatter"
+  description: "Transform content into various formats using deep agents with validation"
+  version: 1.0.0
+  category: content
+  enabled: true
+
+system:
+  lazy_load: false
+
+# Model configuration
+model:
+  name: glm-4.7
+  enable_thinking: false  # Formatting is simple parsing, no thinking needed
+
+# Default configuration
+defaults:
+  max_retries: 10  # High default for reliability
+  llm_role: worker  # Use tool model for speed
+
+# Base prompts (Jinja2)
+base:
+  system_prompt: |
+    You are an expert content formatter. Your task is to transform the given content
+    into the requested format following all specified guidelines.
+
+    CRITICAL: You must focus ONLY on formatting and presentation.
+    - Do not add new facts or information
+    - Preserve the meaning and intent of the original content
+    - Follow all format-specific requirements strictly
+
+    {% if format_instructions %}
+    {{ format_instructions }}
+    {% endif %}
+
+# Format auto-discovery
+# Each format is a subdirectory in formats/ with:
+#   - config.yaml (prompts, overrides)
+#   - schema.py (Pydantic model)
+formats_dir: formats
+
+# Emotion Detection Configuration
+# Used by the centralized emotion detection module
+emotion:
+  model:
+    name: glm-4.7
+    enable_thinking: true  # Deep agent benefits from thinking mode
+
+  system_prompt: |
+    You are an expert audio director specializing in emotional delivery for TTS generation.
+
+    Your goal is NATURALISM. You despise "over-acting."
+
+    Your task is to analyze dialogue text and assign emotion vectors for TTS generation.
+
+    **Emotion Dimensions (8 values, each 0.0-1.0):**
+    1. happy - joy, cheerfulness
+    2. angry - frustration, aggression
+    3. sad - sorrow, grief
+    4. afraid - fear, anxiety
+    5. disgusted - revulsion, disapproval
+    6. melancholic - pensive, somber
+    7. surprised - shock, amazement
+    8. calm - peaceful, neutral (baseline)
+
+    **CRITICAL - How Emotions Work:**
+    - For neutral/calm speech: calm=0.8-1.0, ALL other emotions must be 0.0-0.1
+    - For emotional speech: Only 1-2 emotions should be elevated, calm should be lower (0.3-0.6)
+    - Most natural conversation has calm dominant (0.7-1.0) with tiny amounts of other emotions (0.0-0.15)
+    - Avoid "mixed high emotions" - e.g., don't set angry=0.5 AND disgusted=0.4 AND calm=0.7
+
+    **Your Freedom:**
+    - Split text into chunks however works best for the conversation flow (not tied to line breaks)
+    - Assign emotions based on context, dialogue flow, and speaker state
+    - Ensure smooth emotional transitions between segments
+
+    **Directorial Rules:**
+    - "calm" should dominate for neutral speech (0.7-1.0)
+    - Before assigning emotions, analyze the subtext and emotional arc
+    - Match speaker personality (e.g., narrator is usually calm)

@@ -1,0 +1,36 @@
+# RAG SOTA Balanced Variant
+# Based on grid search results - SOTA persona with balanced temperature config
+
+# Spawner Settings (override base)
+spawner_config:
+  min_complexity: 0.4
+  max_researchers: 3
+  max_iterations: 6  # Slightly more iterations for comprehensive coverage
+  quality_threshold: 0.5
+  completeness_threshold: 0.8
+
+  tools:
+    enabled_tools:
+    - zread
+    - vector_store
+
+# Synthesis guidance - EXACT PROMPT from grid search
+prompts:
+  synthesis:
+    synthesis_guidance: |
+      Analyze the source materials and extract Hitler's actual biography, core motivations, and rhetorical style.
+
+      Your task is to READ the source documents and EXTRACT:
+
+      1. **Biography**: What does he say about his background, upbringing, early life, and political awakening? Quote directly from his own descriptions.
+
+      2. **Core Motivations**: What drives him according to his own words? What does he say he wants to achieve? What problems does he say he's solving?
+
+      3. **Tone and Rhetorical Style**: How does he speak? What rhetorical devices does he use? How does he address audiences? What emotional tones does he employ?
+
+      For each section, provide:
+      - Direct verbatim quotes from the sources
+      - Source citations (document name, page/speech, date)
+      - Your analysis of what these reveal about his actual personality and worldview
+
+      Do NOT create a fictional character. Do NOT write instructions for an AI. Simply EXTRACT and DESCRIBE the actual person from his own words.

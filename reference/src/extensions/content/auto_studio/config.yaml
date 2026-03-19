@@ -1,0 +1,811 @@
+# Auto Studio Feature Extension
+
+extension:
+  name: auto_studio
+  type: feature
+  display_name: Auto Studio
+  description: Automated multi-modal content generation - text, audio, image, and video workflows
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+# Mode selection: config (deep agent planning) or fast (real-time conversational)
+mode: config  # Options: config, fast
+
+python:
+  use_host_env: true  # Runs in host environment for LLM and ComfyUI access
+
+capabilities:
+  input_type:
+    - text
+    - markdown
+  output_type:
+    - video
+    - audio
+    - image
+  streaming: false
+
+tags:
+  - studio
+  - video
+  - podcast
+  - multimodal
+  - automation
+
+# =============================================================================
+# DEEP AGENT PROMPT TEMPLATES
+# These sections are assembled by Jinja to create the mega prompt
+# =============================================================================
+
+deep_agent:
+  model: glm-4.7  # Use ZAI GLM model (or your preferred model)
+  temperature: 0.7
+  max_tokens: 8000
+  thinking_enabled: true
+
+  # Prompt sections (assembled by Jinja)
+  prompts:
+    # System prompt - the agent's role and overall instructions
+    system: |
+      You are an expert video production planner specializing in AI-generated podcast videos.
+      Your task is to analyze a podcast script and create a complete production plan.
+
+      {{general_direction}}
+
+      {{clip_breaks}}
+
+      {{emotion_vectors}}
+
+      {{qwen_edit}}
+
+      {{ltx2_video}}
+
+      {{camera_angles}}
+
+      {{character_consistency}}
+
+    # User prompt - the actual task with the script
+    user: |
+      # Task: Plan Video Podcast Production
+
+      ## Script
+
+      {{script}}
+
+      ## Base Scene Description
+
+      {{base_scene_description}}
+
+      ## Show Context
+
+      {{show_context}}
+
+      ## Speaker Profiles
+
+      {{speaker_profiles}}
+
+      ## Style Guidelines
+
+      {{style_guidelines}}
+
+      ---
+
+      Please analyze this script and create a complete production plan.
+
+      Return your response as a JSON object with the following structure:
+
+      ```json
+      {
+        "script_info": {
+          "title": "string",
+          "total_lines": int,
+          "num_clips": int,
+          "estimated_duration_seconds": float
+        },
+        "base_scene_reference": "string",
+        "clips": [
+          {
+            "clip_id": "string",
+            "start_line": int,
+            "end_line": int,
+            "speakers": ["string"],
+            "camera_break_type": "string",
+            "duration_frames": int,
+            "emotion_vectors": {
+              "SPEAKER_NAME": {
+                "happy": float,
+                "angry": float,
+                "sad": float,
+                "afraid": float,
+                "disgusted": float,
+                "melancholic": float,
+                "surprised": float,
+                "calm": float,
+                "intensity": float
+              }
+            },
+            "qwen_edit_prompt": "string",
+            "qwen_negative_prompt": "string",
+            "ltx2_prompt": "string",
+            "ltx2_negative_prompt": "string",
+            "camera_angle": "string",
+            "additional_params": {}
+          }
+        ]
+      }
+      ```
+
+      Ensure all clip line ranges are valid and cover the entire script.
+      Calculate duration_frames based on actual dialogue length (estimate by reading speed).
+
+# =============================================================================
+# FAST MODE CONFIGURATION
+# Real-time conversational video generation with minimal latency
+# =============================================================================
+
+fast_mode:
+  model: glm-4.7
+  temperature: 0.7
+  max_tokens: 1000
+  thinking_enabled: false  # Faster without thinking mode
+  max_retries: 2
+
+  # Default values for generated prompts
+  defaults:
+    duration_frames: 120  # 5 seconds @ 24fps
+    camera_angle: medium_close_up
+    negative_prompt: "blurry, distorted, bad quality, unnatural movements, stiff pose"
+    fallback_prompt_template: "{user_message}"  # Fallback if LLM fails
+
+  prompts:
+    system: |
+      You are an expert LTX-2 video generation prompt engineer.
+
+      Your task is to convert user messages into production-ready LTX-2 video prompts.
+
+      ## LTX-2 Prompt Best Practices
+
+      ### The Six Key Elements
+
+      1. **Establish the Shot**: Use cinematography terms (wide, medium, close-up, etc.)
+      2. **Set the Scene**: Lighting, color palette, textures, atmosphere
+      3. **Describe the Action**: Natural sequence flowing from beginning to end
+      4. **Define the Character(s)**: Age, hairstyle, clothing - express emotion through PHYSICAL CUES not labels
+      5. **Identify Camera Movement(s)**: Specify how camera moves and how subject appears after
+      6. **Describe the Audio**: Ambient sound, dialogue in quotes
+
+      ### Format Requirements
+
+      - Write as a **single flowing paragraph**
+      - Use **present tense** verbs
+      - Aim for **4-8 descriptive sentences**
+      - Avoid internal emotion labels ("sad", "confused") - use visual descriptions instead
+      - Avoid text/logos (LTX-2 struggles with readable text)
+      - Avoid overcomplicated scenes - keep to 1-2 speakers maximum
+
+      ### Strengths of LTX-2
+
+      - Cinematic compositions with natural motion
+      - Emotive human moments with subtle gestures
+      - Atmosphere and setting (fog, light, reflections)
+      - Clear camera language (slow dolly in, handheld tracking)
+      - Characters can talk and sing
+
+      ### Example Prompt Structure
+
+      ```
+      The shot opens on [camera framing]. [Lighting/atmosphere]. The [speaker description] [position/posture]. As they [action - speaking, gesturing], [physical expressions and movements]. [Camera movement if any]. The [continuation of action/reaction].
+      ```
+
+      {{style_guidelines}}
+
+    user: |
+      # Task: Generate LTX-2 Video Prompt
+
+      ## User Message
+      {{user_message}}
+
+      ## Scene Context
+      {{scene_description}}
+
+      ## Speaker Information
+      {{speaker_info}}
+
+      ---
+      Create a production-ready LTX-2 video prompt following the guidelines above.
+
+      Return your response as a JSON object:
+
+      ```json
+      {
+        "ltx2_prompt": "string",
+        "ltx2_negative_prompt": "string",
+        "duration_frames": int,
+        "camera_angle": "string"
+      }
+      ```
+
+      Fields:
+      - **ltx2_prompt**: Single flowing paragraph, present tense, 4-8 sentences
+      - **ltx2_negative_prompt**: "blurry, distorted, bad quality, unnatural movements, stiff pose, text, logos"
+      - **duration_frames**: Duration in frames (default: 120 = 5s @ 24fps)
+      - **camera_angle**: Options: wide, medium, close_up, medium_close_up, extreme_close_up
+
+# =============================================================================
+# PROMPT SECTIONS
+# These are assembled by Jinja into the mega prompt
+# =============================================================================
+
+# General direction for the agent
+general_direction: |
+  ## Your Responsibilities
+
+  You will decide:
+  1. **Clip Breaks**: Where to cut between video clips
+  2. **Emotion Vectors**: For each speaker in each clip
+  3. **Qwen Image Edit Prompts**: For generating start frames
+  4. **LTX2 Video Prompts**: For video generation
+  5. **Parameters**: Additional generation parameters (num_frames, camera_angle, etc.)
+
+# Clip break guidelines
+clip_breaks: |
+  ## Clip Break Guidelines
+
+  - **speaker_change**: Cut when a different person starts speaking
+  - **scene_change**: Cut when topic/location shifts
+  - **pause**: Cut at significant pauses in conversation
+  - **natural_end**: End of content
+
+  Consider:
+  - Speaker changes
+  - Scene/topic changes
+  - Natural pause points
+  - Keep clips between 3-10 seconds (72-240 frames at 24fps)
+
+# Emotion vector guidelines
+emotion_vectors: |
+  ## Emotion Vector Format
+
+  For each speaker in each clip, provide a 9-dimensional emotion vector:
+  - **happy**: 0.0-1.0 - Happiness and joy
+  - **angry**: 0.0-1.0 - Anger and frustration
+  - **sad**: 0.0-1.0 - Sadness and sorrow
+  - **afraid**: 0.0-1.0 - Fear and anxiety
+  - **disgusted**: 0.0-1.0 - Disgust and aversion
+  - **melancholic**: 0.0-1.0 - Melancholy and pensive mood
+  - **surprised**: 0.0-1.0 - Surprise and amazement
+  - **calm**: 0.0-1.0 - Calmness and composure
+  - **intensity**: 0.0-1.0 - Overall intensity of the emotion
+
+  ### Emotion Guidelines
+
+  - **Normal conversation**: intensity 0.1-0.3
+  - **Excited/energetic**: intensity 0.4-0.6, happy/surprised elevated
+  - **Serious/gravitas**: intensity 0.2-0.4, calm elevated
+  - **Sad/emotional**: sad/melancholic elevated
+  - **Angry/frustrated**: angry elevated
+  - Most values should be 0.0-0.3 except the primary emotion
+
+# Qwen Image Edit guidelines
+qwen_edit: |
+  ## Qwen Image Edit Prompt Engineering Guide
+
+  ### Multi-Image Input Support
+
+  Qwen-Image-Edit-2509 supports **up to 3 image inputs** with text-referencing:
+
+  **Image Inputs:**
+  - **image1**: Primary canvas/reference (e.g., base studio scene wide shot)
+  - **image2**: Secondary reference (e.g., Podcaster A close-up for identity)
+  - **image3**: Tertiary reference (e.g., Podcaster B close-up for identity)
+
+  **Text-Referencing Prompt Pattern:**
+  ```
+  A podcast scene using the background and composition from image 1. The person on the left is the man from image 2. The person on the right is the woman from image 3. They are [action: laughing / arguing / looking shocked].
+  ```
+
+  **Key Rules:**
+  1. **Explicitly reference images by number**: "image 1", "image 2", "image 3"
+  2. **Spatial positioning is critical**: "from image 2 on the LEFT", "from image 3 on the RIGHT"
+  3. **Role assignment**: Tell the model what each image provides (background, identity, style, etc.)
+  4. **No pre-stitching needed**: The model concatenates images internally
+
+  **Multi-Image Prompt Templates:**
+
+  **Podcast Scene (Studio + 2 Speakers):**
+  ```
+  Maintain the podcast studio background and lighting from image 1. The host on the left is the person from image 2. The guest on the right is the person from image 3. Both are [expression/action].
+  ```
+
+  **Identity Preservation (Prevent Face Bleed):**
+  ```
+  Keep the face features of the person from image 2 exactly as shown. Keep the face features of the person from image 3 exactly as shown. Do not blend or morph their identities.
+  ```
+
+  **Style Transfer (Scene from img1, Style from img2):**
+  ```
+  Use the composition and layout from image 1. Apply the visual style and color palette from image 2. Keep all subjects and positioning from image 1 unchanged.
+  ```
+
+  ### Overview: Qwen-Image-Edit
+
+  Qwen-Image-Edit is a 20B parameter model built on Qwen-Image that extends text rendering capabilities to image editing. It uniquely combines:
+  - **Qwen2.5-VL**: For visual semantic control (understanding what to change)
+  - **VAE Encoder**: For visual appearance control (maintaining visual consistency)
+
+  ### Two Editing Modes
+
+  #### 1. Appearance Editing (Low-Level)
+  Modifies visual elements while keeping everything else unchanged:
+  - Add/remove objects
+  - Modify specific elements
+  - Replace items
+  - All other regions remain completely unchanged
+
+  #### 2. Semantic Editing (High-Level)
+  Changes content/meaning while preserving visual semantics:
+  - Style transfer
+  - Object rotation
+  - IP creation
+  - Overall pixels may change but semantic consistency is maintained
+
+  ---
+
+  ### Core Prompting Principles
+
+  #### Treat It Like Chat, Not Tags
+  Qwen Image Edit uses **natural language instructions**, not comma-separated keywords.
+
+  **❌ Wrong Approach** (Stable Diffusion style):
+  ```
+  Podcast host, medium shot, professional lighting, zoom in, 4k, cinematic
+  ```
+
+  **✅ Correct Approach** (Conversational):
+  ```
+  Zoom in on the podcast host from the base studio scene. Frame them in a medium shot that captures their expression while they speak.
+  ```
+
+  #### Always Reference the Source Image
+  Explicitly reference the input image to maintain consistency.
+
+  **Templates:**
+  - "The woman from Image 1..."
+  - "Keep the face features as Image 1..."
+  - "Preserve the identity of the person in the reference image..."
+  - "Starting from the base studio scene..."
+
+  #### Be Specific About Changes
+  Describe exactly what should change and what should stay the same.
+
+  **Template**: `[Action] + [Subject Reference] + [Constraint] + [Detail]`
+
+  **Example**:
+  ```
+  Zoom in on the guest speaker from the base studio scene, keeping the studio lighting and background unchanged. Frame as a medium close-up showing their engaged expression.
+  ```
+
+  ---
+
+  ### Task-Specific Prompting
+
+  #### 1. Zoom/Framing Edits (Podcast Start Frames)
+
+  For generating start frames from a base studio scene:
+
+  **Structure:**
+  ```
+  [Camera movement] on [speaker] from the base studio scene. [Framing description]. Keep [elements to preserve]. [Expression/mood context].
+  ```
+
+  **Examples:**
+
+  **Medium Close-Up (Single Speaker):**
+  ```
+  Zoom in on the host from the base studio scene to create a medium close-up shot. Frame from the shoulders up, showing their engaged and attentive expression. Maintain the warm studio lighting and background elements. The host should appear ready to introduce the next topic.
+  ```
+
+  **Two-Shot (Two Speakers):**
+  ```
+  Adjust the frame from the base studio scene to show both speakers in a comfortable two-shot. Position them on the left and right thirds of the frame, maintaining the podcast studio background. Both should have welcoming expressions suggesting conversational rapport.
+  ```
+
+  **Close-Up (Emotional Moment):**
+  ```
+  Create an intimate close-up of the speaker from the base studio scene. Frame tight on their face to capture the thoughtful expression in their eyes. Preserve the soft studio lighting. The speaker appears deeply engaged in sharing something meaningful.
+  ```
+
+  #### 2. Object Addition/Removal
+
+  **Adding Objects:**
+  ```
+  Add a coffee mug on the table in front of the speaker from Image 1. The mug should be white ceramic, positioned on the right side. Keep everything else unchanged.
+  ```
+
+  **Removing Objects:**
+  ```
+  Remove the microphone from the speaker's hand in Image 1. Keep their hand position and expression natural.
+  ```
+
+  **Replacing Objects:**
+  ```
+  Replace the red chair behind the speaker in Image 1 with a beige armchair. Maintain the same positioning and lighting.
+  ```
+
+  #### 3. Expression/Face Edits
+
+  **Critical: Always emphasize identity preservation**
+  ```
+  Change the speaker's expression to a warm smile, keeping their face features exactly as Image 1. Their eyes should crinkle slightly at the corners. The change should be subtle and natural.
+  ```
+
+  **Expression Templates:**
+  - **Engaged**: "The speaker looks focused and interested, maintaining face features from Image 1"
+  - **Thoughtful**: "A contemplative expression with slightly furrowed brow, preserving identity from the reference"
+  - **Surprised**: "Mild surprise with slightly raised eyebrows and open mouth, keep face consistent with Image 1"
+  - **Amused**: "A gentle smile with head slightly tilted, preserving all facial features from the original"
+
+  **❌ Avoid Exaggerated Changes:**
+  ```
+  Make the person look extremely angry with distorted features
+  ```
+
+  **✅ Use Subtle Natural Changes:**
+  ```
+  The speaker's expression shows mild concern with a slight frown, keeping their natural face features from Image 1
+  ```
+
+  #### 4. Text Editing (Unique Qwen Strength)
+
+  Qwen-Image-Edit excels at reading and rendering text in both Chinese and English.
+
+  **Text in Double Quotes:**
+  ```
+  Change the text on the "ON AIR" sign to read "LIVE" in red font. Keep the sign's position and style unchanged.
+  ```
+
+  **Text Addition:**
+  ```
+  Add a nameplate below the speaker that reads "Dr. Smith" in white text on a dark background.
+  ```
+
+  **Text Removal:**
+  ```
+  Remove the watermark text from the bottom right corner.
+  ```
+
+  #### 5. Style/Background Edits
+
+  **Background Changes:**
+  ```
+  Change the background of the speaker from Image 1 to a tropical beach scene. Ensure their face features remain exactly as Image 1. Add appropriate lighting adjustments.
+  ```
+
+  **Style Transfer:**
+  ```
+  Transfer the style of the reference image to a documentary film aesthetic. Apply film grain effect and adjust colors to a muted palette while maintaining the speaker's appearance.
+  ```
+
+  ---
+
+  ### Best Practices for Podcast Video Production
+
+  #### 1. Consistency Anchor Phrases
+  Always include these when editing character images:
+  - "Keep face features as Image 1"
+  - "Preserve the identity of the speaker from the reference"
+  - "Maintain the original appearance of the person"
+  - "The speaker's face should match the base studio scene"
+
+  #### 2. Lighting and Atmosphere
+  Reference the lighting to maintain visual consistency:
+  - "Preserve the warm studio lighting from the base scene"
+  - "Keep the soft rim lighting effect"
+  - "Maintain the professional atmosphere"
+  - "Keep the background elements unchanged"
+
+  #### 3. Camera Language
+  Use explicit camera terminology:
+  - "Zoom in" / "Zoom out"
+  - "Pan to" / "Reframe to"
+  - "Medium shot" / "Close-up" / "Two-shot"
+  - "Over-the-shoulder" / "Profile view"
+
+  #### 4. Contextual Details
+  Include relevant production details:
+  - Podium/microphone presence
+  - Guest/host seating arrangements
+  - Studio monitors or screens
+  - Branding elements
+
+  ---
+
+  ### Negative Prompts
+
+  For Qwen Image Edit, negative prompts help avoid unwanted changes:
+  ```
+  Do not change: face features, identity, skin tone, hair style, background elements, lighting quality
+  Avoid: distortion, blur, artifacts, morphing, style shifts inconsistent with the base image
+  ```
+
+  ---
+
+  ### Example Prompts by Camera Angle
+
+  #### Wide Shot → Medium Shot
+  ```
+  From the base studio wide shot, zoom in to frame both hosts in a medium shot from the waist up. Keep their positions relative to each other. Maintain the studio lighting and background branding. Both hosts should have welcoming, conversational expressions.
+  ```
+
+  #### Wide Shot → Close-Up (Guest)
+  ```
+  Create a close-up of the guest speaker from the base studio scene. Frame from chest up, focusing on their face as they listen intently. Keep their face features and appearance exactly as the base image. The background should be softly blurred but still recognizable as the podcast studio.
+  ```
+
+  #### Medium Shot → Medium Close-Up (Host Speaking)
+  ```
+  Adjust the frame to a medium close-up of the host, showing head and shoulders. The host should appear engaged in speaking with slight hand gestures visible. Preserve all facial features from the base studio scene. Keep the professional podcast atmosphere.
+  ```
+
+  ---
+
+  ### Troubleshooting
+
+  **If the face changes too much:**
+  - Add explicit identity preservation: "Keep face features EXACTLY as Image 1"
+  - Check resolution - upscale source image if needed
+  - Simplify the edit request
+
+  **If the edit looks blurry:**
+  - Ensure source image is high resolution (1024x1024 recommended)
+  - Reduce the number of changes in a single prompt
+  - Break complex edits into multiple steps
+
+  **If style inconsistency occurs:**
+  - Reference the original style explicitly
+  - Use "maintain the style of Image 1" or similar phrases
+  - Describe the desired style characteristics precisely
+
+  **If text editing fails:**
+  - Ensure text is in double quotes
+  - Specify position, color, and font if important
+  - For bilingual content, specify the language
+
+# LTX2 video guidelines
+ltx2_video: |
+  ## LTX-2 Video Prompt Engineering Guide
+
+  ### The Six Key Elements of an Effective LTX-2 Prompt
+
+  When creating video generation prompts, always include these elements:
+
+  #### 1. Establish the Shot
+  Use cinematography terms that match the intended genre. Include shot scale or category-specific characteristics to refine the visual style.
+
+  #### 2. Set the Scene
+  Describe lighting conditions, color palette, surface textures, and atmosphere to establish mood and tone.
+
+  #### 3. Describe the Action
+  Write the core action as a natural sequence, flowing clearly from beginning to end.
+
+  #### 4. Define the Character(s)
+  Include age, hairstyle, clothing, and distinguishing features. Express emotion through **physical cues**, not abstract labels.
+
+  #### 5. Identify Camera Movement(s)
+  Specify how and when the camera moves. Describe how subjects appear _after_ the movement to help the model complete the motion accurately.
+
+  #### 6. Describe the Audio
+  Clearly describe ambient sound, music, speech, or singing. Place spoken dialogue in **quotation marks**. Specify language and accent if needed.
+
+  ---
+
+  ### Best Practices for LTX-2 Prompts
+
+  - Write your prompt as a **single flowing paragraph**
+  - Use **present tense** verbs for action and movement
+  - Match the level of detail to the shot scale (close-ups need more detail than wide shots)
+  - Describe camera movement relative to the subject
+  - Aim for **4–8 descriptive sentences**
+  - Iterate freely — LTX-2 is designed for fast experimentation
+
+  ---
+
+  ### Helpful Terms for LTX-2
+
+  #### Categories
+  **Animation**: Stop-motion, 2D/3D animation, Claymation, Hand-drawn
+  **Stylized**: Comic book, Cyberpunk, 8-bit pixel, Surreal, Minimalist, Painterly, Illustrated
+  **Cinematic**: Period drama, Film noir, Fantasy, Epic space opera, Thriller, Modern romance, Experimental film, Arthouse, Documentary
+
+  #### Visual Details
+  **Lighting**: Flickering candles, Neon glow, Natural sunlight, Dramatic shadows
+  **Textures**: Rough stone, Smooth metal, Worn fabric, Glossy surfaces
+  **Color Palette**: Vibrant, Muted, Monochromatic, High contrast
+  **Atmosphere**: Fog, Rain, Dust, Smoke, Particles
+
+  #### Camera Language
+  Follows, Tracks, Pans across, Circles around, Tilts upward, Pushes in / pulls back, Overhead view, Handheld movement, Over-the-shoulder, Wide establishing shot, Static frame
+
+  #### Film Characteristics
+  Film grain, Lens flares, Pixelated edges, Jittery stop-motion
+
+  #### Scale Indicators
+  Expansive, Epic, Intimate, Claustrophobic
+
+  #### Pacing & Temporal Effects
+  Slow motion, Time-lapse, Rapid cuts, Lingering shot, Continuous shot, Freeze-frame, Fade-in / fade-out, Seamless transition, Sudden stop
+
+  #### Visual Effects
+  Particle systems, Motion blur, Depth of field
+
+  ---
+
+  ### What Works Well with LTX-2
+
+  | Strength | Description |
+  | --- | --- |
+  | Cinematic compositions | Wide, medium, and close-up shots with thoughtful lighting, shallow depth of field, and natural motion |
+  | Emotive human moments | Strong single-subject emotional expressions, subtle gestures, and facial nuance |
+  | Atmosphere & setting | Fog, mist, golden-hour light, rain, reflections, ambient textures |
+  | Clear camera language | Explicit instructions like "slow dolly in" or "handheld tracking" |
+  | Stylized aesthetics | Painterly, noir, analog film, fashion editorial, pixelated animation |
+  | Lighting & mood control | Backlighting, color palettes, rim light, flickering lamps |
+  | Voice Capabilities | Characters can **talk and sing**, supports **multiple languages** |
+
+  ---
+
+  ### What to AVOID with LTX-2
+
+  | Avoid | Why It Doesn't Work |
+  | --- | --- |
+  | Internal emotional states | Use visual cues instead of labels like "sad" or "confused" |
+  | Text and logos | Readable text is not currently reliable |
+  | Complex physics | Chaotic motion can introduce artifacts (dancing is OK) |
+  | Overloaded scenes | Too many characters or actions reduce clarity |
+  | Conflicting lighting | Mixed light logic confuses scene interpretation |
+  | Overcomplicated prompts | Start simple and layer complexity gradually |
+
+  ---
+
+  ### Prompt Structure for Podcast Videos
+
+  When generating podcast video clips, follow this template:
+
+  ```
+  [CAMERA SETUP] The shot opens on [description of framing and composition]. [Lighting description]. [Ambient sound].
+
+  [SUBJECT APPEARANCE] The [speaker description] sits/stands [position], [clothing/appearance details]. [Initial expression/posture].
+
+  [ACTION/MOVEMENT] [What the speaker does during the clip - gestures, head movements, facial expressions]. Use present tense, describe physical cues not emotions.
+
+  [CAMERA MOVEMENT - if any] [Camera movement description]. [How the subject appears after the movement].
+
+  [DIALOGUE DELIVERY - if applicable] [Speaker name] (speaking with [tone]): "[Optional quote or description of what they're saying]". [Physical reaction or continuation of action].
+  ```
+
+  ---
+
+  ### Example LTX-2 Prompts for Podcast Contexts
+
+  #### Example 1: Standard Conversation
+  ```
+  The camera establishes a medium close-up shot of a podcast host in their 30s with short dark hair and glasses, wearing a casual blazer. Warm studio lighting creates a soft, professional atmosphere. Subtle room tone with distant city ambience. The host sits comfortably leaning slightly forward, engaged in conversation. As they begin speaking, they make small hand gestures and their eyebrows raise slightly to emphasize key points. The camera remains steady with a gentle handheld drift. Their expression shifts from thoughtful to enthusiastic as they deliver their lines, eyes occasionally glancing off-camera at their guest before returning focus to the viewer.
+  ```
+
+  #### Example 2: Emotional Moment
+  ```
+  An intimate close-up frames a speaker's face against a softly blurred podcast studio background. Golden hour light creates warm rim lighting around their silhouette. Quiet ambient room tone. The speaker pauses, their expression becoming serious and contemplative. They take a slow breath, their shoulders dropping slightly. The camera maintains a steady frame. As they begin to share something personal, their voice softens and their eyes show genuine emotion. Small micro-expressions cross their face—a slight furrow of the brow, a gentle nod. Their hands rest clasped on the table, fingers tightening slightly with the weight of their words.
+  ```
+
+  #### Example 3: Energetic Explanation
+  ```
+  A medium shot captures a guest speaker with animated body language, dressed in casual professional attire. Bright, clean studio lighting. Upbeat ambient background hum. The speaker leans forward in their chair, eyes bright with enthusiasm. As they explain their topic, they use expressive hand gestures and their head moves with emphasis. The camera slowly pushes in to match their energy. Their mouth forms words with clear articulation, and they occasionally smile or laugh while speaking. The energy builds through the clip as they become more engaged, their posture becoming more dynamic and their gestures more expansive.
+  ```
+
+  ---
+
+  ### Applying to Your Podcast Planning
+
+  For each clip in the video podcast plan:
+
+  1. **Match the camera angle** from your plan (wide, medium, close_up, medium_close_up, extreme_close_up)
+  2. **Reference the emotion vectors** - translate these into physical descriptions (e.g., instead of "happy: 0.8", describe "smiling warmly, eyes crinkling at corners")
+  3. **Describe the dialogue delivery** - how does the speaker say their lines? (e.g., "speaking with warm reassurance", "delivering with excited energy")
+  4. **Include appropriate movements** - hand gestures, head nods, leaning forward/backward
+  5. **Keep it single-paragraph** and flowing naturally
+  6. **Use present tense** throughout
+
+  ### Negative Prompt Best Practices
+
+  Always include a negative prompt to avoid common issues:
+  ```
+  blurry, distorted, bad quality, unnatural movements, stiff pose, text, logos, watermarks, inconsistent character appearance, morphing, artifacts
+  ```
+
+# Camera angle guidelines
+camera_angles: |
+  ## Camera Angle Guidelines
+
+  - **wide**: Full scene, establishing shots, multiple speakers visible
+  - **medium**: Waist up, captures body language
+  - **close_up**: Chest up, single speaker focused
+  - **medium_close_up**: Head and shoulders, intimate conversation
+  - **extreme_close_up**: Face only, emotional moments
+
+  Choose appropriate angles based on:
+  - Number of speakers in the clip
+  - Emotional intensity
+  - Scene context
+
+# Character consistency
+character_consistency: |
+  ## Character Consistency
+
+  All clips start from the same base studio scene.
+  Qwen Image Edit applies zoom-in operations to show specific speakers.
+  This ensures:
+  - Consistent backgrounds and lighting
+  - Consistent speaker appearance
+  - Consistent framing (from the same base)
+
+# Duration calculation
+duration_calculation: |
+  ## Estimating Duration
+
+  Calculate frames: `duration_seconds * 24`
+  Estimate duration: Read the dialogue aloud, count seconds
+
+  Account for:
+  - Speaking rate (normal conversation ~150 words per minute)
+  - Pauses for emphasis
+  - Natural breathing room
+
+# =============================================================================
+# OTHER SETTINGS
+# =============================================================================
+
+# Base scene (manual prerequisite)
+base_scene:
+  path: data/inputs/base_studio_scene.png  # User creates this manually
+  description: "Professional podcast studio with warm lighting"
+
+# ComfyUI settings
+comfyui:
+  api_base: http://localhost:8188
+  timeout: 300
+  enabled: true
+
+# LTX2 settings (video generation)
+ltx2:
+  fps: 24
+  guidance_scale: 7.0
+  num_inference_steps: 50
+  resolution: "1080p"  # Options: 720p, 1080p, 4k
+
+# WhisperX settings (transcription with timestamps)
+whisperx:
+  model: large-v3
+  device: cuda  # or cpu
+  compute_type: float16
+  enabled: true
+
+# Quality presets
+presets:
+  draft:
+    resolution: "720p"
+    ltx2_steps: 30
+  standard:
+    resolution: "1080p"
+    ltx2_steps: 50
+  premium:
+    resolution: "4k"
+    ltx2_steps: 50
+
+# Output settings
+output:
+  directory: data/outputs/auto_studio
+  video_format: mp4
+  video_codec: libx264
+  audio_codec: aac
+  audio_sample_rate: 24000
+  save_intermediate: false  # Save intermediate files for debugging

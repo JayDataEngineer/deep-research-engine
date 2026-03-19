@@ -1,0 +1,10 @@
+# Audio Comparison Extension
+# Audio embeddings and similarity comparison
+
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.30.0
+sentence-transformers>=2.2.0
+librosa>=0.10.0
+numpy>=1.24.0
+scipy>=1.10.0

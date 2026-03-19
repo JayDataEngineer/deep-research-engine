@@ -1,0 +1,39 @@
+extension:
+  name: deep_agents
+  type: mode
+  display_name: Deep Agents
+  description: Deep agents all the way down - infinite conversation with router, subgraphs, and ultimate memory system
+  version: 1.0.0
+  category: mode
+  api_prefix: /api/v1/deep_agents
+  enabled: true
+
+# Lazy loading: defer loading until first use (for faster startup)
+system:
+  lazy_load: true
+
+capabilities:
+  input_type:
+    - text
+    - image
+  output_type:
+    - text
+  streaming: true
+
+tags:
+  - deep-agents
+  - router
+  - memory
+  - chat
+  - subgraphs
+
+ui:
+  sidebar_component: default
+  input_component: standard
+  message_style: standard
+
+# Tools available to this mode
+enabled_tools:
+  - web_search
+  - web_get
+  - vector_search

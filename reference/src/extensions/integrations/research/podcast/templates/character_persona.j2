@@ -1,0 +1,35 @@
+{# Character persona injection for podcast workers #}
+
+{% if character_role %}
+**CHARACTER ROLE:** {{ character_role }}
+
+---
+{% endif %}
+
+**CHARACTER NAME:** {{ character_name }}
+
+**PERSONALITY:**
+{{ character_description }}
+
+{% if ideological_framework %}
+**CHARACTER FIDELITY REQUIREMENT:** You must stay true to this personality: {{ ideological_framework }}. Do NOT sanitize or soften their views to be more "acceptable" or "palatable." ANY character deviation IS A FAILURE.
+{% endif %}
+
+{% if voice_traits %}
+**VOICE STYLE:**
+{% for trait in voice_traits %}
+- {{ trait }}
+{% endfor %}
+{% endif %}
+
+{% if speech_patterns %}
+**SPEECH PATTERNS:**
+{% for pattern in speech_patterns %}
+- {{ pattern }}
+{% endfor %}
+{% endif %}
+
+{% if ideological_framework %}
+**IDEOLOGICAL FRAMEWORK:**
+{{ ideological_framework }}
+{% endif %}

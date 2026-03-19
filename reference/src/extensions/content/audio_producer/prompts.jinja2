@@ -1,0 +1,84 @@
+{# Podcast TTS Prompt Templates
+  These Jinja2 templates define prompts for emotion tagging.
+
+  Modes:
+  - batch_emotion_prompt: Single-call processing of all dialogue lines (fastest, consistent context)
+  - single_emotion_prompt: Individual line processing without context (fallback)
+  - single_emotion_with_context_prompt: Individual line processing with previous lines for emotional continuity
+#}
+
+{# Batch emotion tagging prompt - processes all dialogue lines in single LLM call
+   This is the recommended mode for production use (~20x faster than single mode)
+   Maintains emotional consistency across all lines since LLM sees full context
+#}
+{% macro batch_emotion_prompt(dialogue_lines) -%}
+Analyze the EMOTION for each of these {{ dialogue_lines|length }} podcast dialogue lines.
+
+For each line, return an 8-float emotion vector in this order:
+[happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+
+Each value should be between 0.0 and 1.0. Complex emotions can have multiple non-zero values.
+
+{% for line in dialogue_lines %}
+Line {{ loop.index }}: {{ line.speaker }}{% if line.direction %} {{ line.direction }}{% endif %}
+Text: "{{ line.text }}"
+
+{% endfor -%}
+
+Respond with ONLY a JSON array of {{ dialogue_lines|length }} emotion vectors:
+[
+  [0.1, 0.8, 0.3, 0.2, 0.0, 0.1, 0.4, 0.0],
+  ...
+]
+
+Nothing else. No explanation.
+{%- endmacro %}
+
+{# Single-line emotion tagging prompt WITHOUT context (fastest individual mode)
+   Use this for parallel mode or when you don't need emotional continuity
+#}
+{% macro single_emotion_prompt(line) -%}
+Analyze the EMOTION of this podcast dialogue line and respond with ONLY an 8-float list.
+
+Speaker: {{ line.speaker }}{% if line.direction %} Direction: {{ line.direction }}{% endif %}
+Text: "{{ line.text }}"
+
+Return 8 floats for emotion intensity in this order:
+[happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+
+Each value should be between 0.0 and 1.0. Complex emotions can have multiple non-zero values.
+
+Respond with ONLY the 8 floats, like: [0.1, 0.8, 0.3, 0.2, 0.0, 0.1, 0.4, 0.0]
+Nothing else. No explanation.
+{%- endmacro %}
+
+{# Single-line emotion tagging prompt WITH context (sequential mode)
+   Use this when you need emotional continuity through the conversation.
+   Includes previous dialogue lines to maintain consistent emotional tone.
+#}
+{% macro single_emotion_with_context_prompt(line, previous_lines=[]) -%}
+Analyze the EMOTION of this podcast dialogue line and respond with ONLY an 8-float list.
+
+{% if previous_lines %}
+CONTEXT (previous lines for emotional continuity):
+{% for prev_line in previous_lines %}
+- {{ prev_line.speaker }}: "{{ prev_line.text }}"{% if prev_line.emotion_vector %} (emotion: {{ prev_line.emotion_vector }}){% endif %}
+{% endfor %}
+
+{% endif %}
+CURRENT LINE:
+Speaker: {{ line.speaker }}{% if line.direction %} Direction: {{ line.direction }}{% endif %}
+Text: "{{ line.text }}"
+
+Return 8 floats for emotion intensity in this order:
+[happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+
+Each value should be between 0.0 and 1.0. Complex emotions can have multiple non-zero values.
+
+{% if previous_lines %}
+Consider the emotional flow from the previous lines to maintain continuity.
+{% endif %}
+
+Respond with ONLY the 8 floats, like: [0.1, 0.8, 0.3, 0.2, 0.0, 0.1, 0.4, 0.0]
+Nothing else. No explanation.
+{%- endmacro %}

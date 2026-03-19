@@ -1,0 +1,30 @@
+extension:
+  name: tags
+  type: feature
+  display_name: Tags System
+  description: Tag characters, messages, and content for organization
+  version: 1.0.0
+  author: Unified LLM Interface
+  category: feature
+  enabled: true
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages: []
+  extensions: []
+
+settings:
+  default_color: "#3b82f6"
+  max_tags_per_item: 50
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - organization
+  - tagging
+  - content-management

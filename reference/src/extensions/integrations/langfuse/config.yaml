@@ -1,0 +1,58 @@
+extension:
+  name: langfuse
+  display_name: LangFuse Observability
+  description: LangFuse integration for deep research tracing, logging, and evaluation
+  version: 1.0.0
+  author: ULLI Team
+  category: integration
+  tags:
+  - observability
+  - tracing
+  - langfuse
+  - langchain
+  - langgraph
+  - evaluation
+  type: integration
+  enabled: true
+
+python:
+  use_host_env: true
+
+system:
+  lazy_load: true  # Defer loading until first use
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: true
+
+settings_schema:
+  - name: LANGFUSE_SECRET_KEY
+    type: string
+    description: LangFuse secret key for authentication
+    required: true
+    secret: true
+  - name: LANGFUSE_PUBLIC_KEY
+    type: string
+    description: LangFuse public key for authentication
+    required: true
+    secret: true
+  - name: LANGFUSE_HOST
+    type: string
+    description: LangFuse server URL (cloud or self-hosted)
+    default: https://cloud.langfuse.com
+    required: false
+  - name: LANGFUSE_ENABLED
+    type: boolean
+    description: Enable/disable LangFuse tracing
+    default: true
+    required: false
+  - name: LANGFUSE_FLUSH_INTERVAL
+    type: integer
+    description: Flush interval in seconds
+    default: 5
+    required: false
+
+dependencies: []

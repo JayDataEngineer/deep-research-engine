@@ -1,0 +1,108 @@
+# RAG Pipeline with Storage Backends
+# 
+# This configuration demonstrates using PostgreSQL+pgvector for 
+# document storage and vector search in a RAG workflow.
+#
+# Usage:
+#   uv run deep-research research "your query" --config configs/rag-with-storage.yaml
+
+workflow:
+  name: rag-with-storage
+  version: "1.0"
+  description: "RAG pipeline with persistent storage backends"
+
+# Storage Configuration
+storage:
+  # Default backend
+  default: postgres
+  
+  # PostgreSQL for vectors and documents
+  postgres:
+    url: "postgresql://postgres:${POSTGRES_PASSWORD:-e2e-test-postgres-password}@localhost:25432/shared_db"
+    pool_size: 10
+    embedding_dimension: 768
+    
+  # Neo4j for knowledge graph (optional)
+  neo4j:
+    uri: "bolt://localhost:37687"
+    username: "neo4j"
+    password: "${NEO4J_PASSWORD:-e2e-test-neo4j-password}"
+    
+  # MongoDB for media metadata (optional)
+  mongodb:
+    uri: "mongodb://admin:${MONGO_PASSWORD:-e2e-test-mongodb-password}@localhost:37017"
+    database: "deep_research"
+    
+  # MinIO for file storage (optional)
+  minio:
+    endpoint: "localhost:9000"
+    access_key: "${MINIO_ACCESS_KEY:-minioadmin}"
+    secret_key: "${MINIO_SECRET_KEY:-e2e-test-minio-password}"
+    secure: false
+    default_bucket: "deep-research"
+
+# LLM Configuration
+llm:
+  main_model: "${MAIN_MODEL:-qwen-35-27}"
+  tool_model: "${TOOL_MODEL:-qwen-35-27-fast}"
+  embedding_model: "${EMBEDDING_MODEL:-jina-v5-embed}"
+
+# Worker Configuration
+workers:
+  - type: web_researcher
+    config:
+      max_results: 10
+      search_depth: 2
+    storage:
+      findings: postgres
+  
+  - type: chunk_processor
+    config:
+      chunk_size: 512
+      chunk_overlap: 50
+      generate_embeddings: true
+    storage:
+      chunks: postgres
+      vectors: postgres
+  
+  - type: multimodal
+    config:
+      process_images: true
+      process_audio: true
+    storage:
+      media_metadata: mongodb
+      files: minio
+
+# Boss Configuration
+boss:
+  strategy: "adaptive"
+  max_iterations: 5
+  quality_threshold: 0.8
+
+# Critic Configuration
+critic:
+  enabled: true
+  criteria:
+    - relevance
+    - completeness
+    - accuracy
+  min_score: 0.7
+
+# Synthesis Configuration
+synthesis:
+  format: "markdown"
+  include_citations: true
+  include_sources: true
+
+# Execution Configuration
+execution:
+  max_concurrent_workers: 5
+  workflow_timeout: 600
+  worker_timeout: 300
+  retry_count: 3
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  include_timestamps: true

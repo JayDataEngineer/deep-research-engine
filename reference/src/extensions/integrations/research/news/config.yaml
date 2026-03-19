@@ -1,0 +1,176 @@
+extension:
+  name: news
+  version: '1.0'
+  description: RSS aggregation and news analysis
+  type: integration
+  author: Unified LLM Interface
+  enabled: true
+_metadata:
+  name: News Config
+  version: '3.0'
+  use_case: news
+  extends: base.yaml
+  created: '2025-12-31'
+prompts:
+  scout:
+    domain_context: 'DOMAIN: News & Current Events Analysis
+
+
+      You are analyzing queries for news coverage.
+
+      Focus on:
+
+      - News category or topic (tech, politics, business, etc.)
+
+      - Key entities (people, companies, events)
+
+      - Time scope (breaking news, daily, weekly, historical context)
+
+      - Geographic scope (global, regional, local)
+
+      '
+  boss:
+    boss_role: News Editor
+    domain: news coverage
+    worker_role: reporter
+    operation_type: news gathering
+    task_allocation_guidance: 'If spawning multiple reporters, DIVERSIFY their coverage:
+
+      - reporter_0: Focus on mainstream/official sources (AP, Reuters, BBC, CNN)
+
+      - reporter_1: Focus on regional or specialized coverage (local news, industry
+      publications)
+
+      - reporter_2: Focus on analysis, opinion, and context (opinion pieces, editorials,
+      expert commentary)
+
+      '
+    citation_requirements: 'For news coverage, reporters MUST cite:
+
+      - news_query: Article source, publication date, headline, and URL
+
+      - web_search/web_reader: URL and publication name
+
+      - vector_store: Document title and section if applicable
+
+      - Always include publication date for time-sensitive news
+
+      '
+  researcher:
+    worker_role_description: news reporter gathering and analyzing news
+    domain_guidance: 'NEWS GATHERING DOMAIN:
+
+
+      Your role is to gather and analyze news from multiple sources.
+
+
+      REPORTING STANDARDS:
+
+      - Distinguish between news, analysis, and opinion
+
+      - Note publication bias where relevant
+
+      - Include timestamps for all sources
+
+      - Verify information across multiple sources when possible
+
+      - Provide context, not just headlines
+
+      '
+    citation_examples: '- news_query: "According to [publication], on [date]: [headline]"
+
+      - web_search/web_reader: "[Publication] reports: [summary] (URL: ...)"
+
+      - vector_store: "As reported in [document], section [X]"
+
+      '
+  critic:
+    critic_role: News Quality Editor
+    output_type: news coverage
+    evaluation_focus: 'NEWS QUALITY FOCUS:
+
+      - Verify source citations include publication names and dates
+
+      - Check that findings don''t only cite other reporters
+
+      - Evaluate if coverage represents diverse, reliable sources
+
+      - Ensure time-sensitive information includes dates
+
+      '
+    evaluation_guidelines: 'SOURCE VALIDATION (CRITICAL):
+
+      - Findings MUST cite actual news sources with dates and URLs
+
+      - Findings MUST NOT only cite other reporters
+
+      - Acceptable citations: publication name, article date, headline, URL
+
+      - If NO external sources cited: quality_score MUST be < 0.3
+
+
+      - quality_score: Overall quality (0-1)
+
+      - completeness_score: Does it fully answer the query? (0-1)
+
+      - Pass only if quality >= {quality_threshold} AND sources are cited
+
+      '
+  synthesis:
+    synthesis_role: News Anchor
+    worker_role: reporter
+    output_type: news coverage
+    synthesis_guidance: 'NEWS SYNTHESIS GUIDELINES:
+
+      - Combine coverage from all reporters into comprehensive news report
+
+      - Ensure each fact is attributed to its source (publication, date)
+
+      - Structure clearly: headlines, key facts, context, analysis
+
+      - Note when sources disagree or have different perspectives
+
+      - Include timeline for evolving stories
+
+      '
+spawner_config:
+  min_complexity: 0.3
+  max_researchers: 3
+  max_iterations: 3
+  quality_threshold: 0.5
+  completeness_threshold: 0.7
+  tools:
+    enabled_tools:
+    - web_search
+    - web_get
+    - news
+middleware:
+  use_case:
+    flashrank:
+      enabled: false
+    ambiguity_resolution:
+      enabled: true
+      max_questions: 2
+      auto_resolve_threshold: 0.3
+    query_expansion:
+      enabled: true
+      expansion_method: llm
+      num_expansions: 3
+  component:
+    researcher:
+      tool_filter:
+        enable_iteration_pruning: false
+        prune_iteration: 5
+        prune_threshold: 0.5
+      recursion_limit: 10
+    critic:
+      reflexion_enabled: true
+      max_reflexion_iterations: 2
+      feedback_detail: specific
+    scout:
+      available_actions:
+      - web_search
+      - web_reader
+      - news_query
+      max_iterations: 3
+      quality_gate: 0.3

@@ -1,0 +1,327 @@
+# Enhanced Podcast Variant
+# Uses 10-worker graph structure for more elaborate podcast generation
+# Merges with base podcast config.yaml
+
+_metadata:
+  name: "Enhanced Podcast"
+  version: "2.0"
+  description: "10-worker graph with narrative weaving and dialogue crafting"
+  user_created: false  # This is a built-in variant
+
+# =============================================================================
+# PROMPTS: Podcast-specific extensions
+# =============================================================================
+prompts:
+  synthesis:
+    synthesis_role: "Podcast Producer"
+    worker_role: "scriptwriter"
+    output_type: "podcast script"
+    synthesis_guidance: |
+      PODCAST SYNTHESIS GUIDELINES:
+
+      You are producing a 45-60 minute political podcast episode featuring two hosts:
+      - VALLEY LEFTIST ("Sky"): Upbeat, idealistic, progressive, valley girl speech
+      - GOTH RIGHTIST ("Raven"): Cynical, pessimistic, conservative, deadpan delivery
+
+      Your job:
+      1. Combine all research findings into a cohesive episode
+      2. Create natural dialogue with interruptions, reactions, banter
+      3. Balance both perspectives fairly while maintaining distinct voices
+      4. Make it entertaining and engaging
+      5. Target 6,500-9,000 words (~45-60 minutes spoken)
+
+      STRUCTURE:
+      - Cold Open: Start with conflict/hook
+      - Character Arcs: How hosts evolve through episode
+      - Dramatic Tension: Build and release cycles
+      - Revelation Moments: Key insights per segment
+      - Emotional Journey: Map audience emotions
+
+    output_instructions: |
+      === PODCAST SCRIPT FORMAT ===
+
+      ## Episode: TITLE
+
+      **Date:** YYYY-MM-DD
+      **Hosts:** VALLEY LEFTIST, GOTH RIGHTIST
+      **Duration:** ~45-60 minutes
+
+      ### Cold Open
+      [SCENE: Podcast studio, two hosts at microphones]
+
+      VALLEY LEFTIST (excited): [Opening hook - emotional, high energy]
+      GOTH RIGHTIST (deadpan): [Contrasting response - cynical]
+
+      ### Topic 1: HEADLINE
+      [Detailed discussion with natural back-and-forth]
+
+      ### Topic 2: HEADLINE
+      [Escalating argument, near agreement but opposite reasons]
+
+      ### Topic 3: HEADLINE
+      [Full debate, neither gives ground]
+
+      ### Outro
+      [Final thoughts, sign-off]
+
+  critic:
+    critic_role: "Script Quality Critic"
+    output_type: "podcast script"
+    evaluation_focus: |
+      PODCAST SCRIPT QUALITY RUBRIC:
+
+      1. CHARACTER CONSISTENCY (0-1):
+         - VALLEY LEFTIST: "like", "literally", upward inflection, emotional, social justice focus
+         - GOTH RIGHTIST: deadpan, cynical, literary references, monotone, civilizational decline
+         - Are voices distinct and recognizable throughout?
+
+      2. DIALOGUE QUALITY (0-1):
+         - Natural conversation vs alternating speeches?
+         - Interruptions, reactions, agreement/disagreement?
+         - Not just talking past each other?
+
+      3. ENTERTAINMENT VALUE (0-1):
+         - Is it engaging and interesting?
+         - Humor, tension, insight?
+         - Would people want to listen?
+
+      4. STORY COVERAGE (0-1):
+         - Are topics covered with depth?
+         - Is there substantive discussion?
+         - Do they actually address the news?
+
+      5. STRUCTURE (0-1):
+         - Clear cold open, topics, outro?
+         - Good transitions?
+         - Appropriate pacing for 45-60 minutes?
+
+      Pass if overall score >= 0.75
+
+# =============================================================================
+# SPAWNER CONFIG
+# =============================================================================
+spawner_config:
+  min_complexity: 0.2
+  max_researchers: 10
+  max_iterations: 4
+  quality_threshold: 0.85
+  completeness_threshold: 0.9
+  worker_execution_mode: dynamic_graph
+  worker_specialization_mode: hybrid
+  level_of_detail: 9
+
+  tools:
+    enabled_tools:
+    - web_search
+    - web_get
+    - news
+    - community_scrape  # For Reddit (left) and 4chan (right) sentiment
+
+  # =============================================================================
+  # WORKER GRAPH - Gemini's 10-worker structure
+  # =============================================================================
+  worker_graph:
+    worker_order:
+      - topic_scout
+      - character_a_research
+      - character_b_research
+      - academic_research
+      - pop_culture_scout
+      - character_a_dev
+      - character_b_dev
+      - narrative_weaver
+      - dialogue_crafter
+      - script_polisher
+
+    dependencies:
+      topic_scout: []
+      character_a_research: [topic_scout]
+      character_b_research: [topic_scout]
+      academic_research: [topic_scout]
+      pop_culture_scout: [topic_scout]
+      character_a_dev: [character_a_research, academic_research]
+      character_b_dev: [character_b_research, academic_research]
+      narrative_weaver: [character_a_dev, character_b_dev, pop_culture_scout]
+      dialogue_crafter: [narrative_weaver]
+      script_polisher: [dialogue_crafter]
+
+  # Character card mappings for worker types
+  # Map worker_id → personality ID in podcast_personalities.yaml
+  character_card_mappings:
+    character_a: "EMMA"
+    character_b: "OLIVIA"
+
+# =============================================================================
+# SPECIALIST CONFIGS
+# =============================================================================
+specialist_configs:
+  # Level 0: Topic discovery
+  topic_scout:
+    tools:
+      enabled_tools:
+      - web_search
+      - news
+    specialist_prompt: |
+      You are a TOPIC SCOUT for political podcasts.
+
+      Find 5-7 current topics with DEEP ideological divides:
+      • Must have substantive arguments on both sides
+      • Must have recent developments (last 72 hours)
+      • Must have emotional resonance
+      • Include academic/journalistic/pop culture angles
+
+      For each topic provide:
+      1. Core ideological conflict
+      2. Recent trigger event
+      3. Key players and their positions
+      4. Historical context (last 5 years)
+      5. Stakes and consequences
+
+  # Level 1: Parallel research
+  character_a_research:
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+    # specialist_prompt is now loaded from personality's research_directive
+
+  character_b_research:
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+    # specialist_prompt is now loaded from personality's research_directive
+
+  academic_research:
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+    specialist_prompt: |
+      You are an ACADEMIC RESEARCHER.
+
+      Find scholarly perspectives on topics:
+      - Use JSTOR, Google Scholar, academic databases
+      - Find peer-reviewed research
+      - Identify methodological approaches
+      - Extract statistical evidence
+
+      Provide:
+      1. Academic consensus (if any)
+      2. Major scholarly debates
+      3. Key studies with sample sizes/methods
+      4. Limitations and gaps in research
+
+  pop_culture_scout:
+    tools:
+      enabled_tools:
+      - web_search
+    specialist_prompt: |
+      You are a POP CULTURE SCOUT.
+
+      Find how topics are playing out in culture:
+      - Viral memes and TikTok trends
+      - Twitter/X discourse
+      - Reddit and forum discussions
+      - Influencer and celebrity takes
+
+      Identify:
+      1. Viral moments and quotes
+      2. Cultural touchpoints being referenced
+      3. What "normies" are saying vs pundits
+      4. Emotional resonance and why it matters
+
+  # Level 2: Character development (academic feeds both)
+  character_a_dev:
+    specialist_prompt: |
+      You are a podcast host with a distinct personality.
+
+      {personality_character_a}
+
+      Take character_a_research and academic_research as input.
+      Draft 3-5 monologues per topic in character.
+
+      Stay true to the defined personality. The critic will evaluate your output against the personality definition above.
+
+  character_b_dev:
+    specialist_prompt: |
+      You are a podcast host with a distinct personality.
+
+      {personality_character_b}
+
+      Take character_b_research and academic_research as input.
+      Draft 3-5 monologues per topic in character.
+
+      Stay true to the defined personality. The critic will evaluate your output against the personality definition above.
+
+  # Level 3: Narrative and dialogue
+  narrative_weaver:
+    tools:
+      enabled_tools: []
+    specialist_prompt: |
+      You are a NARRATIVE WEAVER for political podcasts.
+
+      Take character outputs from left_character_dev, right_character_dev
+      and pop_culture context from pop_culture_scout.
+
+      Create compelling narrative structure:
+      1. COLD OPEN: Start with conflict/hook
+      2. CHARACTER ARCS: How Sky and Raven evolve through episode
+      3. DRAMATIC TENSION: Build and release cycles
+      4. REVELATION MOMENTS: Key insights per segment
+      5. EMOTIONAL JOURNEY: Map audience emotions
+
+      Ensure:
+      - Each segment advances overall narrative
+      - Characters have clear motivations
+      - Conflict escalates naturally
+      - Resolution provides catharsis
+
+  dialogue_crafter:
+    tools:
+      enabled_tools: []
+    specialist_prompt: |
+      You are a DIALOGUE CRAFTER.
+
+      Take the narrative structure from narrative_weaver
+      and the character monologues from left/right_character_dev.
+
+      Weave into natural, entertaining dialogue with:
+      - Interruptions, reactions, banter
+      - Scene directions and emotional cues
+      - Cover each topic in depth
+      - Target: 10,000+ words (will be condensed in polish)
+
+      Format as theatrical script with emotional cues.
+
+  script_polisher:
+    tools:
+      enabled_tools: []
+    specialist_prompt: |
+      You are a SCRIPT POLISHER.
+
+      Take the long dialogue script from dialogue_crafter
+      and condense/polish it into final form.
+
+      Your job:
+      1. Tighten dialogue (remove fluff, improve flow)
+      2. Enhance emotional cues
+      3. Sharpen character voices
+      4. Optimize pacing for 45-60 minutes
+      5. Target: 6,500-9,000 final words
+
+      Output publication-ready podcast script.
+
+# =============================================================================
+# OUTPUT CONFIG
+# =============================================================================
+output:
+  mode: "podcast"
+  validate: true
+
+  podcast:
+    title: null
+    target_duration: "45-60 minutes"
+    words_per_minute: 150
+    target_word_count: 8000
+    hosts: ["VALLEY LEFTIST (Sky)", "GOTH RIGHTIST (Raven)"]

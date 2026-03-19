@@ -1,0 +1,33 @@
+extension:
+  name: author_notes
+  type: feature
+  display_name: Author Notes
+  description: Author's notes for conversation guidance (SillyTavern compatible)
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - author-notes
+  - guidance
+  - context
+
+ui:
+  sidebar_component: author_notes
+  icon: "edit-3"
+
+# CLI command name
+cli_command: author_notes
+
+# Aliases
+aliases: ["notes", "author", "an"]

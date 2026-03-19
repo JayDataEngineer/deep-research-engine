@@ -1,0 +1,48 @@
+extension:
+  name: voice_integration
+  type: feature
+  display_name: Voice Integration
+  description: Voice integration extension providing STT and TTS capabilities for chat modes
+  version: 0.1.0
+  author: unified-llm-interface
+  category: feature
+  enabled: true
+
+# Auto-load on startup
+auto_load: true
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages: []
+  extensions:
+    - tts_engine
+
+settings:
+  # Default TTS settings
+  default_voice_id: null
+  default_extension: kokoro
+  default_speed: 1.0
+  default_pitch: 1.0
+  default_format: wav
+
+  # STT settings
+  stt_enabled: true
+  stt_language: auto
+
+  # Audio chunking for streaming
+  chunk_size_bytes: 8192
+
+capabilities:
+  input_type:
+    - audio
+    - text
+  output_type:
+    - audio
+    - text
+  streaming: true
+
+tags:
+  - voice
+  - stt
+  - tts
+  - audio

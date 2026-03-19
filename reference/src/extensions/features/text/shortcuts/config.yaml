@@ -1,0 +1,30 @@
+extension:
+  name: shortcuts
+  type: feature
+  display_name: Keyboard Shortcuts
+  description: Keyboard shortcut configuration management
+  version: 1.0.0
+  author: Unified LLM Interface
+  category: feature
+  enabled: true
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages: []
+  extensions: []
+
+settings:
+  allow_conflicts: false
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - ui
+  - keyboard
+  - shortcuts
+  - accessibility

@@ -1,0 +1,39 @@
+extension:
+  name: bulk_edit
+  type: feature
+  display_name: Bulk Edit
+  description: Bulk operations for editing messages and chat content
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true
+
+# Lazy loading: this is a CLI tool, load on demand
+system:
+  lazy_load: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - editing
+  - bulk-operations
+  - tools
+
+ui:
+  sidebar_component: bulk_edit
+  input_component: standard
+
+# Supported operations
+operations:
+  - replace: Simple find and replace
+  - regex: Regex-based replacement
+  - prepend: Add text to beginning
+  - append: Add text to end
+  - delete: Remove matched content

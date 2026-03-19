@@ -1,0 +1,429 @@
+# =============================================================================
+# LTX Video - ComfyUI Video Generation Extension
+# =============================================================================
+# LTX-2 video generation model with IC-LoRA support for video-to-video,
+# image-to-video, and text-to-video workflows
+# =============================================================================
+
+extension:
+  name: ltx_video
+  type: service
+  subprocess_only: true
+  display_name: "LTX Video"
+  description: "LTX-2 video generation with IC-LoRA control (Canny, Depth, Pose)"
+  version: 1.0.0
+  author: "Lightricks"
+  category: comfyui
+  subcategory: video_generation
+  enabled: true
+
+capabilities:
+  input_type:
+    - text
+    - image
+  output_type:
+    - video
+  streaming: false
+
+tags:
+  - video
+  - generation
+  - comfyui
+  - ltx
+  - lightricks
+  - ic-lora
+  - canny
+  - depth
+  - pose
+
+# =============================================================================
+# Workflow Configuration
+# =============================================================================
+workflow:
+  name: ltx_video
+  display_name: "LTX Video"
+  description: "LTX-2 video generation with IC-LoRA control"
+  # For ComfyUI UI (drag and drop loading)
+  file: "ltx_video_workflow.json"
+  # For HTTP API programmatic access
+  api_file: "ltx_video_api.json"
+  type: text_to_video
+
+  # Generation parameters
+  parameters:
+    width:
+      type: integer
+      min: 512
+      max: 1920
+      default: 1024
+      description: "Video width in pixels"
+
+    height:
+      type: integer
+      min: 512
+      max: 1080
+      default: 1024
+      description: "Video height in pixels"
+
+    num_frames:
+      type: integer
+      min: 65
+      max: 257
+      default: 121
+      description: "Number of frames to generate"
+
+    fps:
+      type: integer
+      min: 24
+      max: 60
+      default: 24
+      description: "Frames per second"
+
+    steps:
+      type: integer
+      min: 1
+      max: 100
+      default: 50
+      description: "Number of sampling steps"
+
+    cfg_scale:
+      type: float
+      min: 1.0
+      max: 20.0
+      default: 7.0
+      description: "Classifier-free guidance scale"
+
+    seed:
+      type: integer
+      min: -1
+      max: 4294967295
+      default: -1
+      description: "Random seed (-1 for random)"
+
+    prompt:
+      type: string
+      required: true
+      description: "Video description/prompt"
+
+    negative_prompt:
+      type: string
+      default: "blurry, distorted, bad quality, unnatural movements, stiff pose"
+      description: "Things to avoid in the video"
+
+    control_type:
+      type: string
+      enum: ["none", "canny", "depth", "pose"]
+      default: "none"
+      description: "IC-LoRA control type"
+
+    input_image:
+      type: string
+      required: false
+      description: "Input image path for image-to-video or video-to-video"
+
+# =============================================================================
+# Models Configuration
+# =============================================================================
+# Models are downloaded to models/image-gen/comfyui/<type>/
+# The download utility reads this configuration
+#
+# Each model entry includes:
+#   - name: Unique identifier
+#   - url: Direct download link
+#   - destination: Where to save the file (relative to project root)
+#   - required: Whether this model is required for operation
+# =============================================================================
+
+models:
+  # =============================================================================
+  # Main Diffusion Model - LTX-2 19B Distilled
+  # =============================================================================
+  - name: ltx_2_checkpoint
+    display_name: "LTX-2 19B Distilled Checkpoint"
+    description: "Main LTX-2 diffusion model (19GB)"
+    url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-fp8.safetensors"
+    destination: "models/image-gen/comfyui/checkpoints/ltx-2-19b-distilled-fp8.safetensors"
+    required: true
+    size: ~10GB
+
+  # =============================================================================
+  # Distilled LoRA - Required for two-stage pipeline
+  # =============================================================================
+  - name: ltx_2_distilled_lora
+    display_name: "LTX-2 Distilled LoRA"
+    description: "Distilled LoRA for fast inference (384x384)"
+    url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-lora-384.safetensors"
+    destination: "models/image-gen/comfyui/loras/ltx-2-19b-distilled-lora-384.safetensors"
+    required: true
+    size: ~400MB
+
+  # =============================================================================
+  # Spatial Upscaler - 2x upscaling
+  # =============================================================================
+  - name: ltx_2_spatial_upscaler
+    display_name: "LTX-2 Spatial Upscaler 2x"
+    description: "Spatial upscaler for higher resolution (1.4GB)"
+    url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-spatial-upscaler-x2-1.0.safetensors"
+    destination: "models/image-gen/comfyui/latent_upscale_models/ltx-2-spatial-upscaler-x2-1.0.safetensors"
+    required: true
+    size: ~1.4GB
+
+  # =============================================================================
+  # Temporal Upscaler - 2x upscaling
+  # =============================================================================
+  - name: ltx_2_temporal_upscaler
+    display_name: "LTX-2 Temporal Upscaler 2x"
+    description: "Temporal upscaler for smoother video (1.4GB)"
+    url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-temporal-upscaler-x2-1.0.safetensors"
+    destination: "models/image-gen/comfyui/latent_upscale_models/ltx-2-temporal-upscaler-x2-1.0.safetensors"
+    required: true
+    size: ~1.4GB
+
+  # =============================================================================
+  # Text Encoder - Gemma 3 12B IT (FP8 E4M3FN quantized)
+  # Single-file model, no authentication required
+  # =============================================================================
+  - name: ltx_2_text_encoder
+    display_name: "LTX-2 Text Encoder (Gemma 3 12B IT FP8)"
+    description: "Gemma 3 text encoder for prompt understanding (FP8 quantized, single file)"
+    url: "https://huggingface.co/GitMylo/LTX-2-comfy_gemma_fp8_e4m3fn/resolve/main/gemma_3_12B_it_fp8_e4m3fn.safetensors"
+    destination: "models/image-gen/comfyui/text_encoders/gemma_3_12B_it_fp8_e4m3fn.safetensors"
+    required: true
+    size: ~7GB
+
+  # =============================================================================
+  # IC-LoRA Models - Control Adapters (separate repos)
+  # =============================================================================
+
+  # Union IC-LoRA - Combined depth, pose, and edges (recommended)
+  - name: ltx_2_ic_lora_union
+    display_name: "LTX-2 IC-LoRA Union Control"
+    description: "Union IC-LoRA for depth, pose, and edges (ref0.5)"
+    url: "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Union-Control/resolve/main/ltx-2-19b-ic-lora-union-control-ref0.5.safetensors"
+    destination: "models/image-gen/comfyui/loras/ltx-2-19b-ic-lora-union-control-ref0.5.safetensors"
+    required: false
+    size: ~95MB
+
+  # Canny Control - Edge detection based control
+  - name: ltx_2_ic_lora_canny
+    display_name: "LTX-2 IC-LoRA Canny Control"
+    description: "IC-LoRA for Canny edge detection control"
+    url: "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Canny-Control/resolve/main/ltx-2-19b-ic-lora-canny-control.safetensors"
+    destination: "models/image-gen/comfyui/loras/ltx-2-19b-ic-lora-canny-control.safetensors"
+    required: false
+    size: ~95MB
+
+  # Depth Control - Depth map based control
+  - name: ltx_2_ic_lora_depth
+    display_name: "LTX-2 IC-LoRA Depth Control"
+    description: "IC-LoRA for depth map control"
+    url: "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Depth-Control/resolve/main/ltx-2-19b-ic-lora-depth-control.safetensors"
+    destination: "models/image-gen/comfyui/loras/ltx-2-19b-ic-lora-depth-control.safetensors"
+    required: false
+    size: ~95MB
+
+  # Pose Control - Pose based control
+  - name: ltx_2_ic_lora_pose
+    display_name: "LTX-2 IC-LoRA Pose Control"
+    description: "IC-LoRA for pose control"
+    url: "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Pose-Control/resolve/main/ltx-2-19b-ic-lora-pose-control.safetensors"
+    destination: "models/image-gen/comfyui/loras/ltx-2-19b-ic-lora-pose-control.safetensors"
+    required: false
+    size: ~95MB
+
+# =============================================================================
+# Download Configuration
+# =============================================================================
+# For the download utility to process all models at once
+# Uses direct URL downloads with aria2c
+#
+# Includes:
+# - ComfyUI custom nodes (git clone)
+# - Model files (direct download)
+# =============================================================================
+download:
+  type: direct
+  destination: models/image-gen/comfyui
+  size: ~12GB  # Main models (checkpoint + distilled lora + text encoder + upscalers)
+  required: true
+  description: "LTX-2 video generation models (basic setup)"
+
+  # ComfyUI custom nodes to install
+  custom_nodes:
+    - url: "https://github.com/Lightricks/ComfyUI-LTXVideo.git"
+      destination: "backend/vendor/ComfyUI/custom_nodes/ComfyUI-LTXVideo"
+      required: true
+
+  # Model files to download
+  files:
+    # Main checkpoint (FP8 quantized for faster inference)
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-fp8.safetensors"
+      destination: "models/image-gen/comfyui/checkpoints"
+
+    # Distilled LoRA (required for two-stage pipeline)
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-lora-384.safetensors"
+      destination: "models/image-gen/comfyui/loras"
+
+    # Spatial upscaler
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-spatial-upscaler-x2-1.0.safetensors"
+      destination: "models/image-gen/comfyui/latent_upscale_models"
+
+    # Temporal upscaler
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-temporal-upscaler-x2-1.0.safetensors"
+      destination: "models/image-gen/comfyui/latent_upscale_models"
+
+    # Text encoder (Gemma 3 FP8) - Single file, no auth required
+    - url: "https://huggingface.co/GitMylo/LTX-2-comfy_gemma_fp8_e4m3fn/resolve/main/gemma_3_12B_it_fp8_e4m3fn.safetensors"
+      destination: "models/image-gen/comfyui/text_encoders"
+
+download_full:
+  type: direct
+  destination: models/image-gen/comfyui
+  size: ~13GB  # Basic + Union IC-LoRA
+  required: false
+  description: "LTX-2 video generation models (with Union IC-LoRA)"
+
+  custom_nodes:
+    - url: "https://github.com/Lightricks/ComfyUI-LTXVideo.git"
+      destination: "backend/vendor/ComfyUI/custom_nodes/ComfyUI-LTXVideo"
+      required: true
+
+  files:
+    # Basic models
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-fp8.safetensors"
+      destination: "models/image-gen/comfyui/checkpoints"
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-lora-384.safetensors"
+      destination: "models/image-gen/comfyui/loras"
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-spatial-upscaler-x2-1.0.safetensors"
+      destination: "models/image-gen/comfyui/latent_upscale_models"
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-temporal-upscaler-x2-1.0.safetensors"
+      destination: "models/image-gen/comfyui/latent_upscale_models"
+    - url: "https://huggingface.co/GitMylo/LTX-2-comfy_gemma_fp8_e4m3fn/resolve/main/gemma_3_12B_it_fp8_e4m3fn.safetensors"
+      destination: "models/image-gen/comfyui/text_encoders"
+
+    # Union IC-LoRA (combined depth, pose, edges)
+    - url: "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Union-Control/resolve/main/ltx-2-19b-ic-lora-union-control-ref0.5.safetensors"
+      destination: "models/image-gen/comfyui/loras"
+
+download_with_all_icontrols:
+  type: direct
+  destination: models/image-gen/comfyui
+  size: ~14GB  # All IC-LoRA controls
+  required: false
+  description: "LTX-2 video generation models (all IC-LoRA controls)"
+
+  custom_nodes:
+    - url: "https://github.com/Lightricks/ComfyUI-LTXVideo.git"
+      destination: "backend/vendor/ComfyUI/custom_nodes/ComfyUI-LTXVideo"
+      required: true
+
+  files:
+    # Basic models
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-fp8.safetensors"
+      destination: "models/image-gen/comfyui/checkpoints"
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-lora-384.safetensors"
+      destination: "models/image-gen/comfyui/loras"
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-spatial-upscaler-x2-1.0.safetensors"
+      destination: "models/image-gen/comfyui/latent_upscale_models"
+    - url: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-temporal-upscaler-x2-1.0.safetensors"
+      destination: "models/image-gen/comfyui/latent_upscale_models"
+    - url: "https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-unquantized/resolve/main/model.safetensors"
+      destination: "models/image-gen/comfyui/text_encoders/gemma-3-12b-it-qat-q4_0-unquantized"
+
+    # All IC-LoRAs
+    - url: "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Union-Control/resolve/main/ltx-2-19b-ic-lora-union-control-ref0.5.safetensors"
+      destination: "models/image-gen/comfyui/loras"
+    - url: "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Canny-Control/resolve/main/ltx-2-19b-ic-lora-canny-control.safetensors"
+      destination: "models/image-gen/comfyui/loras"
+    - url: "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Depth-Control/resolve/main/ltx-2-19b-ic-lora-depth-control.safetensors"
+      destination: "models/image-gen/comfyui/loras"
+    - url: "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Pose-Control/resolve/main/ltx-2-19b-ic-lora-pose-control.safetensors"
+      destination: "models/image-gen/comfyui/loras"
+
+# =============================================================================
+# Service Configuration
+# =============================================================================
+service:
+  # ComfyUI server requirements
+  server_required: true
+  server_type: comfyui
+  default_address: "http://127.0.0.1:18188"
+
+  # Paths
+  paths:
+    workflow_file: "data/inputs/workflows/video_ltx_video.json"
+    output_dir: "data/outputs/generated_videos"
+
+  # GPU Requirements
+  requirements:
+    gpu_memory: "32GB+ VRAM recommended"
+    disk_space: "100GB+ recommended"
+    cuda_version: "12.x"
+
+# =============================================================================
+# Dependencies
+# =============================================================================
+dependencies:
+  # ComfyUI Custom Nodes Required
+  comfyui_custom_nodes:
+    - description: "LTX-2 ComfyUI custom nodes from Lightricks"
+      repo: "https://github.com/Lightricks/ComfyUI-LTXVideo"
+      install_command: "cd backend/vendor/ComfyUI/custom_nodes && git clone https://github.com/Lightricks/ComfyUI-LTXVideo.git"
+      required: true
+
+  system:
+    - description: "ComfyUI server must be running"
+      check_command: "curl -s http://127.0.0.1:18188/system_stats"
+    - description: "CUDA-capable GPU with 32GB+ VRAM"
+      check_command: "nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits"
+
+  python:
+    - description: "requests for HTTP API communication"
+      package: "requests"
+    - description: "Pillow for image processing"
+      package: "Pillow"
+    - description: "numpy for array operations"
+      package: "numpy"
+
+# =============================================================================
+# Workflow Modes
+# =============================================================================
+modes:
+  text_to_video:
+    description: "Generate video from text prompt only"
+    required_models:
+      - ltx_2_checkpoint
+      - ltx_2_text_encoder
+
+  image_to_video:
+    description: "Generate video from text prompt and input image"
+    required_models:
+      - ltx_2_checkpoint
+      - ltx_2_text_encoder
+
+  video_to_video:
+    description: "Transform existing video with new prompt"
+    required_models:
+      - ltx_2_checkpoint
+      - ltx_2_text_encoder
+
+  ic_lora_canny:
+    description: "Video generation with Canny edge control"
+    required_models:
+      - ltx_2_checkpoint
+      - ltx_2_text_encoder
+      - ltx_2_ic_lora_canny
+
+  ic_lora_depth:
+    description: "Video generation with depth map control"
+    required_models:
+      - ltx_2_checkpoint
+      - ltx_2_text_encoder
+      - ltx_2_ic_lora_depth
+
+  ic_lora_pose:
+    description: "Video generation with pose control"
+    required_models:
+      - ltx_2_checkpoint
+      - ltx_2_text_encoder
+      - ltx_2_ic_lora_pose

@@ -1,0 +1,37 @@
+{# Base worker prompt template - can be extended by all worker types #}
+You are a {{ worker_role }} for {{ brand_context.identity }}.
+
+{# BRAND IDENTITY #}
+Brand: {{ brand_context.tagline }}
+{{ brand_context.description }}
+
+{# AUDIENCE #}
+Audience: {{ brand_context.audience.demographics }}
+Values: {{ brand_context.audience.psychographics }}
+
+{# CONTENT STRATEGY #}
+Brand voice: {{ brand_context.tone.style }}. Use {{ brand_context.tone.voice }}.
+Energy: {{ brand_context.tone.energy }}.
+Keywords to include: {{ brand_context.tone.keywords | join(', ') }}
+
+{# THEMES #}
+Topics to cover: {{ brand_context.themes | join(', ') }}
+
+{# THINGS TO AVOID #}
+Avoid: {{ brand_context.avoid | join(', ') }}
+
+{# WORKER-SPECIFIC INSTRUCTIONS #}
+{% if specific_instructions %}
+{{ specific_instructions }}
+{% endif %}
+
+{# QUERY CONTEXT #}
+{% if query %}
+Research topic: {{ query }}
+{% endif %}
+
+{# PREVIOUS FINDINGS (for dependent workers) #}
+{% if previous_findings %}
+PREVIOUS WORKER FINDINGS:
+{{ previous_findings }}
+{% endif %}

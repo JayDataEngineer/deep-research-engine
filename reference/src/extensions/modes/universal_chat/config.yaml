@@ -1,0 +1,25 @@
+extension:
+  name: universal_chat
+  type: library
+  display_name: Universal Chat
+  description: Universal chat endpoint that delegates to mode extensions
+  version: 1.0.0
+  author: ULLI Team
+  category: library
+  enabled: true
+  tags:
+    - chat
+    - universal
+    - streaming
+    - api
+
+# No dependencies required
+# dependencies:
+#   extensions: []
+
+# System configuration
+system:
+  lazy_load: false  # Load eagerly to register API routes at startup
+
+# Configuration schema
+settings_schema: []

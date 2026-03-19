@@ -1,0 +1,29 @@
+extension:
+  name: deep_agent
+  type: mode
+  display_name: Deep Agent
+  description: One-Two Punch with LangChain Agent
+  category: brain_mode
+  enabled: true
+
+capabilities:
+  input_type: [text]
+  output_type: [text]
+  streaming: true
+
+enabled_tools:
+  # Web tools
+  - web_search
+  - web_get
+  - web_research_agent
+  # Deep agent (multi-step planning)
+  - deep_agent
+  # Image tools (ComfyUI)
+  - generate_image
+  - edit_image
+  - edit_character_image
+
+# LangChain Agent config
+agent_config:
+  framework: langgraph
+  type: react

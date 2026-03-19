@@ -1,0 +1,34 @@
+extension:
+  name: presets
+  type: feature
+  display_name: Presets
+  description: Generation parameter presets (SillyTavern compatible)
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: true
+
+tags:
+  - presets
+  - settings
+  - parameters
+  - generation
+
+ui:
+  sidebar_component: presets
+  icon: "sliders"
+
+# CLI command name
+cli_command: presets
+
+# Aliases
+aliases: ["preset", "settings"]

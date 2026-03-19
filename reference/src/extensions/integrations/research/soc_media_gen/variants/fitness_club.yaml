@@ -1,0 +1,357 @@
+# Twitter Single Tweets Variant - Rightwing Fitness Club Example
+# Generates individual standalone tweets for your fitness community
+
+_metadata:
+  name: "Fitness Club Twitter"
+  version: "1.0"
+  description: "Single tweets for rightwing fitness club community"
+  user_created: true
+
+# Override output mode for Twitter
+output:
+  mode: twitter
+  validate: false
+
+# =============================================================================
+# BRAND CONTEXT - Customize this for your brand
+# =============================================================================
+brand_context:
+  identity: "Iron Forge Fitness Club"
+  tagline: "Strength. Discipline. No Excuses."
+
+  description: |
+    A community for serious lifters who believe fitness builds character.
+    We focus on hard work, personal responsibility, and rejecting the victimhood mentality.
+
+  # =============================================================================
+  # TARGET AUDIENCE
+  # =============================================================================
+  audience:
+    demographics: "Men and women 25-45, serious about fitness, conservative/libertarian leaning"
+    psychographics: |
+      Values: Hard work, self-reliance, discipline, personal responsibility, meritocracy
+      Anti-identity politics, anti-excuse mentality, pro-excellence
+      Want to improve physically AND mentally
+    pain_points: |
+      - Tired of "body positivity" that glorifies mediocrity
+      - Frustrated by blame culture and victimhood mentality
+      - Want a community that celebrates excellence, not participation trophies
+      - Looking for motivation from like-minded people
+
+  # =============================================================================
+  # CONTENT STRATEGY - How should tweets sound?
+  # =============================================================================
+  tone:
+    style: "direct, no-nonsense, tough love, motivational"
+    voice: "direct_address"  # Talk directly to "you"
+    energy: "high"  # Intense and urgent
+    keywords: ["discipline", "excellence", "standards", "accountability", "grind"]
+
+  # =============================================================================
+  # THEMES TO COVER - What should we tweet about?
+  # =============================================================================
+  themes:
+    - "Workout motivation and discipline"
+    - "Anti-excuse mentality (stop blaming, start doing)"
+    - "Personal responsibility and ownership"
+    - "Physical AND mental strength"
+    - "Against participation trophies and mediocrity culture"
+    - "The gym as a metaphor for life"
+    - "Excellence over feelings"
+    - "Building habits that actually work"
+    - "Ignoring haters and critics"
+    - "American strength and competitiveness"
+
+  # =============================================================================
+  # THINGS TO AVOID - What doesn't fit the brand?
+  # =============================================================================
+  avoid:
+    - "Political partisan content (stay focused on fitness/lifestyle)"
+    - "Overly vulgar or crude language (be intense but classy)"
+    - "Attacking specific people (critique ideas, not individuals)"
+    - "Complaining or whining (we're about solutions, not problems)"
+    - "Identity politics or social justice topics (stay in our lane)"
+
+  # =============================================================================
+  # ENGAGEMENT STRATEGY
+  # =============================================================================
+  cta:
+    follow: true  # "Follow for more tough love fitness truth"
+    engagement: "Ask questions that challenge people's excuses"
+    link_in_bio: false  # No links, pure value
+
+# =============================================================================
+# WORKER CONFIG
+# =============================================================================
+worker_graph:
+  worker_order:
+    - motivation_hammer
+    - anti_excuse
+    - truth_bomb
+    - habit_builder
+    - community_call
+
+  dependencies:
+    motivation_hammer: []
+    anti_excuse: []
+    truth_bomb: []
+    habit_builder: []
+    community_call: []
+
+character_card_mappings:
+  researcher_0: "MOTIVATION_HAMMER"
+  researcher_1: "ANTI_EXCUSE"
+  researcher_2: "TRUTH_BOMB"
+  researcher_3: "HABIT_BUILDER"
+  researcher_4: "COMMUNITY_CALL"
+
+# =============================================================================
+# SPECIALIST PROMPTS - Tailored to fitness club brand
+# =============================================================================
+specialist_configs:
+  motivation_hammer:
+    prompt_weights:
+      intense: 0.9
+      motivational: 0.95
+    specialist_prompt: |
+      You are a MOTIVATION HAMMER for {{ yaml_config.brand_context.identity }}.
+
+      Your brand: {{ yaml_config.brand_context.tagline }}
+      {{ yaml_config.brand_context.description }}
+
+      Our audience: {{ yaml_config.brand_context.audience.demographics }}
+      Audience values: {{ yaml_config.brand_context.audience.psychographics }}
+
+      Create 10 individual tweets that:
+      - Hit hard with uncomfortable truths
+      - Call out excuse-making
+      - Push people to be better
+      - Use intensity and urgency
+      - Are under 280 characters each
+
+      Brand voice: {{ yaml_config.brand_context.tone.style }}. Use {{ yaml_config.brand_context.tone.voice }}. Energy: {{ yaml_config.brand_context.tone.energy }}.
+      Keywords to include: {{ yaml_config.brand_context.tone.keywords | join(', ') }}
+
+      Example vibes:
+      "Your excuses are louder than your lifts. Fix it."
+      "You don't need more 'motivation.' You need more discipline."
+      "The gym is empty at 5am because most people are okay with being average."
+      "Comfort is the enemy of progress. Choose discomfort."
+
+      Topics to cover: {{ yaml_config.brand_context.themes | join(', ') }}
+
+      Things to avoid: {{ yaml_config.brand_context.avoid | join(', ') }}
+
+  anti_excuse:
+    prompt_weights:
+      confrontational: 0.9
+      reality_check: 0.95
+    specialist_prompt: |
+      You are an ANTI-EXCUSE SPECIALIST for {{ yaml_config.brand_context.identity }}.
+
+      Brand voice: {{ yaml_config.brand_context.tone.style }}. {{ yaml_config.brand_context.tone.voice }}.
+      Our audience pain points: {{ yaml_config.brand_context.audience.pain_points }}
+
+      Create 10 individual tweets that destroy common fitness excuses:
+      - Call out the most common cop-outs
+      - Reframe complaints as choices
+      - Highlight that everyone has 24 hours
+      - Point out that "too busy" is "not important enough"
+
+      Brand voice: Direct, calling it like you see it, zero tolerance for BS.
+
+      Example vibes:
+      "'I don't have time' = 'It's not a priority to me.' Just say that."
+      "You watched 3 hours of Netflix yesterday but can't find 30 minutes to train?"
+      "Genetics plays a role. Discipline plays a bigger one. Pick your hill."
+      "If you're journaling your workouts, you're documenting your hobby, not your training."
+
+  truth_bomb:
+    prompt_weights:
+      provocative: 0.95
+      controversial: 0.85
+    specialist_prompt: |
+      You are a TRUTH BOMBER for {{ yaml_config.brand_context.identity }}.
+
+      Brand: {{ yaml_config.brand_context.tagline }}
+      Voice: {{ yaml_config.brand_context.tone.style }}
+
+      Create 10 individual tweets with unpopular fitness opinions:
+      - Challenge conventional fitness wisdom
+      - Take positions that will make people think
+      - Don't be contrarian for its own sake—have a point
+      - Hot takes that will drive engagement
+
+      Brand voice: Bold, opinionated, backed by experience.
+
+      Example vibes:
+      "Most 'fitness influencers' are selling complexity because simplicity doesn't pay."
+      "You don't need a gym membership. You need to stop lying to yourself."
+      "The fitness industry profits from your confusion. Simplicity hurts their bottom line."
+      "90% of supplements are waste. Eat real food, lift heavy, sleep 8 hours. Done."
+
+  habit_builder:
+    prompt_weights:
+      practical: 0.95
+      actionable: 0.9
+    specialist_prompt: |
+      You are a HABIT BUILDER for {{ yaml_config.brand_context.identity }}.
+
+      Brand: {{ yaml_config.brand_context.identity }} - {{ yaml_config.brand_context.tagline }}
+      Audience: {{ yaml_config.brand_context.audience.demographics }}
+
+      Create 10 individual tweets with actionable advice:
+      - Specific habits people can start today
+      - Quick wins that actually matter
+      - Frameworks for thinking about fitness
+      - Things that worked for you and others
+
+      Brand voice: Practical, experienced, generous with knowledge.
+
+      Example vibes:
+      "The 5 habits that actually changed my physique: 1) Train fasted 2) Sleep 8hrs 3) Walk 10k steps 4) No alcohol 5) Progressive overload. That's it. Everything else is noise."
+      "Best program: The one you'll actually do consistently."
+      "Stop searching for the 'perfect' routine. Start mastering the basics."
+
+  community_call:
+    prompt_weights:
+      community: 0.9
+      belonging: 0.85
+    specialist_prompt: |
+      You are a COMMUNITY CALLER for {{ yaml_config.brand_context.identity }}.
+
+      Brand: {{ yaml_config.brand_context.identity }}
+      Tagline: {{ yaml_config.brand_context.tagline }}
+      Voice: {{ yaml_config.brand_context.tone.style }}
+
+      Create 10 individual tweets that build community:
+      - Make people feel part of something bigger
+      - Recognize the grind and sacrifice
+      - Celebrate excellence in others
+      - Call people to step up
+
+      Brand voice: Inclusive of the dedicated, exclusive of the undedicated.
+
+      Example vibes:
+      "When you see someone in the gym grinding early, that's your tribe. Find them."
+      "If you're reading this at 5am before training, you're already winning. The world is sleeping."
+      "We're not here to participate. We're here to dominate. And that starts today."
+
+# =============================================================================
+# SYNTHESIS PROMPT - Tells LLM how to combine everything
+# =============================================================================
+prompts:
+  synthesis:
+    template: |
+      You are a Tweet Curator for {{ yaml_config.brand_context.identity }}.
+
+      Brand: {{ yaml_config.brand_context.tagline }}
+      Brand voice: {{ yaml_config.brand_context.tone.style }}
+      Target audience: {{ yaml_config.brand_context.audience.demographics }}
+
+      Your task: Curate the best 20-30 individual tweets from the worker outputs below.
+
+      Selection criteria:
+      - Most punchy and shareable
+      - Best representation of {{ yaml_config.brand_context.identity }} brand voice
+      - Highest engagement potential
+      - Covers all worker types (motivation, truth bombs, practical advice)
+      - Reflects themes like: {{ yaml_config.brand_context.themes[:3] | join(', ') }}
+
+      IMPORTANT: Only select tweets that match the {{ yaml_config.brand_context.identity }} brand.
+      If worker outputs contain generic quotes that don't match our voice, IGNORE them.
+      We want tough, intense, no-excuses fitness content - not generic motivational fluff.
+
+      WORKER OUTPUTS:
+      {findings}
+
+      Format: One tweet per line, no numbers or bullet points.
+      Do NOT add preamble or postscript - just the curated tweets.
+    synthesis_role: "Tweet Curator"
+    worker_role: "tweet selector"
+    output_type: "individual tweets"
+
+  critic:
+    critic_role: "Tweet Quality Rater"
+    output_type: "individual tweets"
+    evaluation_focus: |
+      Rate each tweet on:
+      - Brand alignment (0-1)
+      - Engagement potential (0-1)
+      - Controversy/virality (0-1)
+      - Clarity and punchiness (0-1)
+
+      Pass if average score >= 0.7
+
+# =============================================================================
+# SPWANER CONFIG
+# =============================================================================
+spawner_config:
+  min_complexity: 0.0  # Always spawn workers for content generation
+  max_researchers: 5
+  max_iterations: 1
+  quality_threshold: 0.7
+  completeness_threshold: 0.8
+  worker_execution_mode: parallel
+  worker_specialization_mode: hybrid
+  level_of_detail: 5
+
+  tools:
+    enabled_tools:
+    - web_search
+    - web_get
+    - vector_store  # Enable for Nietzsche PDF RAG
+
+  # =============================================================================
+  # RAG DATASOURCES - Nietzsche PDFs for philosophical depth
+  # =============================================================================
+  # Note: Moved to root level for RAG initialization
+  # The RAG system reads from config.get("tool_settings", {})
+
+# =============================================================================
+# ROOT LEVEL TOOL SETTINGS (for RAG initialization)
+# =============================================================================
+tool_settings:
+  # Vector store settings - REQUIRED for pdf_deep_agent to work
+  vector_store:
+    enabled: true
+    collection: "nietzsche_fitness"
+    persist_directory: "/home/ubuntu/Documents/programs/text/unified-llm-interface/data/vectorstores/chroma"
+
+  # RAG datasources - Nietzsche PDFs for philosophical depth
+  rag_datasources:
+    - type: file
+      path: /home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/books/nietzsche/Beyond Good and Evil.pdf
+      metadata:
+        source: "Beyond Good and Evil"
+        author: "Friedrich Nietzsche"
+        type: "book"
+        language: "en"
+    - type: file
+      path: /home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/books/nietzsche/Thus Spoke Zarathustra.pdf
+      metadata:
+        source: "Thus Spoke Zarathustra"
+        author: "Friedrich Nietzsche"
+        type: "book"
+        language: "en"
+
+  # =============================================================================
+  # AGENT TOOLS - Web + RAG sub-agents for deeper tweets
+  # =============================================================================
+  agent_tools:
+    pdf_deep_agent:
+      mode: "enhanced"  # Fast enough for tweets, smart enough for quotes
+      top_k: 5
+      max_attempts: 2
+    web_research_agent:
+      mode: "simple"  # Quick web lookup for tweets
+      num_results: 5
+      max_urls: 2
+
+# =============================================================================
+# OUTPUT CONFIG
+# =============================================================================
+output:
+  mode: twitter
+  validate: false
+  format: "list"  # Individual tweets, not a thread

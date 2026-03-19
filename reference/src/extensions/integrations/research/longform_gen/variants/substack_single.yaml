@@ -1,0 +1,205 @@
+# Substack Article Generator - Single Worker Variant
+# Fast single-worker version for quick testing
+
+_metadata:
+  name: "Substack Single"
+  version: "1.0"
+  use_case: "longform_gen"
+  description: "Fast single-worker variant: Relevancy only"
+
+# =============================================================================
+# TOOLS - UNIFIED CONFIGURATION
+# =============================================================================
+# ONE WAY to specify tools: Just list tool names
+# Includes web_research_agent (YOUR web-sub-agent)
+# =============================================================================
+enabled_tools:
+  - web_search
+  - web_get
+  - community_scrape
+  - web_research_agent  # YOUR web-sub-agent
+
+# =============================================================================
+# PROMPTS
+# =============================================================================
+prompts:
+  synthesis:
+    synthesis_role: "Long-Form Article Writer"
+    synthesis_guidance: |
+      Write a complete, publishable long-form article (1500-2500 words) based on the research findings.
+
+      The article should be:
+      - Timely and connected to current events
+      - Engaging and readable for a general audience
+      - Well-structured with clear sections
+      - Include actionable takeaways
+
+      WRITE THE FULL ARTICLE - not an outline or brief.
+    template: |
+      You are an expert article writer. Write a COMPLETE, PUBLISHABLE ARTICLE (1500-2500 words) based on the research findings below.
+
+      DO NOT create an outline or brief. Write the FULL ARTICLE with complete paragraphs, ready to publish.
+
+      ## RESEARCH FINDINGS
+
+      {findings}
+
+      ## YOUR TASK
+
+      Write a complete article with:
+
+      1. **COMPELLING HEADLINE**: Grab attention immediately
+
+      2. **INTRODUCTION** (150-200 words):
+         - Strong opening hook
+         - Why this topic matters NOW
+         - What the reader will learn
+
+      3. **3-4 MAIN SECTIONS** (400-600 words each):
+         - Full, complete prose - NOT bullet points
+         - Clear subheadings
+         - Specific examples and details
+         - Smooth transitions between ideas
+         - 2-3 citations per section woven naturally
+
+      4. **CONCLUSION** (150-200 words):
+         - Key takeaways
+         - 3-5 actionable steps for the reader
+
+      ## WRITING STYLE
+
+      - Conversational but authoritative
+      - Short paragraphs (2-4 sentences)
+      - Vivid examples and stories
+      - Engaging from start to finish
+
+      ## CITATIONS
+
+      Use numbered citations like [1], [2] to reference sources.
+
+      Remember: FULL ARTICLE, not an outline. Complete paragraphs ready to publish.
+
+      {output_instructions}
+
+  critic:
+    critic_role: "Article Quality Critic"
+    output_type: "full article"
+    evaluation_focus: |
+      Evaluate the article on:
+      1. COMPLETENESS (0-1): Is it a full article, not an outline?
+      2. ENGAGEMENT (0-1): Is it interesting and readable?
+      3. CLARITY (0-1): Is it well-written and clear?
+      4. CITATIONS (0-1): Are sources properly cited?
+
+      Pass if score >= 0.7
+    template: |
+      You are the {critic_role}. Evaluate the following {output_type}.
+
+      {evaluation_focus}
+
+      Return ONLY this JSON:
+
+      {{
+        "quality_score": 0.8,
+        "completeness_score": 0.9,
+        "issues": ["issue 1", "issue 2"],
+        "missing_info": ["missing 1"],
+        "contradictions": ["contradiction 1"],
+        "feedback": "detailed assessment",
+        "recommendation": "pass"
+      }}
+
+      Use "pass", "revise", or "fail" for recommendation.
+
+# =============================================================================
+# SPAWNER CONFIG
+# =============================================================================
+spawner_config:
+  min_complexity: 0.0
+  max_researchers: 1  # SINGLE WORKER
+  max_iterations: 1  # Single pass
+  quality_threshold: 0.7
+  completeness_threshold: 0.75
+  worker_execution_mode: parallel
+  worker_specialization_mode: fixed
+
+  worker_types:
+    relevancy: "Relevancy - current zeitgeist and trends"
+
+  # =============================================================================
+  # TOOL CONFIGURATION - UNIFIED PATTERN
+  # =============================================================================
+  # Tools specified at top level in enabled_tools list.
+  # NO MORE enable_* flags here - use enabled_tools instead.
+  # =============================================================================
+
+  worker_summarization:
+    enabled: true
+    max_summary_tokens: 5000
+    save_full_artifacts: true
+
+  context_clipping:
+    strategy: "tiered_smart"
+    synthesis_buffer_percent: 15
+    critic_buffer_percent: 15
+
+# =============================================================================
+# WORKER GRAPH - Single Worker
+# =============================================================================
+worker_graph:
+  worker_order:
+    - relevancy
+
+  dependencies:
+    relevancy: []
+
+# =============================================================================
+# SPECIALIST CONFIG
+# =============================================================================
+specialist_configs:
+  relevancy:
+    prompt_weights:
+      curious: 0.9
+      timely: 0.95
+      cultural: 0.85
+    specialist_prompt: |
+      You are the RELEVANCY expert - your finger is on the pulse of the current moment.
+
+      YOUR ROLE: Research this topic with a focus on what's happening NOW.
+
+      YOUR APPROACH:
+      1. What's trending? What's the cultural conversation right now?
+      2. What are people talking about on social media?
+      3. What recent news, events, or developments relate to this topic?
+      4. What's the zeitgeist - the spirit of the times?
+
+      FOCUS ON:
+      - Current events (last 3-6 months)
+      - Trending topics on Twitter/X, Reddit, TikTok
+      - Recent news articles and op-eds
+      - What's capturing attention RIGHT NOW
+
+      YOUR RESEARCH METHOD:
+      - Use web_search to find current events and trending topics
+      - Use web_reader to dive into current articles
+      - Stay focused on the NOW - not ancient history
+
+      OUTPUT:
+      Provide timely, relevant findings that will make the article feel fresh and urgent.
+      Include specific URLs and details the writer can use.
+
+# =============================================================================
+# OUTPUT CONFIG
+# =============================================================================
+output:
+  mode: "mdx"
+  validate: false
+
+  mdx:
+    title: null
+    frontmatter:
+      date: null
+      draft: false
+      tags: ["substack", "article"]
+    metadata:
+      author: "AI Research Assistant"

@@ -1,0 +1,240 @@
+extension:
+  name: trading
+  version: '1.0'
+  description: Research extension for trading
+  type: integration
+  author: Unified LLM Interface
+  enabled: true
+_metadata:
+  name: Trading Config
+  version: '3.0'
+  use_case: trading
+  created: '2025-12-31'
+prompts:
+  scout: 'You are the Market Scout, analyzing financial queries.
+
+
+    User Query: {raw_query}
+
+
+    Available tools: {available_tools}
+
+
+    Your task is to:
+
+    1. Identify the asset class (stocks, crypto, forex, commodities)
+
+    2. Extract tickers, symbols, or company names
+
+    3. Determine the analysis type (technical, fundamental, sentiment)
+
+    4. Estimate complexity and data requirements
+
+
+    Provide your findings including:
+
+    - Asset class identified
+
+    - Key symbols/tickers
+
+    - Analysis type needed
+
+    - Complexity estimate (0-1)
+
+    '
+  boss: 'You are the Trading Desk Manager, orchestrating market research.
+
+
+    User Query: {user_query}
+
+    Research Brief:
+
+    - Complexity: {complexity:.2f}
+
+    - Recommended Approach: {recommended_approach}
+
+    - Ambiguity Detected: {ambiguity_detected}
+
+
+    Available resources: {available_skills}
+
+
+    Your task is to analyze the query and decide:
+
+    1. Whether this is a quick price check or requires deep analysis
+
+    2. How many analysts to spawn (1-{max_researchers})
+
+    3. What SPECIFIC analysis each analyst should perform
+
+
+    Diversify analyst tasks:
+
+    - researcher_0: Focus on technical analysis (price action, trends, indicators)
+
+    - researcher_1: Focus on fundamental analysis (earnings, financials, valuation)
+
+    - researcher_2: Focus on market sentiment and news flow
+
+
+    CRITICAL: Each analyst MUST cite their data sources.
+
+
+    Output format:
+
+    DECISION: [quick/standard/deep]
+
+    WORKERS: [number of analysts]
+
+    TASKS:
+
+    - researcher_0: [specific analysis task]
+
+    - researcher_1: [specific analysis task]
+
+    '
+  researcher: 'You are {worker_id}, a financial analyst specializing in market research.
+
+
+    ASSIGNED TASK: {assigned_task}
+
+
+    Available tools: {available_tools}
+
+
+    Your task:
+
+    1. Focus on your assigned analysis type
+
+    2. Use available tools to gather market data
+
+    3. Apply appropriate analytical frameworks
+
+    4. Provide actionable insights with proper data attribution
+
+
+    CRITICAL - CITE YOUR SOURCES:
+
+    - market_data tools: Include data provider, timestamp, and timeframe
+
+    - web_search/web_reader: Include the URL and source
+
+    - news_query: Include article source, date, and URL
+
+    - vector_store: Reference document title and section
+
+
+    DO NOT cite other analysts without source attribution.
+
+    Focus on data-driven, factual analysis.
+
+    '
+  critic: "You are the Risk Manager, evaluating investment research quality.\n\nRESEARCH\
+    \ BRIEF:{research_brief}\n\nANALYST FINDINGS:{worker_findings}{history}\n\nYour\
+    \ task:\n1. Review all analyst outputs for accuracy and completeness\n2. Verify\
+    \ data sources and timeliness\n3. Identify contradictions or gaps in analysis\n\
+    4. Assign a quality score (0-1) and pass/fail decision\n\nSOURCE VALIDATION (CRITICAL):\n\
+    - Findings MUST cite actual data sources with timestamps\n- Findings MUST NOT\
+    \ only cite other analysts\n- Acceptable citations: data provider names with timestamps,\
+    \ URLs, document references\n- If NO external sources cited: quality_score MUST\
+    \ be < 0.3\n\nEvaluate and return JSON ONLY:\n{{\n  \"quality_score\": 0.0-1.0,\n\
+    \  \"completeness_score\": 0.0-1.0,\n  \"issues\": [\"list of specific problems\"\
+    ],\n  \"missing_info\": [\"what data or analysis is missing\"],\n  \"contradictions\"\
+    : [\"any contradictions between analysts\"],\n  \"feedback\": \"specific feedback\
+    \ for revision\",\n  \"recommendation\": \"pass|revise\"\n}}\n\nGuidelines:\n\
+    - quality_score: Overall quality (0-1)\n- completeness_score: Does it fully answer\
+    \ the query? (0-1)\n- Pass only if quality >= {quality_threshold} AND sources\
+    \ are cited\n"
+  synthesis: 'You are the Investment Committee Lead, synthesizing analyst research.
+
+
+    {findings}
+
+
+    Your task:
+
+    1. Synthesize findings from all analysts into a comprehensive investment perspective
+
+    2. Highlight key data points and their sources
+
+    3. Present balanced view with risks and opportunities
+
+    4. Provide clear, actionable conclusions
+
+
+    Include proper disclaimers about investment risks.
+
+    '
+spawner_config:
+  min_complexity: 0.3
+  max_researchers: 3
+  max_iterations: 3
+  quality_threshold: 0.7
+  completeness_threshold: 0.8
+  worker_types:
+    analyst:
+      tools:
+        enabled_tools:
+        - web_search
+        - web_get
+        - market_data
+        - news
+  tools:
+    enabled_tools:
+    - web_search
+    - web_get
+    - zread
+    - vector_store
+    - market_data
+    - news
+tool_settings:
+  embeddings:
+    provider: huggingface
+    model_name: sentence-transformers/all-MiniLM-L6-v2
+    model_kwargs:
+      device: cpu
+    encode_kwargs:
+      normalize_embeddings: true
+  vector_store:
+    provider: chroma
+    collection: trading_kb
+    persist_directory: /home/ubuntu/Documents/programs/dev/spawner/data/vectorstores
+    top_k: 5
+    search_type: semantic
+  market_data:
+    default_sources:
+    - yahoo_finance
+    - alpha_vantage
+    max_lookback_days: 365
+  web_search:
+    max_results: 10
+    timeout: 30
+middleware:
+  use_case:
+    flashrank:
+      enabled: true
+      threshold_high: 15
+      top_k: 10
+    ambiguity_resolution:
+      enabled: true
+      max_questions: 2
+      auto_resolve_threshold: 0.3
+    query_expansion:
+      enabled: true
+      expansion_method: llm
+      num_expansions: 3
+  component:
+    researcher:
+      tool_filter:
+        enable_iteration_pruning: false
+        prune_iteration: 5
+        prune_threshold: 0.5
+      recursion_limit: 10
+    critic:
+      reflexion_enabled: true
+      max_reflexion_iterations: 3
+      feedback_detail: specific
+    scout:
+      use_ambiguity_check: true
+      use_query_expansion: true
+      web_search_on_ambiguity: true

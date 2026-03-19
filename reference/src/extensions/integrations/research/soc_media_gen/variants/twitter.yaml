@@ -1,0 +1,47 @@
+# Twitter Variant - Social Media Content Generator
+# Generates viral Twitter threads with personality-driven content.
+
+_metadata:
+  name: "Twitter Threads"
+  version: "1.0"
+  description: "Viral Twitter thread generation with personality-driven content"
+  user_created: false  # This is a built-in variant
+
+# Override output mode for Twitter
+output:
+  mode: twitter
+  validate: false
+  twitter:
+    title: null  # Will be set from query topic
+
+# Twitter-specific worker graph
+worker_graph:
+  worker_order:
+    - hook_specialist
+    - storyteller
+    - listicle_expert
+    - hot_take_artist
+
+  dependencies:
+    hook_specialist: []
+    storyteller: []
+    listicle_expert: []
+    hot_take_artist: []
+
+# Twitter personality mappings
+character_card_mappings:
+  researcher_0: "HOOK_SPECIALIST"
+  researcher_1: "STORYTELLER"
+  researcher_2: "LISTICLE_EXPERT"
+  researcher_3: "HOT_TAKE_ARTIST"
+
+# Twitter-specific prompts
+prompts:
+  synthesis:
+    synthesis_role: "Lead Twitter Creator"
+    worker_role: "thread creator"
+    output_type: "twitter thread"
+
+  critic:
+    critic_role: "Twitter Content Reviewer"
+    output_type: "twitter thread"

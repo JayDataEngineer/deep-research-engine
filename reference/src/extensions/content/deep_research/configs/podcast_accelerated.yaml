@@ -1,0 +1,65 @@
+use_case: podcast_accelerated
+variant: default
+
+# Description: Accelerated podcast mode with only 2 parallel character researchers
+
+# Preset graph for 2-character podcast
+preset_graph:
+  name: podcast_2char
+  display_name: "Podcast (2-Character Accelerated)"
+  description: "Fast podcast generation with 2 parallel character researchers"
+
+  # Worker configuration - only 2 workers running in parallel
+  workers:
+    count: 2
+    mode: parallel  # Simple parallel execution
+
+  # Character personalities for the 2 researchers
+  characters:
+    - name: character_1
+      role: host_1
+      personality: conservative
+      research_style: right_wing
+    - name: character_2
+      role: host_2
+      personality: progressive
+      research_style: left_wing
+
+  # Phase settings
+  phases:
+    worker:
+      enabled: true
+      model: zai-glm-4-7
+      max_tokens: 2000
+
+    boss:
+      enabled: true
+      model: zai-glm-4-7
+      max_tokens: 2000
+
+    lab:
+      enabled: true
+      model: zai-glm-4-7
+      max_tokens: null  # No limit for research
+
+    critic:
+      enabled: true
+      model: zai-glm-4-7
+      max_tokens: 4000
+      pass_threshold: 0.5
+
+    synthesis:
+      enabled: true
+      model: zai-glm-4-7
+      max_tokens: 8000
+
+# LLM settings - simplified for LiteLLM
+# All models are routed via LiteLLM proxy (http://litellm.local/v1)
+# Model names are LiteLLM format: <provider>-<model>-<variant>
+llm:
+  model: zai-glm-4-7
+  temperature: 0.7
+  enable_thinking: true
+
+# Concurrency
+llm_concurrency: 3

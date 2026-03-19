@@ -1,0 +1,16 @@
+extension:
+  name: extensions_api
+  display_name: Extensions API
+  description: API endpoints for the extension system
+  version: 1.0.0
+  author: ULLI Team
+  category: library
+  tags:
+  - extensions
+  - system
+  - management
+  - api
+  type: library
+  enabled: true
+dependencies: []
+settings_schema: []

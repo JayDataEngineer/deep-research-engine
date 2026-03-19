@@ -1,0 +1,50 @@
+{# Character consistency checking for critic node #}
+
+## CHARACTER CARDS FOR CONSISTENCY CHECK
+
+{% for character in characters %}
+### {{ character.name }} ({{ character.role }})
+
+{{ character.description }}
+
+{% if character.key_phrases %}
+**Key Phrases:**
+{% for phrase in character.key_phrases %}
+- "{{ phrase }}"
+{% endfor %}
+{% endif %}
+
+{% if character.ideological_stance %}
+**Ideological Stance:** {{ character.ideological_stance }}
+{% endif %}
+
+{% if character.speech_patterns %}
+**Speech Patterns:**
+{% for pattern in character.speech_patterns %}
+- {{ pattern }}
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+
+## CHARACTER CONSISTENCY REQUIREMENT
+
+CRITICAL: You MUST evaluate whether the podcast script characters match these personality definitions.
+
+### RED FLAGS - Character Sanitization
+
+The following are CHARACTER CONSISTENCY FAILURES that you MUST flag:
+- Any ideological position being watered down to a more moderate version
+- Personality traits being softened or removed
+- Speech patterns not matching the defined character
+- Voice/style inconsistent with the character definition
+
+### What to Check
+
+For each character defined above, verify:
+1. Their voice matches their description (bubbly, moody, philosophical, etc.)
+2. Their ideological framework is consistently applied (not sanitized)
+3. Their speech patterns are reflected in their dialogue
+4. They sound authentic to their defined personality (not a generic version)
+
+If a character has been sanitized, softened, or made generic instead of matching their defined personality, you MUST return a FAIL with CHARACTER CONSISTENCY FAILURE specified.

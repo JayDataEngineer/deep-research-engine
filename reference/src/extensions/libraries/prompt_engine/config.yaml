@@ -1,0 +1,16 @@
+extension:
+  name: prompt_engine
+  display_name: Prompt Engine
+  description: YAML-based prompt stack management with Jinja2 rendering
+  version: 1.0.0
+  author: ULLI Team
+  category: library
+  tags:
+  - prompts
+  - templates
+  - jinja2
+  - stacks
+  type: library
+  enabled: true
+dependencies: []
+settings_schema: []

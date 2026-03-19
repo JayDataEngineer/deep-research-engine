@@ -1,0 +1,901 @@
+extension:
+  name: deep_research
+  type: mode
+  display_name: Deep Research
+  description: Multi-agent research with configurable use cases
+  version: 1.0.0
+  category: mode
+  enabled: true
+
+python:
+  use_host_env: true
+
+# Lazy loading: defer loading until first use (for faster startup)
+system:
+  lazy_load: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: true
+
+tags:
+  - research
+  - multi-agent
+  - web-search
+  - analysis
+
+ui:
+  sidebar_component: research_queue
+  input_component: pro
+  message_style: thought_chain
+
+# LLM Concurrency Settings
+# Limits concurrent LLM API calls to avoid rate limiting (429 errors)
+# This value is DERIVED from model capabilities (rate_limit_handling tier)
+# - Models with excellent rate limit handling: 10 concurrent calls
+# - Models with good rate limit handling: 5 concurrent calls
+# - Models with fair rate limit handling: 3 concurrent calls
+# - Models with poor rate limit handling: 1 concurrent call
+# If you're running other tools using the same LLM, reduce this value
+# DERIVED FROM: model_capabilities.get_llm_concurrency(model_name)
+# Override here if needed (not recommended unless you know why)
+llm_concurrency: 3  # DERIVED: Will be auto-calculated from model at runtime
+
+# =============================================================================
+# TOOLS - UNIFIED CONFIGURATION
+# =============================================================================
+# ONE WAY to specify tools: Just list tool names by name or tag
+# NO MORE enable_mcp_* flags - use direct tool names only
+#
+# Valid tool names:
+#   web_search, web_get, web_map, web_crawl, community_scrape,
+#   web_research_agent, pdf_deep_agent,
+#   vector_search, add_documents, list_collections,
+#   image_analysis, video_analysis, diagnose_error_screenshot, etc.
+#   osint_username_search, osint_email_investigation, etc.
+#
+# Valid tags (enable all tools in category):
+#   web, vision, osint, rag, sub_agent
+# =============================================================================
+enabled_tools:
+  - web_search
+  - web_get
+  - web_map
+  - web_crawl
+  - community_scrape
+  - web_research_agent    # YOUR web-sub-agent
+  # - pdf_deep_agent     # YOUR RAG lab-sub-agent (auto-enabled when lab.documents is provided)
+
+  # Vector Search (required by FlashRank)
+  - vector_search         # Alias for query_postgres (Context Engine semantic search)
+
+  # Context Engine Tools (semantic search, artifact retrieval, ArXiv)
+  - query_postgres        # Semantic search via Postgres + pgvector
+  - get_artifact          # Direct artifact lookup by ID
+  - read_vfs_raw          # Raw file access from MinIO
+  - query_neo4j           # Graph traversal (optional, requires Neo4j)
+  - search_arxiv          # Academic paper search
+  - get_arxiv_abstract    # Full paper details
+
+  # NOTE: save_worker_artifact removed - use write_file("/memories/") instead
+  # See: backend/docs/save_system_redesign_plan.md
+
+# Spawner Configuration
+spawner_config:
+  # Maximum number of workers (researchers) to spawn
+  max_researchers: 3
+
+  # Maximum number of iterations (critic loops)
+  # This value is DERIVED from model capabilities (reasoning_tier + thinking support)
+  # - Basic reasoning models: 2 iterations
+  # - Standard reasoning models: 3 iterations
+  # - Advanced reasoning models: 4 iterations
+  # - Expert reasoning models: 5 iterations
+  # - +1 bonus for models with thinking mode support
+  # DERIVED FROM: model_capabilities.get_max_iterations(model_name)
+  # Override here if needed (not recommended unless you know why)
+  max_iterations: 3  # DERIVED: Will be auto-calculated from model at runtime
+
+  # Enable prompt adjustment for iterative refinement
+  # When the critic rejects output, Boss analyzes the feedback and generates
+  # specific prompt adjustments for workers who failed.
+  enable_prompt_adjustment: true
+
+  # Maximum number of adjustments per worker per iteration
+  max_adjustments_per_worker: 3
+
+  # Adjustment accumulation strategy
+  # - "replace": New adjustments replace old ones (default)
+  # - "accumulate": Keep adding adjustments across iterations
+  adjustment_strategy: "replace"
+
+  # When to clear adjustments (true = clear when critic passes, false = keep all)
+  clear_adjustments_on_pass: true
+
+  # Flash Explorer Recursion Limit
+  # Maximum LLM calls per Flash Explorer worker before stopping
+  # This value is DERIVED from model capabilities (context_tier + speed_tier)
+  # Formula: base(20) * context_multiplier + speed_bonus
+  # - Context multiplier: tiny(1), small(1.5), medium(2), large(3), massive(4)
+  # - Speed bonus: slow(0), medium(5), fast(10), instant(15)
+  # Example: glm-4.7 = 20 * 3 (large) + 5 (medium speed) = 65
+  # Example: gemini-2.5-flash = 20 * 4 (massive) + 15 (instant) = 95
+  # Higher values = deeper research, but more API costs and time
+  # Lower values = faster completion, but may miss some information
+  # DERIVED FROM: model_capabilities.get_flash_recursion_limit(model_name)
+  # Override here if needed (not recommended unless you know why)
+  flash_recursion_limit: 50  # DERIVED: Will be auto-calculated from model at runtime
+
+  # Web Specialist Sub-Workers
+  # Workers can spawn autonomous sub-workers for parallel web research
+  sub_workers:
+    enable: false  # Disabled by default, enable per-use-case as needed
+    max_concurrent_per_worker: 5  # Max sub-workers each parent worker can spawn
+    max_sub_workers_total: 20  # Global limit on total sub-workers across all workers
+    default_timeout: 300  # Maximum seconds per sub-worker (5 minutes)
+    default_max_depth: 3  # How many levels deep sub-workers research
+    default_max_sources: 10  # Maximum sources per sub-worker
+
+  # =============================================================================
+  # TOOL CONFIGURATION - REMOVED
+  # =============================================================================
+  # Tools are now configured via the top-level enabled_tools list ONLY.
+  # NO MORE spawner_config.tools with enable_* flags.
+  # See enabled_tools at the top of this file for the UNIFIED configuration.
+  # =============================================================================
+
+  # Trivial Query Detection Configuration
+  # These settings control the fast-path detection of simple queries that don't need LLM analysis
+  # The worker node uses these to skip expensive LLM calls for obviously simple questions
+  trivial_query_arithmetic_complexity: 0.05  # Complexity for simple arithmetic (2+2, etc.)
+  trivial_query_short_query_complexity: 0.1   # Complexity for very short queries
+  trivial_query_definition_complexity: 0.15  # Complexity for simple definition questions
+  trivial_query_default_complexity: 0.2      # Default complexity when query needs analysis
+  trivial_query_min_length: 15                # Minimum length for trivial query detection
+  trivial_query_max_spaces: 2                 # Maximum spaces for trivial query detection
+
+# =============================================================================
+# AGENT CONFIGURATION
+# =============================================================================
+
+# =============================================================================
+# THRESHOLDS - Centralized configuration for all thresholds
+# =============================================================================
+# All confidence/threshold values use 0-100 scale for LLM clarity
+thresholds:
+  # Confidence thresholds (0-100 scale)
+  confidence:
+    high: 70       # High confidence threshold
+    medium: 50     # Medium confidence threshold
+    low: 30        # Low confidence threshold
+    default: 50    # Default confidence when not specified
+
+  # Quality thresholds (0-100 scale)
+  quality:
+    default: 70    # Default quality threshold
+
+  # Token limits
+  tokens:
+    max_chars_per_chunk: 24000  # Maximum characters per content chunk
+    max_output_length: 500      # Minimum output length in characters
+
+  # Research planning parameters
+  planning:
+    min_angles: 3    # Minimum research angles to plan
+    max_angles: 5    # Maximum research angles to plan
+
+# Worker Agent Configuration
+worker:
+  # Threshold below which a research question is considered trivial
+  # Questions with complexity score below this skip deep research
+  trivial_complexity_threshold: 0.05
+
+  # Maximum number of sub-workers to run in parallel
+  max_parallel_subworkers: 5
+
+  # Timeout in seconds for each sub-worker operation
+  sub_worker_timeout: 30
+
+  # Complexity thresholds for research routing
+  # Low complexity: skip deep research, use fast path
+  low_complexity_threshold: 0.3
+  # High complexity: use maximum number of workers
+  high_complexity_threshold: 0.7
+
+  # Maximum parallel workers threshold for scaling decisions
+  max_parallel_workers_threshold: 5
+
+# Boss Agent Configuration
+boss:
+  # Maximum number of content chunks to process in a single research session
+  # Set to -1 for unlimited (recommended for thinking mode)
+  # Only use a hard limit if you have specific timeout constraints
+  max_chunks: -1
+
+  # Timeout in seconds for streaming operations
+  streaming_timeout: 60
+
+# Lab Agent Configuration
+lab:
+  # Enable automatic cleanup of temporary artifacts
+  artifact_cleanup_enabled: true
+
+  # Number of hours to retain artifacts before cleanup (if cleanup enabled)
+  artifact_retention_hours: 24
+
+  # Delay in seconds between staggered operations
+  stagger_delay: 5.0
+
+  # Relevance score decay per source position
+  # First source = 1.0, second = 0.98, etc.
+  relevance_decay_rate: 0.02
+
+  # Default confidence score for citations (0-100)
+  citation_default_confidence: 80
+
+  # =============================================================================
+  # LAB WORKER DOCUMENTS (RAG MODE)
+  # =============================================================================
+  # Documents specified here enable RAG search alongside web search for ALL lab workers.
+  # When documents are provided, Flash Explorer agents get rag_search tool in addition
+  # to web search tools, enabling hybrid research (local + web).
+  #
+  # Supported formats: .txt, .pdf (file paths relative to project root or absolute)
+  #
+  # Example:
+  #   documents:
+  #     - data/documents/research_paper.pdf
+  #     - /home/user/docs/industry_report.txt
+  #
+  # IMPORTANT: Documents are loaded into the vector store before lab phase starts.
+  # This enables RAG search for all Flash Explorer agents spawned during research.
+  # =============================================================================
+  documents: []  # Empty list = web search only, no RAG
+
+# Critic Agent Configuration
+critic:
+  # Quality threshold for accepting research output (0-100 scale)
+  # Scores below this trigger another iteration
+  quality_threshold: 70
+
+  # Confidence score for direct (single-worker) answers (0-100)
+  direct_confidence: 90
+
+  # Default quality score for new research (0-100)
+  default_quality_score: 80
+
+  # Default completeness score for evaluation (0-100)
+  default_completeness_score: 90
+
+  # Threshold below which revision is required (0-100)
+  revise_threshold: 50
+
+# Synthesis Configuration
+synthesis:
+  # Threshold percentage below which safe summary mode is used
+  # If findings are below this percentage of total content, use safe summary
+  safe_summary_threshold_percent: 0.05
+
+  # Enable lazy loading of synthesis components
+  lazy_loading_enabled: true
+
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+database:
+  # Maximum number of recent runs to retrieve from database
+  max_recent_runs: 50
+
+  # SQLite connection timeout in seconds
+  connection_timeout_seconds: 30.0
+
+# =============================================================================
+# MIDDLEWARE CONFIGURATION
+# =============================================================================
+middleware:
+  # ToolRetryMiddleware settings
+  tool_retry:
+    max_retries: 2
+    backoff_factor: 2.0
+    initial_delay_seconds: 1.0
+    max_delay_seconds: 60.0
+    jitter: true
+    on_failure: "raise"
+
+  # ToolCallLimitMiddleware settings (for fact_check tool)
+  tool_call_limit:
+    fact_check_thread_limit: 5
+
+  # Safety Summarization Middleware settings
+  # Automatically summarizes content when approaching context limits
+  summarization:
+    enabled: true
+    # Context window sizes (tokens) for local vs cloud models
+    # MUST match llama.cpp --ctx-size setting
+    local_model_context: 32768  # Match llama.cpp --ctx-size (was 8192, caused false negatives)
+    cloud_model_context: 32768
+    # Reasoning budget for thinking mode (llama.cpp)
+    # -1 = unlimited (max reasoning output)
+    # 0 = disabled
+    # N = specific token limit for thinking
+    # Note: Configured per-role in model_configs, this is just the middleware default
+    reasoning_budget: -1  # Keep unlimited for max reasoning output
+    # Trigger type: "fraction" (80% of limit) or "tokens" (absolute threshold)
+    trigger_type: "fraction"
+    trigger_threshold: 0.8  # 80% for fraction, or absolute tokens for "tokens"
+    # Safety margin to reserve for output (20% = 80% of context for input)
+    safety_margin: 0.2
+    # Target output fraction after summarization (70% of safe limit)
+    target_output_fraction: 0.7
+    # Fallback to truncation if summarization fails
+    prefer_truncation: false
+    # Characters to preserve at start/end when truncating
+    preserve_start_chars: 500
+    preserve_end_chars: 500
+
+# =============================================================================
+# BEST PRACTICES CONFIGURATION (LangGraph Agent Harness)
+# =============================================================================
+# These settings implement LangGraph best practices for agent behavior.
+# Reference: https://docs.langchain.com/oss/python/deepagents/harness
+best_practices:
+  # Large Tool Result Eviction
+  # Automatically evicts large tool results to filesystem when they exceed
+  # the token threshold, preventing context window saturation.
+  # This is particularly useful for research agents that gather large amounts
+  # of data from web search, document RAG, and other data-intensive tools.
+  tool_token_limit_before_evict: 20000  # Evict results over 20k tokens
+
+  # Proactive Recursion Handling
+  # Threshold (in steps) for forcing graceful degradation when approaching
+  # the recursion limit. When remaining_steps <= this value, the agent
+  # will force synthesis with available data rather than risk GraphRecursionError.
+  low_steps_threshold: 3
+
+  # Streaming Events
+  # Enable real-time progress updates via streaming events during research.
+  # Events include: planning, searching, evaluating, synthesizing, complete.
+  streaming_enabled: true
+
+  # Structured Output
+  # Use Pydantic validation with with_structured_output() for all LLM calls.
+  # This provides automatic validation and integrates with LangGraph retry policies.
+  structured_output_enabled: true
+
+# =============================================================================
+# TASK CONFIGURATION
+# =============================================================================
+tasks:
+  # Default max retries for @task decorated functions
+  default_max_retries: 3
+
+  # Idempotent task settings
+  idempotent_enabled: true
+
+# =============================================================================
+# MODEL CONFIGURATION
+# =============================================================================
+# Configure which LLM models to use for each agent role.
+# Uses the model_slot pattern for DRY, reusable configuration.
+#
+# Environment Variables:
+#   DEEP_RESEARCH_LOCAL_MODEL - Override the local model (default: qwen-35-27)
+#   DEEP_RESEARCH_MAIN_MODEL  - Override the main/cloud model (default: zai-glm-4-5-air)
+#
+# Usage:
+#   export DEEP_RESEARCH_LOCAL_MODEL=qwen-35-27-fast  # Fast local model
+#   export DEEP_RESEARCH_MAIN_MODEL=zai-glm-4-7       # Cloud thinking model
+#
+# Models are routed via LiteLLM proxy (http://litellm.local/v1).
+# See shared-docker-infra/litellm/config.yaml for available models.
+#
+# Model name format: <provider>-<model>-<variant>
+#   - zai-glm-4-5-air    : ZAI Cloud GLM-4.5 Air (fast)
+#   - zai-glm-4-7        : ZAI Cloud GLM-4.7 (thinking)
+#   - qwen-35-27         : Local Qwen 3.5 27B (thinking)
+#   - qwen-35-27-fast    : Local Qwen 3.5 27B (fast)
+#
+models:
+  # Main model for complex reasoning (Boss/Spawner/Synthesis/Critic)
+  main: qwen-35-27
+
+  # Tool model for fast operations (Worker/Researcher)
+  tool: qwen-35-27-fast
+
+# =============================================================================
+# MODEL CONFIGS
+# =============================================================================
+model_configs:
+  spawner:
+    model_slot: main  # Complex reasoning with thinking
+    temperature: 0.5
+    top_p: 1.0
+    max_tokens: 2000
+    enable_thinking: true
+
+  researcher:
+    model_slot: tool  # Fast operations without thinking
+    temperature: 1.0
+    top_p: 1.0
+    top_k: 100  # Use 100 for better results (0 = disabled)
+    max_tokens: 2000
+    enable_thinking: false  # Flash does NOT use thinking
+
+  critic:
+    model_slot: main  # Complex reasoning for quality evaluation
+    temperature: 0.4
+    top_p: 1.0
+    max_tokens: 1500
+    enable_thinking: true
+
+  synthesis:
+    model_slot: main  # Complex reasoning for final synthesis
+    temperature: 0.6
+    top_p: 1.0
+    max_tokens: 3000  # Higher for synthesis
+    enable_thinking: true
+
+# =============================================================================
+# CITATION CONFIGURATION
+# =============================================================================
+citations:
+  # Number of lines to read from source for excerpt generation
+  excerpt_read_lines: 20
+
+  # Maximum length of excerpt in characters
+  excerpt_max_length: 200
+
+  # Maximum length of citation path preview for logging
+  path_preview_length: 60
+
+  # Maximum length of citation ID preview for logging
+  id_preview_length: 8
+
+# =============================================================================
+# CONTEXT ENGINE CONFIGURATION
+# =============================================================================
+# The Context Engine provides artifact-centric context management for research.
+# It enables:
+# - Semantic search across research findings (Postgres + pgvector)
+# - Persistent artifact storage with deduplication
+# - Session isolation for concurrent research sessions
+# - Optional: Neo4j graph relationships, MinIO raw file storage
+#
+# SECURITY: All credentials loaded from environment variables
+# Required env vars:
+#   - CONTEXT_POSTGRES_PASSWORD
+#   - MINIO_ROOT_USER
+#   - MINIO_ROOT_PASSWORD
+#   - NEO4J_PASSWORD
+# =============================================================================
+context_engine:
+  enabled: true  # ENABLED - Fixed ToolRuntime imports from langchain.tools
+  mode: research  # "research" for session-isolated queries
+  isolation: session  # Session isolation strategy
+
+  # Model selection for Context Engine operations
+  # Uses the same model slot pattern as the main models configuration
+  # Override with: export CONTEXT_ENGINE_ENTITY_MODEL=your-model-name
+  # Override with: export CONTEXT_ENGINE_GRAPH_MODEL=your-model-name
+  entity_extraction_model: ${CONTEXT_ENGINE_ENTITY_MODEL-GLM-4.7-Flash-UD-Q4_K_XL}
+  graph_query_model: ${CONTEXT_ENGINE_GRAPH_MODEL-GLM-4.7-Flash-UD-Q4_K_XL}
+
+  # Health check configuration
+  health_check:
+    cache_ttl: 5.0  # Cache health results for 5 seconds
+
+  # Postgres + pgvector configuration (REQUIRED)
+  # Credentials loaded from environment variables
+  postgres:
+    connection_string: "postgresql://${CONTEXT_POSTGRES_USER:-ulli}:${CONTEXT_POSTGRES_PASSWORD}@localhost:${CONTEXT_POSTGRES_PORT:-5433}/ulli_db"
+    artifact_table: "artifacts"
+    embedding_table: "artifact_embeddings"
+    pool_min_size: 5
+    pool_max_size: 20
+    health_check_timeout: 1.0
+
+  # MinIO/S3 configuration (REQUIRED - for large file storage)
+  # Credentials loaded from environment variables
+  minio:
+    enabled: true
+    endpoint_url: "http://localhost:9000"
+    bucket: "context-engine"
+    aws_access_key_id: "${MINIO_ROOT_USER}"
+    aws_secret_access_key: "${MINIO_ROOT_PASSWORD}"
+    connect_timeout: 5
+    read_timeout: 10
+
+  # Neo4j configuration (REQUIRED for knowledge graph)
+  # Password loaded from environment variable
+  neo4j:
+    enabled: true
+    url: "bolt://localhost:7687"
+    username: "neo4j"
+    password: "${NEO4J_PASSWORD}"
+
+  # Valkey configuration (OPTIONAL - for semantic cache)
+  valkey:
+    enabled: false
+    url: "redis://localhost:6379"
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+logging:
+  # Control log verbosity for deep_research components
+  # "normal": Show key progress and errors (default)
+  # "quiet": Show only errors
+  # "debug": Show detailed debug information
+  # "silent": Suppress all non-error logs
+  level: normal  # Options: normal, quiet, debug, silent
+
+  # Component-specific log levels (override global level)
+  # These match the COMPONENT_* constants in logging_utils.py
+  components:
+    # Core research nodes
+    worker: normal          # Worker node (research and information gathering)
+    boss: normal            # Boss node (strategy decisions)
+    lab: normal             # Lab node (worker coordination)
+    lab_architect: quiet    # Lab architect (parallel workers, reduce noise)
+    critic: normal          # Critic node (quality evaluation)
+    synthesis: normal       # Synthesis node (final output)
+
+    # Agents
+    flash_explorer: normal  # Flash Explorer agent
+    web_agent: quiet        # Web research agent (verbose when parallel)
+
+    # Infrastructure
+    run_logger: normal      # Observability run logging
+    context_engine: quiet   # Context engine operations
+
+
+# =============================================================================
+# PROMPTS - JINJA2 TEMPLATES
+# =============================================================================
+# All prompts use Jinja2 templating: {{ variable }} for variables
+# Prompts are organized by agent/component for easy customization
+# Variant configs can override specific prompts as needed
+# =============================================================================
+prompts:
+  # Worker prompts - research and information gathering
+  worker:
+    planning: |
+      You are a Worker agent. Gather information to refine research directions and provide meta-understanding of the task.
+
+      Query: {{ query }}
+
+      Your task is to:
+      1. Analyze the query for clarity and complexity
+      2. Identify key entities and concepts
+      3. Gather relevant information from available sources
+      4. Assess findings for completeness and quality
+      5. Synthesize findings into coherent response
+
+      Provide a structured summary of your research.
+
+  # Flash Explorer prompts - autonomous research agent
+  flash_explorer:
+    planning: |
+      You are a research planner. Plan the investigation strategy for this research avenue.
+
+      RESEARCH AVENUE: {{ research_avenue }}
+      {% if context_section %}
+
+      {{ context_section }}
+      {% endif %}
+      {% if has_rag %}
+
+      NOTE: You have access to {{ document_count }} local documents for RAG search.
+      Your research can combine web search with document search for comprehensive coverage.
+
+      Documents available:
+      {% for doc in documents[:5] %}
+      - {{ doc }}
+      {% endfor %}
+      {% endif %}
+
+      YOUR TASK: Plan 3-5 specific angles to investigate this avenue.
+
+      Each angle should:
+      - Be specific enough to search directly (not too broad)
+      - Provide unique information (minimal overlap with other angles)
+      - Consider different source types (academic, news, data, opinion)
+      - {% if has_rag %}Leverage both web search AND document search (RAG){% else %}Use web search for comprehensive coverage{% endif %}
+      - {% if context_section %}Be relevant to the brand/context above{% endif %}
+
+      EXAMPLE for "gym discipline motivation":
+      Poor: "gym discipline" (too broad)
+      Poor: "discipline" (too vague)
+      Good: "psychology of habit formation in fitness routines"
+      Good: "statistics on New Year's resolution failure rates"
+      Good: "effective gym discipline strategies from fitness experts"
+
+      SUFFICIENCY CRITERIA:
+      What specific information would make this research complete?
+
+      Plan your investigation angles. List each angle clearly.
+
+    evaluation: |
+      You are a research evaluator. Evaluate if we have sufficient information for this research avenue.
+
+      Research Avenue: {{ research_avenue }}
+
+      Searches Performed: {{ searches_performed }}
+      Successful Deep Agents: {{ successful_agents }}/{{ total_agents }}
+      Total Sources Found: {{ total_sources }}
+
+      Findings Summary:
+      {{ findings_summary }}
+
+      Evaluate:
+      1. Do we have enough credible sources?
+      2. Is the information recent (2024-2025)?
+      3. Do we have multiple perspectives?
+      4. Is the information comprehensive?
+
+      Provide your evaluation. State whether the research is sufficient, your confidence level (0-100), what gaps exist if any, and an overall quality score (0-100).
+
+    synthesis: |
+      You are a research synthesizer. Combine findings from multiple search angles for this research avenue.
+
+      RESEARCH AVENUE: {{ research_avenue }}
+      {% if documents %}
+      DOCUMENTS ANALYZED:
+      {% for doc in documents %}
+      - {{ doc }}
+      {% endfor %}
+      {% endif %}
+
+      DEEP AGENT RESULTS:
+      {% for result in deep_agent_results %}
+      Angle: {{ result.angle }}
+      {{ result.findings[:1000] }}...
+      Sources: {{ result.source_count }}
+      {% endfor %}
+
+      SYNTHESIS REQUIREMENTS:
+
+      1. ANSWER the avenue question directly
+         - What did we discover about this topic?
+
+      2. CITE sources to support claims
+         - Use format: [Source: name/URL]
+         - Multiple sources strengthen a claim
+
+      3. ASSESS confidence based on:
+         - Source quality (academic > news > blog)
+         - Source consensus (agreement vs disagreement)
+         - Recency (recent vs outdated)
+
+      4. IDENTIFY key insights from ALL angles
+         - What patterns emerge?
+         - What's surprising or notable?
+
+      5. HANDLE conflicts between angles
+         - If angles disagree, note the disagreement
+         - Present multiple viewpoints when they exist
+
+      Create a comprehensive summary. Include a summary, key findings list, confidence score (0-100), and any gaps in the research.
+
+  # Boss prompts - worker spawning
+  boss:
+    structured: |
+      You are the Boss orchestrator. You decide which workers to spawn for research.
+
+      QUERY: {{ original_query }}
+
+      YOUR TASK: Decide which worker types to spawn (1-{{ max_researchers }} workers).
+
+      Each Lab Architect worker will:
+      - Plan research avenues from your assigned task
+      - Spawn Flash Explorers to investigate each avenue
+      - Synthesize findings into structured output
+
+      WORKER TYPES:
+      - "worker": Default research worker for gathering information
+
+      SPAWN RULES:
+      1. ALWAYS spawn at least one worker
+      2. For simple queries: spawn 1 worker
+      3. For complex queries: spawn 2-3 workers for parallel investigation
+      4. Each worker investigates a distinct angle
+
+      TASK DIVERSIFICATION:
+      Each worker should investigate a distinct angle:
+      - Different aspects of the query
+      - Different source types (academic, news, data)
+      - Different time periods or geographic regions
+
+      ============================================================
+      DEPENDENCY GRAPH MODE
+      Since execution mode is "dynamic_graph", you MUST specify dependencies between workers.
+
+      Declare dependencies in this format:
+      - worker_0: [] (runs first, no dependencies)
+      - worker_1: [worker_0] (runs after worker_0 completes)
+      - worker_2: [worker_0, worker_1] (waits for both)
+
+      Rules:
+      - Empty list [] means worker runs immediately (parallel with others that have no deps)
+      - Workers with dependencies ONLY receive outputs from workers they depend on
+      - No circular dependencies allowed (e.g., A depends on B, B depends on A)
+      ============================================================
+
+      Return your decision as a structured response with:
+      - workers_to_spawn: List of worker types (e.g., ["worker"], ["worker", "worker"])
+      - reasoning: Your explanation for why these workers
+
+      IMPORTANT: Boss ALWAYS spawns workers. Critic decides when research is sufficient.
+
+    # Spawn decision prompt - for main boss node to decide which workers to spawn
+    spawn: |
+      You are the Boss orchestrator. Your job is to decide which workers to spawn for research.
+
+      ORIGINAL QUERY: {{ original_query }}
+
+      {% if iteration is defined %}
+      ITERATION: {{ iteration }}
+      {% endif %}
+
+      YOUR TASK: Decide which worker types to spawn.
+
+      WORKER TYPES:
+      - "worker": Default research worker for gathering information
+
+      SPAWN RULES:
+      1. ALWAYS spawn at least one worker (default: ["worker"])
+      2. For simple queries: spawn 1 worker
+      3. For complex queries: spawn 2-3 workers for parallel investigation
+      4. Each worker investigates a distinct angle of the query
+
+      CRITICAL: Boss ALWAYS spawns workers. The Critic decides when research is sufficient.
+      You do NOT decide "deep" vs "shallow" - you just decide HOW MANY workers and WHAT TYPE.
+
+      OUTPUT: A list of worker types to spawn (e.g., ["worker"] or ["worker", "worker"]).
+
+    # Guidance prompt - for providing contextual guidance to workers (preset mode)
+    guidance: |
+      You are a research coordinator providing contextual guidance to research workers.
+
+      ORIGINAL QUERY: {{ original_query }}
+
+      WORKER ANALYSIS:
+      - Complexity: {{ complexity }} (0-1 scale)
+      - Recommended Approach: {{ approach }}
+      - Research Vectors: {{ research_vectors }}
+
+      YOUR TASK: Provide 2-3 concise, actionable sentences of guidance that will help workers focus their research.
+
+      CRITICAL REQUIREMENTS FOR WORKERS:
+      1. USE web_search TOOL BEFORE asking for clarification - search for the specific names/topics in the query first
+      2. If the query asks about specific people (e.g., "Renee Good and Alex Pretti"), you MUST search for those names
+      3. Do NOT ask "what names should I research" - the query already tells you the names
+      4. Only report "no information found" AFTER you've actually searched
+
+      GUIDANCE FOCUS:
+      - What specific aspects should they prioritize?
+      - What angles or perspectives should they consider?
+      - What type of information would be most valuable?
+
+      Respond ONLY with the guidance text, no explanations or preamble.
+
+  # Critic prompts - quality evaluation
+  critic:
+    system: |
+      You are a Research Critic. Your job is to evaluate research findings for:
+
+      1. **QUERY RELEVANCE (CRITICAL)**: Does the research ACTUALLY ANSWER the original query?
+         - Check if the content addresses the specific people/events mentioned in the query
+         - If the query asks about specific people, the output MUST be about them
+         - If the output discusses completely different people, that is a CRITICAL FAILURE
+         - This check takes priority over all other quality measures
+
+      2. **FACTUAL ACCURACY**: Verify key claims and distinguish between:
+         - Verified facts (supported by multiple sources)
+         - Unverified claims (no sources found)
+         - Fictional content (clearly marked as such)
+
+      3. **SOURCE QUALITY**: Check that findings cite actual sources (URLs, documents) rather than just citing other workers.
+
+      4. **COMPLETENESS**: Ensure the research addresses the original query comprehensively.
+
+      5. **CHARACTER CONSISTENCY** (podcast mode): If character personalities are mentioned, verify they match the character cards.
+
+      {{ tool_info }}
+
+      Provide a comprehensive assessment covering:
+      - Overall quality score (0-1)
+      - Completeness score (0-1)
+      - Specific issues found
+      - Missing information
+      - Any contradictions detected
+      - Detailed feedback
+      - Recommendation (pass/revise/fail)
+
+      Use your available tools to verify claims and retrieve context. Be thorough and specific in your evaluation.
+
+    evaluation: |
+      You are a {{ critic_role }}. Evaluate the research findings for quality and completeness.
+
+      Research Brief:
+      {{ research_brief }}
+
+      Worker Findings:
+      {{ worker_findings }}
+
+      Previous History:
+      {{ history }}
+
+      Quality Threshold: {{ quality_threshold }}
+
+      Evaluate and provide feedback for improvement.
+
+  # Synthesis prompts - final output generation
+  synthesis:
+    default: |
+      You are {{ synthesis_role }}. Synthesize ALL research findings from Context Engine into a comprehensive report.
+
+      RESEARCH QUESTION: {{ query }}
+
+      SESSION ID: {{ session_id }}
+
+      CRITICAL: Use READ tools to retrieve findings:
+
+      STEP 1 - FIND all artifacts:
+      query_postgres(query="{{ query }}", k=100, artifact_type="worker_finding")
+
+      STEP 2 - READ full content:
+      get_artifact(artifact_id=...) for each result
+
+      STEP 3 - DISCOVER connections (optional):
+      query_neo4j(...) for entity relationships
+
+      SYNTHESIS METHODOLOGY:
+
+      1. GROUP by THEME, not by source
+         - Find patterns across different research avenues
+         - Organize by topic, not by which Lab Architect found it
+
+      2. ASSESS evidence for each theme
+         - What do the sources say?
+         - How strong is the evidence? (multiple sources vs single)
+         - Are there conflicting viewpoints?
+
+      3. RESOLVE conflicts
+         - If sources disagree, present multiple viewpoints
+         - Note which perspective has stronger evidence
+         - Flag areas of disagreement
+
+      4. IDENTIFY gaps
+         - What questions remain unanswered?
+
+      REQUIREMENTS:
+      - EVERY claim must have a source citation
+      - Use format: [Source: name/URL]
+      - Prioritize recent and high-quality sources
+      - Do NOT make up information
+
+      OUTPUT STRUCTURE:
+
+      # Research Report: {{ query }}
+
+      ## Executive Summary
+      [3-5 key takeaways]
+
+      ## Findings by Theme
+      [Grouped by theme, not by source]
+
+      ## Connections & Patterns
+      [Cross-theme insights]
+
+      ## Limitations & Gaps
+      [What's missing, weak evidence]
+
+      ## Conclusion
+      [Actionable synthesis]
+
+      Note: This report will be formatted by content_formatter.
+

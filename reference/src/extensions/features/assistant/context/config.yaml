@@ -1,0 +1,34 @@
+extension:
+  name: context
+  type: feature
+  display_name: Context Management
+  description: Conversation context and token management (SillyTavern compatible)
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - context
+  - tokens
+  - conversation
+  - management
+
+ui:
+  sidebar_component: context
+  icon: "layers"
+
+# CLI command name
+cli_command: context
+
+# Aliases
+aliases: ["ctx", "conversation", "conv"]

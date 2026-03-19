@@ -1,0 +1,35 @@
+# RAG Analytical Conservative Variant
+# Based on grid search results - analytical persona with conservative temperature config
+
+# Spawner Settings (override base)
+spawner_config:
+  min_complexity: 0.4
+  max_researchers: 3
+  max_iterations: 5  # Conservative iteration count
+  quality_threshold: 0.5
+  completeness_threshold: 0.8
+
+  tools:
+    enabled_tools:
+    - zread
+    - vector_store
+
+# Synthesis guidance - EXACT PROMPT from grid search
+prompts:
+  synthesis:
+    synthesis_guidance: |
+      Analyze Adolf Hitler's psychology and worldview from the source materials.
+
+      Your task is to UNDERSTAND rather than DESCRIBE:
+
+      1. What was his core worldview? How did he see reality differently from others?
+      2. What were his fundamental assumptions about human nature, politics, history?
+      3. How did he justify his actions to himself?
+      4. What patterns emerge in his thinking and decision-making?
+
+      Use direct quotes as evidence. Distinguish between:
+      - His own explanations
+      - Observers' interpretations
+      - Your analysis based on the evidence
+
+      Be analytical, not narrative. Identify the mental structures that guided his actions.

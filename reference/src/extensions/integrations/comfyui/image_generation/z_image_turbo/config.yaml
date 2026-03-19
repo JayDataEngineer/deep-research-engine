@@ -1,0 +1,170 @@
+# =============================================================================
+# Z Image Turbo - ComfyUI Image Generation Extension
+# =============================================================================
+# Fast text-to-image generation using AuraFlow turbo model
+# =============================================================================
+
+extension:
+  name: z_image_turbo
+  type: service
+  subprocess_only: true
+  display_name: "Z Image Turbo"
+  description: "Fast text-to-image generation using AuraFlow turbo model"
+  version: 1.0.0
+  author: "Comfy-Org"
+  category: comfyui
+  subcategory: image_generation
+  enabled: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - image
+  streaming: false
+
+tags:
+  - image
+  - generation
+  - comfyui
+  - fast
+  - auraflow
+
+# =============================================================================
+# Workflow Configuration
+# =============================================================================
+workflow:
+  name: z_image_turbo
+  display_name: "Z Image Turbo"
+  description: "Fast text-to-image generation"
+  # For ComfyUI UI (drag and drop loading)
+  file: "z_image_turbo_workflow.json"
+  # For HTTP API programmatic access
+  api_file: "z_image_turbo_api.json"
+  type: text_to_image
+
+  # Generation parameters
+  parameters:
+    width:
+      type: integer
+      min: 512
+      max: 2048
+      default: 1024
+      description: "Image width in pixels"
+
+    height:
+      type: integer
+      min: 512
+      max: 2048
+      default: 1024
+      description: "Image height in pixels"
+
+    steps:
+      type: integer
+      min: 1
+      max: 20
+      default: 9
+      description: "Number of sampling steps"
+
+    seed:
+      type: integer
+      min: -1
+      max: 4294967295
+      default: -1
+      description: "Random seed (-1 for random)"
+
+    prompt:
+      type: string
+      required: true
+      description: "Image description/prompt"
+
+    negative_prompt:
+      type: string
+      default: ""
+      description: "Things to avoid in the image"
+
+# =============================================================================
+# Models Configuration
+# =============================================================================
+# Models are downloaded to backend/vendor/ComfyUI/models/<type>/
+# The download utility reads this configuration
+#
+# Each model entry includes:
+#   - name: Unique identifier
+#   - url: Direct download link
+#   - destination: Where to save the file (relative to project root)
+#   - required: Whether this model is required for operation
+# =============================================================================
+models:
+  # =============================================================================
+  # Main Checkpoint Model - AuraFlow Turbo Diffusion Model
+  # =============================================================================
+  - name: z_image_turbo_checkpoint
+    display_name: "Z Image Turbo Checkpoint"
+    description: "Main AuraFlow turbo diffusion model (3.5GB)"
+    url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_model/aura_flow_turbo.safetensors"
+    destination: "backend/vendor/ComfyUI/models/checkpoints/aura_flow_turbo.safetensors"
+    required: true
+    size: ~3.5GB
+
+  # =============================================================================
+  # CLIP Text Encoder - Qwen 3 4B for Prompt Understanding
+  # =============================================================================
+  - name: z_image_turbo_clip
+    display_name: "Z Image Turbo CLIP (Qwen 3 4B)"
+    description: "Qwen 3 4B text encoder for prompt understanding (8GB)"
+    url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"
+    destination: "backend/vendor/ComfyUI/models/clip/qwen_3_4b.safetensors"
+    required: true
+    size: ~8GB
+
+  # =============================================================================
+  # VAE (Variational Autoencoder) - Image Encoding/Decoding
+  # =============================================================================
+  - name: z_image_turbo_vae
+    display_name: "Z Image Turbo VAE"
+    description: "VAE for encoding/decoding images (500MB)"
+    url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors"
+    destination: "backend/vendor/ComfyUI/models/vae/ae.safetensors"
+    required: true
+    size: ~500MB
+
+# =============================================================================
+# Download Configuration
+# =============================================================================
+# For the download utility to process all models at once
+# =============================================================================
+download:
+  type: huggingface
+  destination: backend/vendor/ComfyUI/models
+  size: ~12GB
+  required: true
+  description: "Z Image Turbo models (checkpoint, CLIP, VAE)"
+
+# =============================================================================
+# Service Configuration
+# =============================================================================
+service:
+  # ComfyUI server requirements
+  server_required: true
+  server_type: comfyui
+  default_address: "http://127.0.0.1:18188"
+
+  # Paths
+  paths:
+    workflow_file: "data/inputs/workflows/image_z_image_turbo.json"
+    output_dir: "data/outputs/generated_images"
+
+# =============================================================================
+# Dependencies
+# =============================================================================
+dependencies:
+  system:
+    - description: "ComfyUI server must be running"
+      check_command: "curl -s http://127.0.0.1:18188/system_stats"
+
+  python:
+    - description: "requests for HTTP API communication"
+      package: "requests"
+    - description: "Pillow for image processing"
+      package: "Pillow"

@@ -1,0 +1,32 @@
+extension:
+  name: reasoning
+  type: feature
+  display_name: Reasoning Display & Logprobs
+  description: Chain-of-thought reasoning and token probability storage
+  version: 1.0.0
+  author: Unified LLM Interface
+  category: feature
+  enabled: true
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages: []
+  extensions: []
+
+settings:
+  retention_days: 90
+  store_logprobs: false
+  max_response_size: 50000
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - reasoning
+  - chain-of-thought
+  - logprobs
+  - analytics

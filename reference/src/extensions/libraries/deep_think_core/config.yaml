@@ -1,0 +1,65 @@
+extension:
+  name: deep_think
+  type: library
+  display_name: Deep Think
+  description: Multi-agent research spawner with configurable workflows
+  version: 1.0.0
+  category: library
+  enabled: true
+  author: "Unified LLM Interface"
+
+python:
+  use_host_env: true
+
+access_methods:
+  - api
+  - cli
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: true
+
+tags:
+  - research
+  - multi-agent
+  - workflow
+  - library
+
+ui:
+  provides_features:
+    - deep_think
+
+  sidebar_component: research_queue
+  message_style: thought_chain
+
+  settings_schema:
+    - name: depth
+      type: range
+      label: Research Depth
+      default: 3
+      min: 1
+      max: 10
+      step: 1
+
+    - name: parallel_agents
+      type: range
+      label: Parallel Agents
+      default: 3
+      min: 1
+      max: 8
+      step: 1
+
+    - name: use_case
+      type: select
+      label: Use Case
+      default: rag
+      options:
+        - rag
+        - podcast
+        - trading
+        - osint
+        - news
+        - content

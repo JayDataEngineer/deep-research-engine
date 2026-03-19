@@ -1,0 +1,37 @@
+extension:
+  name: images
+  type: feature
+  display_name: Image Generation
+  description: Character image generation and editing via ComfyUI
+  version: "1.0.0"
+  author: "Unified LLM Interface"
+  category: feature
+  enabled: true
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages:
+    - fastapi
+    - pydantic
+  extensions: []
+
+settings:
+  enabled: true
+
+capabilities:
+  input_type:
+    - text
+    - image
+  output_type:
+    - image
+  streaming: false
+
+tags:
+  - images
+  - generation
+  - comfyui
+  - characters
+
+ui:
+  provides_features:
+    - image_generation

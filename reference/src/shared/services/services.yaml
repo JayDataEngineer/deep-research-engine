@@ -1,0 +1,112 @@
+# =============================================================================
+# Service Registry Configuration
+# =============================================================================
+# Defines all external services and how to resolve their URLs.
+# Each service can be:
+#   1. Explicitly set via env_override
+#   2. Remote mode via remote_host_env + remote_port
+#   3. Local mode (default)
+#
+# Priority: env_override > remote mode > default_url
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # MCP WEB TOOLS
+  # ===========================================================================
+  # Remote MCP server handles all web search and scraping
+
+  mcp_web:
+    description: "MCP server for web search and scraping"
+    default_url: "http://100.102.244.97:8000/mcp"
+    env_override: "MCP_WEB_SERVER_URL"
+    health_endpoint: "/health"
+    category: web_tools
+
+  # ===========================================================================
+  # DATABASES
+  # ===========================================================================
+
+  neo4j:
+    description: "Knowledge graph database"
+    default_url: "bolt://localhost:7687"
+    env_override: "NEO4J_URI"
+    # No remote support - always local or explicit override
+    category: database
+
+  context_postgres:
+    description: "PostgreSQL with pgvector for semantic search"
+    default_url: "postgresql://ulli:change_me@127.0.0.1:5433/ulli_db"
+    env_override: "CONTEXT_ENGINE_POSTGRES_CONNECTION_STRING"
+    category: database
+
+  # ===========================================================================
+  # AI/LLM SERVICES
+  # ===========================================================================
+
+  llm:
+    description: "Primary LLM API (shared infrastructure)"
+    default_url: "http://llama.local/v1"
+    env_override: "LLM_BASE_URL"
+    category: llm
+
+  comfyui:
+    description: "Image generation (Stable Diffusion)"
+    default_url: "http://127.0.0.1:8188"
+    env_override: "COMFYUI_ADDRESS"
+    category: ai
+
+  # ===========================================================================
+  # TTS SERVICES
+  # ===========================================================================
+
+  indextts:
+    description: "IndexTTS vLLM server"
+    default_url: "http://localhost:9000"
+    env_override: "INDEXTTS_URL"
+    category: tts
+
+  # ===========================================================================
+  # MINIO / S3
+  # ===========================================================================
+
+  minio:
+    description: "S3-compatible object storage"
+    default_url: "http://127.0.0.1:9000"
+    env_override: "MINIO_ENDPOINT"
+    category: storage
+
+# =============================================================================
+# SERVICE GROUPS
+# =============================================================================
+# Groups allow enabling/disabling or checking multiple services at once
+
+groups:
+  web_tools:
+    services:
+      - mcp_web
+    description: "Web scraping and search services (MCP)"
+
+  databases:
+    services:
+      - neo4j
+      - context_postgres
+    description: "Database services"
+
+  ai:
+    services:
+      - comfyui
+      - llamacpp
+    description: "AI/ML services"
+
+# =============================================================================
+# REMOTE HOSTS
+# =============================================================================
+# Define remote hosts that can be referenced by services
+# Set via environment variables
+
+remote_hosts:
+  mcp_web:
+    env: "MCP_WEB_HOST"
+    description: "Remote MCP server for web tools (Tailscale IP)"
+    # Default: 100.102.244.97

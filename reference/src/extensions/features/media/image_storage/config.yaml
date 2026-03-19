@@ -1,0 +1,29 @@
+extension:
+  name: image_storage
+  type: feature
+  display_name: Image Storage
+  category: feature
+  version: 1.0.0
+  description: 'Handles image extraction and storage from user messages for
+
+    character image editing functionality. Maintains in-memory
+
+    session-to-image mapping.
+
+    '
+  enabled: true
+capabilities:
+  input_type:
+  - text
+  - image
+  output_type:
+  - text
+  streaming: false
+tags:
+- storage
+- images
+- session
+dependencies:
+  python_version: '>=3.10'
+  pip_packages: []
+  extensions: []

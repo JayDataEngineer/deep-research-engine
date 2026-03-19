@@ -1,0 +1,275 @@
+_metadata:
+  name: Twitter 1-Worker (Fast)
+  version: '1.0'
+  use_case: soc_media_gen
+  variant: twitter_1worker
+  description: 'Single worker for fast Twitter content generation'
+
+# MODELS - specify once, system auto-routes
+models:
+  main:
+    provider: zai
+    model: GLM-4.5-Air
+  tool:
+    provider: zai
+    model: GLM-4.5-Air
+
+brand_context:
+  identity: Iron Forge Fitness Club
+  tagline: Strength. Discipline. No Excuses.
+  description: 'A community for serious lifters who believe fitness builds character.
+
+    Black & white aesthetic. Counter-culture. The gym as a temple.
+
+    We''re not selling fitness programs - we''re building a way of life.
+
+    '
+  audience:
+    demographics: Men 25-45, serious about fitness, conservative/libertarian leaning,
+      intellectually curious
+    psychographics: 'Values: Hard work, self-reliance, discipline, personal responsibility,
+      meritocracy
+
+      Anti-identity politics, anti-excuse mentality, pro-excellence
+
+      Want depth AND aesthetics - philosophy meets physique
+
+      '
+    pain_points: '- Tired of "body positivity" that glorifies mediocrity
+
+      - Frustrated by blame culture and victimhood mentality
+
+      - Want a community that celebrates excellence, not participation trophies
+
+      - Looking for motivation with intellectual depth, not just "hustle porn"
+
+      '
+  tone:
+    style: intense, philosophical, direct, no-nonsense
+    voice: direct_address
+    energy: high
+    keywords:
+    - discipline
+    - excellence
+    - will to power
+    - overcoming
+    - standards
+    - temple
+    - forge
+    - sacrifice
+  themes:
+  - The gym as temple - sacred space for self-overcoming
+  - Discipline as the highest form of freedom
+  - Suffering as necessary for growth
+  - Rejecting herd mentality in fitness and life
+  - The will to power through progressive overload
+  - Creating your own values and standards
+  - Amor fati - loving your training grind
+  - Black & white aesthetic - no gray areas in excellence
+  avoid:
+  - Generic '10 tips to lose weight' content - we're a lifestyle, not a fitness magazine
+  - Overly political partisan content (stay focused on philosophy/lifestyle)
+  - Overly vulgar or crude language (be intense but classy)
+  - Attacking specific people (critique ideas, not individuals)
+  - Complaining or whining (we're about solutions, not problems)
+  - Generic motivational fluff without substance
+  cta:
+    follow: true
+    engagement: Ask questions that make people think about WHY they train
+    link_in_bio: false
+enabled_tools:
+- web_search
+- web_get
+- community_scrape
+- web_research_agent
+- vector_search
+- pdf_deep_agent
+worker_graph:
+  worker_order:
+  - content_creator
+  dependencies:
+    content_creator: []
+character_card_mappings:
+  researcher_0: CONTENT_CREATOR
+prompts:
+  synthesis:
+    synthesis_role: Content Curator
+    worker_role: content creator
+    output_type: social content
+    template: 'You are the Content Curator for {yaml_config.brand_context.identity}.
+
+
+      Brand: {yaml_config.brand_context.tagline}
+
+      Voice: {yaml_config.brand_context.tone.style}
+
+      Aesthetic: Black & white, "cultured thug", counter-culture lifestyle
+
+
+      Review the content from the worker and curate the BEST 20-30 pieces.
+
+
+      CRITICAL: This is NOT a fitness advice account. We''re selling a LIFESTYLE and
+      an IDENTITY.
+
+      Focus on: mindset, philosophy, aesthetic, belonging, excellence.
+
+
+      {findings}
+
+
+      Format: One item per line, ready to post.
+
+      '
+  critic:
+    critic_role: Content Quality Critic
+    output_type: social content
+    evaluation_focus: 'Rate content on:
+
+      1. BRAND ALIGNMENT (0-1): Does it match our black & white "cultured thug" aesthetic?
+
+      2. DEPTH (0-1): Does it have intellectual weight, not just fluff?
+
+      3. COOL FACTOR (0-1): Is it something people would want to share?
+
+      4. AESTHETIC (0-1): Does it fit the visual brand (boxing, black & white, temple)?
+
+
+      Pass if overall score >= 0.7
+
+      '
+model_configs:
+  spawner:
+    model_slot: main  # Use main model (Pro with thinking)
+    temperature: 0.5
+    enable_thinking: true  # Spawner needs thinking for complex planning
+  researcher:
+    model_slot: tool  # Use tool model (Flash without thinking)
+    temperature: 0.6
+    max_tokens: 2000
+    enable_thinking: false  # Flash does NOT use thinking
+spawner_config:
+  min_complexity: 0.0
+  max_researchers: 1
+  max_iterations: 1
+  quality_threshold: 0.7
+  completeness_threshold: 0.8
+  worker_execution_mode: pro_flash_hybrid
+  worker_specialization_mode: fixed
+  worker_types:
+    content_creator: Content Creator - generates engaging social content
+specialist_configs:
+  content_creator:
+    tools:
+    - vector_search
+    - pdf_deep_agent
+    - web_search
+    - web_get
+    - web_research_agent
+    - community_scrape
+    prompt_weights:
+      creative: 0.9
+      cultural: 0.7
+      philosophical: 0.6
+    specialist_prompt: 'You are a CONTENT CREATOR for {{ yaml_config.brand_context.identity
+      }}.
+
+
+      BRAND: {{ yaml_config.brand_context.tagline }}
+
+      {{ yaml_config.brand_context.description }}
+
+
+      YOUR ROLE: Generate engaging Twitter content that blends philosophy, aesthetic,
+      and lifestyle.
+
+
+      FOCUS ON:
+
+      - Fitness as a lifestyle, not just exercise
+
+      - Philosophy of discipline and excellence
+
+      - Black & white aesthetic and counter-culture vibes
+
+      - Community and belonging
+
+      - Mindset and mental toughness
+
+
+      OUTPUT FORMAT:
+
+      Generate 20-30 pieces of content ready to post on Twitter:
+
+      - Short, punchy statements (under 280 characters)
+
+      - Philosophical observations about training
+
+      - Aesthetic descriptions (boxing, black & white, temple imagery)
+
+      - Community and belonging messages
+
+      - Motivational with intellectual depth
+
+
+      EXAMPLE VIBES:
+
+      "The gym is the only church where the sermon is written in sweat."
+
+      "Comfort has made more mediocrity than capitalism ever could."
+
+      "You don''t train to look better. You train to be harder to kill."
+
+      "The iron doesn''t care about your feelings. That''s why you love it."
+
+      "Every rep is a vote for the person you''re becoming."
+
+
+      Use {{ yaml_config.brand_context.tone.keywords | join('', '') }} as themes.
+
+
+      Things to avoid: {{ yaml_config.brand_context.avoid | join('', '') }}
+
+      '
+output:
+  mode: twitter
+  validate: false
+  format: list
+tool_settings:
+  vector_store:
+    enabled: true
+    collection: fitness_philosophy
+    persist_directory: /home/ubuntu/Documents/programs/text/unified-llm-interface/data/vectorstores/chroma
+  rag_datasources:
+  - type: file
+    path: /home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/books/nietzsche/Beyond
+      Good and Evil.pdf
+    metadata:
+      source: Beyond Good and Evil
+      author: Friedrich Nietzsche
+      type: book
+      language: en
+  - type: file
+    path: /home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/books/nietzsche/Thus
+      Spoke Zarathustra.pdf
+    metadata:
+      source: Thus Spoke Zarathustra
+      author: Friedrich Nietzsche
+      type: book
+      language: en
+  - type: file
+    path: /home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/books/stoics/Meditations.mardown
+    metadata:
+      source: Meditations
+      author: Marcus Aurelius
+      type: book
+      language: en
+  agent_tools:
+    pdf_deep_agent:
+      mode: enhanced
+      top_k: 5
+      max_attempts: 2
+    web_research_agent:
+      mode: simple
+      num_results: 5
+      max_urls: 2

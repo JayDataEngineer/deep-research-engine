@@ -1,0 +1,64 @@
+extension:
+  name: podcast
+  version: '1.0'
+  description: Character-driven political podcast generation with contrasting personalities
+  type: integration
+  author: Unified LLM Interface
+  enabled: true
+
+research:
+  output_mode: podcast
+  default_variant: default
+  variants:
+  - default
+  - 2worker
+  - accelerated
+
+  spawner_config:
+    min_complexity: 0.3
+    max_researchers: 6
+    max_iterations: 2
+    quality_threshold: 0.6
+    completeness_threshold: 0.8
+    complexity_override: 0.8
+    worker_execution_mode: dynamic_graph
+    worker_specialization_mode: hybrid
+    level_of_detail: 7
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+      - news
+    tool_settings:
+      context_strategy: basic
+      context_max_tokens: 100000
+      context_output_buffer: 15000
+    scout_depth: standard
+  worker_graph:
+    worker_order:
+    - news_aggregator
+    - character_a_research
+    - character_b_research
+    - character_a
+    - character_b
+    dependencies:
+      news_aggregator: []
+      character_a_research:
+      - news_aggregator
+      character_b_research:
+      - news_aggregator
+      character_a:
+      - character_a_research
+      character_b:
+      - character_b_research
+  character_card_mappings:
+    character_a: EMMA
+    character_b: OLIVIA
+prompts:
+  synthesis:
+    synthesis_role: Podcast Producer
+    worker_role: character
+    output_type: podcast script
+  critic:
+    critic_role: Script Critic
+    output_type: podcast script

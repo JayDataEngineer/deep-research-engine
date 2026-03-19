@@ -1,0 +1,107 @@
+# Emotion Detection Prompt Metadata
+# Maps prompts to their usage patterns and parameters
+
+prompts:
+  single_line:
+    description: "Fast single-line emotion detection"
+    phase: "detection"
+    input_format: "single_dialogue_line"
+    output_format: "emotion_vector_list"
+    chunking_strategy: "none"
+    parallelism: "high"
+    use_cases:
+      - fast_mode
+      - simple_dialogue
+    tokens_per_line: ~50
+    quality: "speed"
+    requires_context: true
+    context_fields:
+      - speaker
+      - text
+
+  batch_with_splitting:
+    description: "Batch detection with sentence splitting"
+    phase: "detection"
+    input_format: "dialogue_lines_list"
+    output_format: "sentence_emotions_nested"
+    chunking_strategy: "sentence_split"
+    parallelism: "medium"
+    use_cases:
+      - sentence_level_emotion
+      - emotion_fine_grained
+    tokens_per_line: ~100
+    quality: "balanced"
+    requires_context: true
+    context_fields:
+      - dialogue_lines
+
+  semantic_chunking:
+    description: "Groups lines into semantic emotional batches"
+    phase: "chunking"
+    input_format: "full_script"
+    output_format: "batch_indices_with_context"
+    chunking_strategy: "semantic_emotional"
+    parallelism: "low"
+    use_cases:
+      - overdrive_mode_phase1
+      - sectioned_mode_phase1
+    tokens_per_batch: ~500
+    quality: "quality"
+    requires_context: true
+    context_fields:
+      - script_text
+
+  director:
+    description: "Refines emotions with continuity awareness"
+    phase: "refinement"
+    input_format: "dialogue_batch_with_context"
+    output_format: "refined_emotion_vectors"
+    chunking_strategy: "uses_semantic_chunks"
+    parallelism: "medium"
+    use_cases:
+      - overdrive_mode_phase2
+    tokens_per_line: ~80
+    quality: "quality"
+    requires_context: true
+    context_fields:
+      - previous_emotion
+
+  sectioned_director:
+    description: "Director prompt for complete sections"
+    phase: "refinement"
+    input_format: "full_section"
+    output_format: "refined_emotion_vectors"
+    chunking_strategy: "by_section_markers"
+    parallelism: "medium"
+    use_cases:
+      - sectioned_mode
+    tokens_per_line: ~80
+    quality: "quality"
+    requires_context: true
+    context_fields:
+      - previous_emotion
+
+# Mode configurations (which prompts to use for each mode)
+modes:
+  fast:
+    quality_mode: "fast"
+    prompts:
+      - single_line
+    chunking: "whole_segment"
+    llm_workers: 3
+
+  overdrive:
+    quality_mode: "quality"
+    prompts:
+      - semantic_chunking    # Phase 1
+      - director            # Phase 2
+    chunking: "semantic_emotional"
+    llm_workers: 3
+
+  sectioned:
+    quality_mode: "quality"
+    prompts:
+      - semantic_chunking    # Phase 1
+      - sectioned_director   # Phase 2
+    chunking: "by_section_markers"
+    llm_workers: 3

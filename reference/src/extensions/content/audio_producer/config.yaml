@@ -1,0 +1,144 @@
+# Audio Producer Feature Extension
+
+extension:
+  name: audio_producer
+  type: feature
+  display_name: Audio Producer
+  description: Smart audio workflow orchestration - parse text, apply emotions, generate TTS, and combine audio
+  version: 1.0.0
+  category: feature
+  enabled: true
+  api_prefix: /api/v1/audio-producer  # API prefix for emotion tagging endpoints
+
+python:
+  use_host_env: true  # Runs in host environment for LLM access
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - audio
+  streaming: false
+
+tags:
+  - audio
+  - podcast
+  - tts
+  - production
+
+# Configuration
+processing:
+  # Voice configuration for podcast speakers
+  # Each speaker can have:
+  #   - voice_id: Preset IndexTTS voice (index2_ref_male, index2_ref_female, index2_ref_neutral, index2_emotional)
+  #   - reference_audio: Path to audio sample for voice cloning (optional, overrides preset)
+  voices:
+    EMMA:
+      voice_id: "index2_ref_female"
+      reference_audio: "/home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/audio_samples/Emma.mp3"
+    OLIVIA:
+      voice_id: "index2_ref_female"
+      reference_audio: "/home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/audio_samples/Olivia.mp3"
+    HOST:
+      voice_id: "index2_ref_female"
+      reference_audio: "/home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/audio_samples/Narrator.mp3"
+    NARRATOR:
+      voice_id: "index2_ref_female"
+      reference_audio: "/home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/audio_samples/Narrator.mp3"
+
+  # Advanced IndexTTS generation parameters
+  generation:
+    # Precision (fp32 = full quality, fp16 = faster but minor quality loss)
+    precision: fp32               # Options: fp32 (default, full quality), fp16 (faster, ~2x speedup)
+    # Emotion control
+    emo_alpha: 1.0                # Emotion intensity 0.0-1.0 (default: 1.0, higher = stronger emotion)
+    # emo_audio_prompt: "/path/to/emotional_reference.wav"  # Optional: Emotional reference audio
+    # use_emo_text: false           # Use text-based emotion instead of vectors
+    # emo_text: "neutral with excitement"  # Emotion description (if use_emo_text: true)
+
+    # Sampling control (affects generation quality and variety)
+    do_sample: true                # Enable sampling (default: true)
+    temperature: 0.8               # Sampling temperature 0.0-2.0 (default: 0.8, higher = more random)
+    top_p: 0.8                     # Top-P sampling 0.0-1.0 (default: 0.8)
+    top_k: 30                      # Top-K sampling (default: 30)
+    num_beams: 1                   # Number of beams for beam search (1=fast greedy, 3=slower but better quality)
+    use_random: false              # Add extra randomness (default: false)
+
+    # Length and repetition control
+    length_penalty: 0.0            # Length penalty (default: 0.0, positive = longer, negative = shorter)
+    repetition_penalty: 10.0       # Repetition penalty (default: 10.0, higher = less repetition)
+    max_mel_tokens: 1500           # Max mel tokens (default: 1500)
+    max_text_tokens_per_segment: 120  # Max text tokens per segment (default: 120)
+
+    # Timing control
+    interval_silence: 200          # Silence between segments in milliseconds (default: 200)
+
+    # Speed and pitch
+    speed: 1.0                     # Playback speed 0.5-2.0 (default: 1.0)
+    pitch: 1.0                     # Pitch multiplier 0.5-2.0 (default: 1.0)
+
+  # Emotion tagging settings
+  emotion_detection:
+    enabled: true
+    quality_mode: fast             # Options: fast (no thinking, ~3x faster), quality (with thinking)
+    mode: llm                      # llm, rule_based, neutral
+    processing_mode: rolling_window  # Options: single_call, rolling_window, sequential, parallel
+                                  # - rolling_window: Process 7 lines at a time, output feeds into next window (DEFAULT, best balance)
+                                  # - single_call: Single LLM call for all lines (fastest, but may timeout on long content)
+                                  # - sequential: Sequential calls with previous lines in context (slower, maintains emotional continuity)
+                                  # - parallel: Concurrent calls without context (faster than sequential, may have inconsistencies)
+    batch_size: 50                 # Max lines per batch (for very long podcasts)
+    parallel_concurrency: 4         # Max parallel LLM calls (for parallel mode) - increased to 4
+    temperature: 0.1               # LLM temperature for emotion detection
+    prompts_file: "prompts.jinja2" # Jinja2 template file for prompts
+
+  # Chunking settings
+  chunking:
+    enabled: false                 # Use IndexTTS internal chunking by default
+    max_tokens: 120
+
+# Output settings
+output:
+  format: wav
+  sample_rate: 24000
+  add_silence: true               # Add silence between dialogue lines
+  silence_duration: 0.5           # seconds
+
+# Sentence transition smoothing (fixes disjointed TTS between sentences)
+sentence_transition:
+  mode: crossfade                  # How to smooth transitions between TTS segments
+                                  # Options:
+                                  #   none              - Hard cuts (no processing, fastest)
+                                  #   crossfade         - Audio cross-fading (80ms blend for same speaker)
+                                  #   adaptive_merge     - Merge sentences with similar emotions (Solution 1)
+                                  #   ghost_text        - Generate with overlap, trim (Solution 2)
+                                  #   breath_pause      - Insert breaths based on punctuation (Solution 3)
+
+  # Crossfade settings (mode: crossfade)
+  crossfade:
+    same_speaker_ms: 80           # Cross-fade duration for same speaker (milliseconds)
+    speaker_change_ms: 0          # No cross-fade between different voices (use silence instead)
+
+  # Adaptive merge settings (mode: adaptive_merge)
+  # Merges consecutive sentences when emotions are similar, reducing TTS calls
+  adaptive_merge:
+    emotion_threshold: 0.15       # Euclidean distance threshold (lower = more aggressive merging)
+                                  # 0.05 = very strict (only near-identical emotions)
+                                  # 0.15 = balanced (merge similar emotions)
+                                  # 0.30 = permissive (merge most emotions)
+    max_sentences_per_merge: 5    # Safety limit to prevent excessively long generations
+
+  # Ghost text settings (mode: ghost_text)
+  # Generates previous sentence's tail + new sentence, then trims the overlap
+  ghost_text:
+    overlap_words: 5              # Number of trailing words from previous sentence to include
+    overlap_chars: 30             # Alternative: character-based overlap
+
+  # Breath/pause settings (mode: breath_pause)
+  # Inserts breath sounds or pauses based on punctuation
+  breath_pause:
+    comma_pause_ms: 50            # Pause after comma
+    period_pause_ms: 150          # Pause after period
+    paragraph_pause_ms: 500       # Pause after paragraph break
+    breath_sample_path: ""        # Optional: path to breath sound sample (.wav)
+                                # If empty, uses silence instead

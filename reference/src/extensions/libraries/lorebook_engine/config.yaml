@@ -1,0 +1,17 @@
+extension:
+  name: lorebook_engine
+  display_name: Lorebook Engine
+  description: Keyword and semantic activation for world information
+  version: 1.0.0
+  author: ULLI Team
+  category: library
+  tags:
+  - lorebook
+  - world-info
+  - activation
+  - semantic
+  - keyword
+  type: library
+  enabled: true
+dependencies: []
+settings_schema: []

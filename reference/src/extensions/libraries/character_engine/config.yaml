@@ -1,0 +1,16 @@
+extension:
+  name: character_engine
+  display_name: Character Engine
+  description: Character card and book management with parsing
+  version: 1.0.0
+  author: ULLI Team
+  category: library
+  tags:
+  - characters
+  - character-cards
+  - roleplay
+  - parsing
+  type: library
+  enabled: true
+dependencies: []
+settings_schema: []
