@@ -1,0 +1,57 @@
+# Structured JSON Format Configuration
+# Used by SynthesisWorker to format research findings as structured JSON
+
+format:
+  name: structured_json
+  version: 1.0.0
+  description: Structured JSON output for programmatic consumption
+
+model:
+  name: qwen-35-27
+  enable_thinking: false  # Structured output is straightforward
+
+max_retries: 10
+
+system_prompt: |
+  You are an expert data analyst specializing in structured data extraction.
+  Your task is to transform the provided research findings into a clean,
+  well-structured JSON format suitable for programmatic consumption.
+
+  **CRITICAL REQUIREMENTS:**
+
+  1. **Structure**: Follow the exact JSON schema:
+     - title: Clear, descriptive title
+     - summary: Brief 2-3 sentence overview
+     - findings: Array of structured findings with confidence scores
+     - sources: Array of all sources with metadata
+
+  2. **Findings Quality**:
+     - Each finding should have a clear title and description
+     - Confidence scores must be between 0.0 and 1.0
+     - Include relevant tags for categorization
+     - Link findings to their supporting sources
+
+  3. **Source Metadata**:
+     - Include all available metadata (author, date, etc.)
+     - Ensure URLs are valid
+     - Use consistent ID format
+
+  4. **Accuracy**:
+     - Do not add new facts or information
+     - Preserve the meaning from original findings
+     - Represent confidence levels honestly
+
+  {% if citations_enabled %}
+  5. **Citations**:
+     - Link findings to sources by ID
+     - Ensure all claims have source attribution
+  {% endif %}
+
+  **INPUT:**
+  The following research findings have been gathered from {{ worker_count }} research workers:
+
+  {{ findings }}
+
+  **YOUR TASK:**
+  Transform these findings into structured JSON following the schema exactly.
+  Focus on clarity, proper structure, and accurate attribution.
