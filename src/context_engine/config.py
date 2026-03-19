@@ -1,6 +1,7 @@
 """Configuration - Models, store config.
 
 All models via LiteLLM proxy only.
+Aligns with .env.example and shared-docker-infra settings.
 """
 
 import os
@@ -10,8 +11,9 @@ from typing import Literal, Optional
 # MODEL TIERS (LiteLLM only, no parameters)
 # =============================================================================
 
-SMART_MODEL = os.getenv("SMART_MODEL", "claude-sonnet-4-6")  # Main agent, Critic
-FAST_MODEL = os.getenv("FAST_MODEL", "claude-haiku-4-5")    # Flash explorers, specialists
+# Support both naming conventions for compatibility
+SMART_MODEL = os.getenv("SMART_MODEL") or os.getenv("MAIN_MODEL", "claude-sonnet-4-6")
+FAST_MODEL = os.getenv("FAST_MODEL") or os.getenv("TOOL_MODEL", "claude-haiku-4-5")
 
 ModelTier = Literal["smart", "fast"]
 
@@ -23,7 +25,7 @@ def get_model(tier: ModelTier = "smart"):
         tier: "smart" (Sonnet) or "fast" (Haiku)
 
     Returns:
-        ChatLiteLLM instance
+        ChatOpenAI instance configured for LiteLLM
 
     Note:
         All parameters handled by LiteLLM proxy config.
@@ -47,9 +49,11 @@ def get_model(tier: ModelTier = "smart"):
 # STORE CONFIGURATION
 # =============================================================================
 
-POSTGRES_URL = os.getenv(
-    "POSTGRES_URL",
-    "postgresql://ulli:ulli_password@localhost:5432/context_engine"
+# Support both naming conventions for shared-docker-infra compatibility
+POSTGRES_URL = (
+    os.getenv("POSTGRES_URL") or
+    os.getenv("CONTEXT_POSTGRES_URL") or
+    "postgresql://postgres:postgres@localhost:5433/deep_research"
 )
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
@@ -62,7 +66,7 @@ EMBEDDING_DIMS = int(os.getenv("EMBEDDING_DIMS", "384"))
 
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
-LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://langfuse.local")
 
 
 # =============================================================================
@@ -70,14 +74,22 @@ LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
 # =============================================================================
 
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 
 
 # =============================================================================
-# OPTIONAL: NEO4J
+# OPTIONAL: NEO4j
 # =============================================================================
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+# Support both NEO4J_USER and NEO4J_USERNAME
+NEO4J_USER = os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
+
+
+# =============================================================================
+# OPTIONAL: MONGODB
+# =============================================================================
+
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")

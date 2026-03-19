@@ -13,6 +13,11 @@ Usage:
     uv run context-engine synthesize --session-id abc123 --format report
 """
 
+from .base import (
+    BaseSynthesizer,
+    get_context_for_synthesis,
+    parse_json_response,
+)
 from .twitter import (
     Tweet,
     TweetThread,
@@ -34,6 +39,10 @@ from .report import (
 )
 
 __all__ = [
+    # Base
+    "BaseSynthesizer",
+    "get_context_for_synthesis",
+    "parse_json_response",
     # Twitter
     "Tweet",
     "TweetThread",
