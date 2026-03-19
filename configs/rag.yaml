@@ -63,13 +63,19 @@ phases:
   - name: synthesis
     node: SynthesisNode
     config:
-      sources: worker_outputs
-      strategy: narrative
+      worker_type: synthesis
       output:
-        format: markdown
+        format: research_report  # Options: research_report, markdown, structured_json
         citations:
           enabled: true
-          format: numbered
+          format: numbered  # Options: numbered, APA, MLA, chicago
+
+      # Format-specific configuration
+      format_config:
+        max_retries: 10
+        include_metadata: true
+        min_sections: 3
+        min_findings: 3
 
 storage:
   postgres:
