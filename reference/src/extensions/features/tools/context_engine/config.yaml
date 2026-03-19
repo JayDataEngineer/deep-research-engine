@@ -1,0 +1,52 @@
+# Context Engine Extension Configuration
+
+enabled: true  # Set to true to enable the Context Engine
+
+# Operation mode
+mode: research  # "research" for session-isolated queries, "companion" for user-scoped
+isolation: session  # Session isolation strategy
+
+# Health check configuration
+health_check:
+  cache_ttl: 5.0  # Cache health results for 5 seconds
+
+# Postgres + pgvector configuration (REQUIRED)
+# Credentials loaded from environment variables
+postgres:
+  connection_string: "${CONTEXT_POSTGRES_URL:postgresql://${CONTEXT_POSTGRES_USER:ulli}:${CONTEXT_POSTGRES_PASSWORD}@lang-tools-context-postgres:5432/ulli_db}"
+  artifact_table: "artifacts"
+  embedding_table: "artifact_embeddings"
+  pool_min_size: 5
+  pool_max_size: 20
+  health_check_timeout: 1.0
+
+# MinIO/S3 configuration (OPTIONAL - for large file storage)
+# Uses shared infrastructure at s3.local (via Traefik)
+# Credentials loaded from environment variables
+minio:
+  enabled: true
+  endpoint_url: "http://s3.local:9000"
+  bucket: "context-engine"
+  access_key: "${MINIO_ROOT_USER}"
+  secret_key: "${MINIO_ROOT_PASSWORD}"
+  connect_timeout: 5
+  read_timeout: 10
+
+# Neo4j configuration (REQUIRED for deep research - knowledge graph)
+# Password loaded from environment variable
+neo4j:
+  enabled: true
+  url: "bolt://lang-tools-neo4j:7687"
+  username: "neo4j"
+  password: "${NEO4J_PASSWORD}"
+
+# Valkey configuration (OPTIONAL - for semantic cache)
+valkey:
+  enabled: false
+  url: "redis://localhost:6379"
+
+# PDF ingestion settings
+pdf_ingestion:
+  max_small_pdf_size: 5242880  # 5MB threshold for Case A vs C
+  chunk_by_chapters: true      # Try to detect chapter breaks
+  default_chunk_size: 50       # Pages per chunk if no chapters

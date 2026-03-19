@@ -1,0 +1,54 @@
+# Dialogue Formatter Extension
+
+extension:
+  name: dialogue_formatter
+  type: feature
+  display_name: Dialogue Formatter
+  description: Parse text into dialogue lines and apply emotion tagging for TTS
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true  # Runs in host environment for LLM access
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - dialogue
+  - tts
+  - emotions
+  - formatting
+
+# Configuration
+processing:
+  # Dialogue parsing settings
+  parsing:
+    # Pattern for dialogue lines (regex)
+    # Format: "**SPEAKER (direction):** text" or "SPEAKER: text"
+    patterns:
+      - '**{speaker}({direction}):** {text}'
+      - '**{speaker}:** {text}'
+      - '{speaker} ({direction}): {text}'
+      - '{speaker}: {text}'
+    supported_speakers: []  # Empty means auto-detect all speakers
+
+  # Emotion tagging settings
+  emotion_detection:
+    enabled: true
+    quality_mode: quality          # Options: fast (no thinking, ~3x faster), quality (with thinking, default)
+    processing_mode: batch         # Options: batch, single, parallel
+    batch_size: 50                 # Max lines per batch
+    parallel_concurrency: 8        # Max parallel LLM calls (for parallel mode)
+    temperature: 0.1               # LLM temperature for emotion detection
+    prompts_file: "prompts.jinja2" # Jinja2 template file for prompts
+
+# Output settings
+output:
+  include_neutral: true            # Include neutral emotion (no tagging)
+  format: json                     # Output format: json, yaml, or object

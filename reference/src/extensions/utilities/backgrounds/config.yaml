@@ -1,0 +1,36 @@
+extension:
+  name: backgrounds
+  type: feature
+  display_name: Backgrounds
+  description: Background image management for chats (SillyTavern compatible)
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true
+
+capabilities:
+  input_type:
+    - text
+    - image
+  output_type:
+    - text
+    - image
+  streaming: false
+
+tags:
+  - ui
+  - backgrounds
+  - images
+  - customization
+
+ui:
+  sidebar_component: backgrounds
+  icon: "image"
+
+# CLI command name
+cli_command: backgrounds
+
+# Aliases
+aliases: ["bg", "background", "wallpaper"]

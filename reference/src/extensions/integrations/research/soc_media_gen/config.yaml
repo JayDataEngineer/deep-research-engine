@@ -1,0 +1,64 @@
+extension:
+  name: soc_media_gen
+  version: '1.0'
+  description: Personality-driven social media content generation with viral optimization
+  type: integration
+  author: Unified LLM Interface
+  enabled: true
+research:
+  output_mode: twitter
+  default_variant: twitter
+  variants:
+  - twitter
+  - fitness
+  - social
+spawner_config:
+  min_complexity: 0.3
+  max_researchers: 6
+  max_iterations: 3
+  quality_threshold: 0.8
+  completeness_threshold: 0.85
+  worker_execution_mode: dynamic_graph
+  worker_specialization_mode: hybrid
+  level_of_detail: 7
+  tools:
+    enabled_tools:
+    - vision
+    - web_search
+    - web_get
+    - zread
+    - vector_store
+    - news
+    - content_gen
+  tool_settings:
+    context_strategy: basic
+    context_max_tokens: 100000
+    context_output_buffer: 15000
+  scout_depth: standard
+worker_graph:
+  worker_order:
+  - hook_specialist
+  - storyteller
+  - listicle_expert
+  - hot_take_artist
+  dependencies:
+    hook_specialist: []
+    storyteller: []
+    listicle_expert: []
+    hot_take_artist: []
+character_card_mappings:
+  researcher_0: HOOK_SPECIALIST
+  researcher_1: STORYTELLER
+  researcher_2: LISTICLE_EXPERT
+  researcher_3: HOT_TAKE_ARTIST
+prompts:
+  synthesis:
+    synthesis_role: Lead Social Media Creator
+    worker_role: content creator
+    output_type: social media content
+  critic:
+    critic_role: Social Media Content Reviewer
+    output_type: social media content
+output:
+  mode: twitter
+  validate: false

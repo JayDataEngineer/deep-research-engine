@@ -1,0 +1,16 @@
+extension:
+  name: tts_engine
+  display_name: TTS Engine
+  description: Text-to-Speech API with multiple engine support
+  version: 1.0.0
+  author: ULLI Team
+  category: library
+  type: library
+  enabled: true
+tags:
+  - tts
+  - audio
+  - speech
+  - voice
+system:
+  lazy_load: false

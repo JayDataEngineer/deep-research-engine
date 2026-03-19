@@ -1,0 +1,22 @@
+extension:
+  name: tool_call
+  type: mode
+  display_name: Tool Call
+  description: "One-Two Punch: LLM selects tools, then responds"
+  category: brain_mode
+  enabled: true
+
+capabilities:
+  input_type: [text]
+  output_type: [text]
+  streaming: true
+
+enabled_tools:
+  # Web tools
+  - web_search
+  - web_get
+  - web_research_agent
+  # Image tools (ComfyUI)
+  - generate_image
+  - edit_image
+  - edit_character_image

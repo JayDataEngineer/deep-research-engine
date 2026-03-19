@@ -1,0 +1,27 @@
+extension:
+  name: thread_management
+  type: feature
+  display_name: Thread Management
+  category: feature
+  version: 1.0.0
+  description: 'Manages conversation threads including listing, retrieving, deleting,
+
+    and managing thread metadata like titles and chain of thought data.
+
+    '
+  enabled: true
+capabilities:
+  input_type:
+  - text
+  output_type:
+  - text
+  streaming: false
+tags:
+- threads
+- conversation
+- management
+dependencies:
+  title_generator:
+    optional: true
+  shared.checkpointer:
+    optional: false

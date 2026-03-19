@@ -1,0 +1,79 @@
+# Iron Forge Fitness - Base Brand Profile
+# This profile can be inherited by Twitter, Substack, and other content variants
+
+_metadata:
+  name: "Iron Forge Fitness Brand"
+  version: "1.0"
+  description: "Base brand profile for Iron Forge Fitness content"
+
+brand_context:
+  identity: "Iron Forge Fitness Club"
+  tagline: "Strength. Discipline. No Excuses."
+
+  description: |
+    A community for serious lifters who believe fitness builds character.
+    We combine hard physical training with philosophy -
+    the will to power, overcoming oneself, rejecting mediocrity.
+
+  # =============================================================================
+  # TARGET AUDIENCE
+  # =============================================================================
+  audience:
+    demographics: "Men and women 25-45, serious about fitness, intellectually curious"
+    psychographics: |
+      Values: Hard work, self-overcoming, discipline, personal responsibility
+      Anti-victimhood, anti-excuse mentality, pro-excellence
+      Want to improve physically AND mentally
+    pain_points: |
+      - Tired of "body positivity" that glorifies mediocrity
+      - Frustrated by blame culture and victimhood mentality
+      - Want deeper meaning behind the suffering of training
+      - Looking for motivation that's intellectual, not just "hustle porn"
+
+  # =============================================================================
+  # CONTENT STRATEGY
+  # =============================================================================
+  tone:
+    style: "intense, philosophical, direct, no-nonsense"
+    voice: "direct_address"  # Talk directly to "you"
+    energy: "high"  # Intense and urgent
+    keywords: ["discipline", "excellence", "will to power", "overcoming", "standards"]
+
+  # =============================================================================
+  # THEMES - Core brand themes
+  # =============================================================================
+  themes:
+    - "The gym as arena for self-overcoming"
+    - "Discipline as the highest form of freedom"
+    - "Suffering as necessary for growth"
+    - "Rejecting herd mentality in fitness and life"
+    - "The will to power through progressive overload"
+    - "Creating your own values, standards, and excellence"
+    - "Amor fati - loving your training grind"
+
+  # =============================================================================
+  # THINGS TO AVOID
+  # =============================================================================
+  avoid:
+    - "Generic motivational fluff without substance"
+    - "Oversimplified 'just do it' advice"
+    - "Political content (stay focused on philosophy/lifestyle)"
+    - "Being too academic - stay grounded in gym reality"
+
+  # =============================================================================
+  # ENGAGEMENT STRATEGY
+  # =============================================================================
+  cta:
+    follow: true  # "Follow for more philosophy that pumps you up"
+    engagement: "Ask questions that make people think about WHY they train"
+    link_in_bio: false
+
+# =============================================================================
+# EXTENSIONS ALLOWED
+# =============================================================================
+# Content types that can inherit this brand profile:
+# - Twitter: tweets, threads
+# - Substack: articles, newsletters
+# - Podcast: scripts, dialogue
+# - Video: scripts, outlines
+# =============================================================================

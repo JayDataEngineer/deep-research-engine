@@ -1,0 +1,57 @@
+extension:
+  name: memory_monitor
+  type: feature
+  display_name: Memory Monitor
+  description: Optional GPU and system memory monitoring
+  version: "1.0.0"
+  author: "Unified LLM Interface"
+  category: feature
+  enabled: true
+
+# API routes provided by this extension
+api:
+  routes:
+    - path: /api/v1/system/memory
+      methods:
+        - GET
+      description: Get GPU and RAM memory usage
+    - path: /api/v1/monitoring/models
+      methods:
+        - GET
+      description: Get loaded AI models information
+    - path: /api/v1/monitoring/models/unload
+      methods:
+        - POST
+      description: Unload AI models to free GPU memory
+
+# Dependencies
+dependencies:
+  python_version: ">=3.10"
+  pip_packages:
+    - psutil
+  optional:
+    - pynvml  # For NVIDIA GPU monitoring
+    - torch   # Fallback GPU monitoring
+  extensions: []
+
+# Settings
+settings:
+  enabled: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - monitoring
+  - memory
+  - gpu
+  - system
+
+# UI configuration for frontend
+ui:
+  provides_features:
+    - memory_monitoring

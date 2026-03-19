@@ -1,0 +1,62 @@
+extension:
+  name: audio_comparison
+  type: feature
+  display_name: Audio Comparison
+  description: Compare audio files for similarity and detect duplicates using audio embeddings
+  version: 1.0.0
+  author: "Audio Analysis Team"
+  category: feature
+  enabled: true
+
+python:
+  version: "3.10"
+  use_venv: true
+  requirements: requirements.txt
+
+models:
+  - name: CLAP Model (Audio Embeddings)
+    source: hf
+    repo: laion/larger_clap_music
+    destination: models/analysis/clap
+    size: 1.8GB
+    required: true
+    description: Contrastive Language-Audio Pretraining model for embeddings
+
+download:
+  type: huggingface
+  repo: laion/larger_clap_music
+  destination: models/analysis/clap
+  files:
+    - config.json
+    - pytorch_model.bin
+    - tokenizer_config.json
+    - vocabulary.txt
+  patterns:
+    - "*.bin"
+    - "*.json"
+  size: 1.8GB
+
+capabilities:
+  input_type:
+    - audio
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - audio
+  - comparison
+  - duplicates
+  - embeddings
+
+config:
+  # Similarity settings
+  similarity_threshold: 0.85  # Consider files similar above this threshold
+  duplicate_threshold: 0.95   # Consider files duplicates above this threshold
+
+  # Embedding settings
+  embedding_model: laion/larger_clap_music
+  use_gpu: true
+
+  # Optional: Run as subprocess for isolation
+  run_as_subprocess: false

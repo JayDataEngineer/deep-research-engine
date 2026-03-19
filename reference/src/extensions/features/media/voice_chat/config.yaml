@@ -1,0 +1,39 @@
+extension:
+  name: voice_chat
+  type: feature
+  display_name: Voice Chat
+  description: Two-way voice conversations with STT transcription and TTS streaming
+  version: "1.0.0"
+  author: "Unified LLM Interface"
+  category: feature
+  enabled: true
+  api_prefix: /api/v1/voice
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages:
+    - fastapi
+    - langchain-core
+  extensions: []
+
+settings:
+  enabled: true
+
+capabilities:
+  input_type:
+    - audio
+    - text
+  output_type:
+    - audio
+    - text
+  streaming: true
+
+tags:
+  - voice
+  - chat
+  - stt
+  - tts
+
+ui:
+  provides_features:
+    - voice_chat

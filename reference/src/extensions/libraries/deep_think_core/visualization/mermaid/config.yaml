@@ -1,0 +1,33 @@
+extension:
+  name: mermaid_visualizer
+  type: library
+  display_name: Mermaid Graph Visualizer
+  description: Generates Mermaid diagrams from Deep Think node configurations
+  version: 1.0.0
+  category: library
+  enabled: true
+  author: "Unified LLM Interface"
+
+python:
+  use_host_env: true
+
+access_methods:
+  - api
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - visualization
+  - graphs
+  - diagrams
+  - mermaid
+  - library
+
+ui:
+  provides_features:
+    - graph_visualization

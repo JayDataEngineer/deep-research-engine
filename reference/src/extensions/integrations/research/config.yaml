@@ -1,0 +1,15 @@
+# Base research extension config
+# This is the default use case for deep research
+# It inherits all prompts from data/config/deep_research/prompts/base.yaml
+
+extension:
+  name: base
+  type: integration
+  display_name: Base Research
+  description: Default deep research configuration
+  version: 1.0.0
+  category: research
+  enabled: true
+
+# This config is minimal - all prompts come from prompts/base.yaml
+# The loader will merge this with the base prompts automatically

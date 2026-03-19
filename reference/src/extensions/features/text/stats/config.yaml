@@ -1,0 +1,30 @@
+extension:
+  name: stats
+  type: feature
+  display_name: Usage Statistics
+  description: Track and display usage statistics
+  version: 1.0.0
+  author: Unified LLM Interface
+  category: feature
+  enabled: true
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages: []
+  extensions: []
+
+settings:
+  retention_days: 365
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - statistics
+  - analytics
+  - usage
+  - tracking

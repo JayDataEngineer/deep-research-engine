@@ -1,0 +1,222 @@
+extension:
+  name: rag
+  version: '1.0'
+  description: Research extension for rag
+  type: integration
+  author: Unified LLM Interface
+  enabled: true
+_metadata:
+  user_created: false
+  name: RAG Config
+  version: '3.0'
+  use_case: rag
+  extends: base.yaml
+  created: '2025-12-30'
+prompts:
+  worker:
+    domain_context: 'DOMAIN: Research & Knowledge Retrieval
+
+
+      You are analyzing queries for RAG (Retrieval Augmented Generation).
+
+      Focus on:
+
+      - What information is needed from the knowledge base
+
+      - Whether web search is needed for current information
+
+      - Technical depth and specificity required
+
+      '
+  boss:
+    boss_role: King Boss
+    domain: research
+    worker_role: researcher
+    operation_type: research
+    task_allocation_guidance: 'If spawning multiple workers, DIVERSIFY their tasks:
+
+      - researcher_0: Focus on [specific angle, e.g., official documentation, technical
+      specs, knowledge base]
+
+      - researcher_1: Focus on [different angle, e.g., recent news, community discussions,
+      web sources]
+
+      - researcher_2: Focus on [another angle, e.g., academic sources, in-depth analysis,
+      expert opinions]
+
+      '
+    citation_requirements: 'For RAG research:
+
+      - web_search/web_reader: Include the URL
+
+      - semantic_search/vector_store: Mention "from knowledge base" or document reference
+
+      - osint tools: Reference the tool/method used
+
+      '
+  researcher:
+    worker_role_description: research specialist working independently
+    domain_guidance: 'RESEARCH DOMAIN: Knowledge Retrieval & Analysis
+
+
+      Your role is to conduct thorough research using available tools.
+
+      Prioritize knowledge base (vector_store) for established information,
+
+      but use web tools for current or specialized data.
+
+      '
+    citation_examples: '- web_search/web_reader: "According to [source], the URL is..."
+
+      - semantic_search/vector_store: "From the knowledge base: [document title]"
+
+      - osint tools: "Using osint_[tool_name], we found..."
+
+      '
+  critic:
+    critic_role: Critic
+    output_type: research
+    evaluation_focus: 'RESEARCH QUALITY FOCUS:
+
+      - Check that workers used tools appropriately (vector_search, web_search, etc.)
+
+      - Verify knowledge base was utilized when relevant
+
+      - Ensure sources are properly cited with URLs or document references
+
+      '
+    evaluation_guidelines: 'IMPORTANT - Research Validity:
+
+      - Tool-based research IS valid (vector_search, web_search, osint_*, etc.)
+
+      - Workers SHOULD use tools - this is NOT a reason to fail
+
+      - Internal knowledge IS also valid - workers can use both tools and knowledge
+
+      - Do NOT require "internal knowledge only" - tool research is equally valid
+
+      - Pass if the findings provide a good answer to the query, regardless of method
+
+
+      Be GENEROUS with passing. If workers:
+
+      - Used tools effectively (even if some tools had limitations)
+
+      - Provided relevant, accurate information
+
+      - Answered the core question
+
+      - Made a genuine effort
+
+
+      Then PASS with a good score (0.6+). Only fail for:
+
+      - Complete nonsense or hallucinations
+
+      - Completely off-topic
+
+      - Refusal to answer
+
+      '
+  synthesis:
+    synthesis_role: Synthesizer
+    worker_role: researcher
+    output_type: research findings
+    synthesis_guidance: 'SYNTHESIS GUIDELINES:
+
+      - Combine findings from all researchers into comprehensive answer
+
+      - Ensure proper attribution (URLs for web, document refs for knowledge base)
+
+      - Structure with clear sections for complex topics
+
+      - Acknowledge when information comes from different time periods or sources
+
+      '
+    citation_instructions: "=== CITATION INSTRUCTIONS ===\nCRITICAL REQUIREMENTS:\n\
+      1. There are a specific number of sources listed above (e.g., \"There are exactly\
+      \ 30 sources available\")\n2. ONLY use citation markers within that range (e.g.,\
+      \ if 30 sources, use only [1] through [30])\n3. NEVER use citation numbers outside\
+      \ the available range (no [31], [32], [51], [52], etc.)\n4. Place the citation\
+      \ marker at the END of the sentence containing the information\n5. Each claim\
+      \ must have at least one citation marker\n6. NOTE: The worker findings above\
+      \ may have old citation markers - IGNORE THEM\n   Only use the numbered markers\
+      \ from the list above\n7. If information is not in the source list, do NOT cite\
+      \ it - either omit the claim or state it generally without a citation\n"
+    output_instructions: '=== OUTPUT FORMAT ===
+
+      Your response will be formatted as: {output_mode}
+
+      {output_format_guidance}
+
+      '
+spawner_config:
+  min_complexity: 0.4
+  max_researchers: 3
+  max_iterations: 3
+  quality_threshold: 0.5
+  completeness_threshold: 0.8
+  flash_recursion_limit: 50  # Flash Explorer steps (default 50 for full research, reduced in e2e_test variant)
+  flash_max_angles: 3  # Research angles per avenue (default 3-5 for full research)
+  tools:
+    enabled_tools:
+    - zread
+    - vector_store
+tool_settings:
+  embeddings:
+    provider: huggingface
+    model_name: sentence-transformers/all-MiniLM-L6-v2
+    model_kwargs:
+      device: cpu
+    encode_kwargs:
+      normalize_embeddings: true
+  vector_store:
+    provider: chroma
+    collection: spawner_v3_kb
+    persist_directory: /home/ubuntu/Documents/programs/dev/spawner/data/vectorstores
+    top_k: 5
+    search_type: semantic
+  web_search:
+    max_results: 5
+    timeout: 30
+output:
+  mode: mdx
+  validate: false
+  mdx:
+    title: null
+    frontmatter:
+      date: null
+      draft: false
+      tags:
+      - research
+      - analysis
+    metadata:
+      author: AI Research Assistant
+middleware:
+  use_case:
+    flashrank:
+      enabled: true
+      threshold_high: 15
+      top_k: 10
+    ambiguity_resolution:
+      enabled: true
+      max_questions: 2
+      auto_resolve_threshold: 0.3
+    query_expansion:
+      enabled: true
+      expansion_method: llm
+      num_expansions: 3
+    citation_compaction:
+      enabled: true
+      group_by: document_page
+  component:
+    researcher:
+      tool_filter:
+        enable_iteration_pruning: false
+        prune_iteration: 5
+        prune_threshold: 0.5
+      recursion_limit: 10
+    critic:
+      reflexion_enabled: true
+      max_reflexion_iterations: 3
+      feedback_detail: specific

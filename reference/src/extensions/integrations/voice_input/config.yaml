@@ -1,0 +1,16 @@
+extension:
+  name: voice_input
+  display_name: Voice Input
+  description: Voice input transcription with WhisperX integration
+  version: 1.0.0
+  author: ULLI Team
+  category: library
+  tags:
+  - voice
+  - transcription
+  - whisper
+  - audio
+  type: integration
+  enabled: true
+dependencies: []
+settings_schema: []

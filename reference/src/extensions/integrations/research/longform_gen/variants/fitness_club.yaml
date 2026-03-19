@@ -1,0 +1,475 @@
+# Iron Forge Fitness Club - Substack Article Generator
+# Combines fitness discipline with Nietzschean philosophy
+# Uses Nietzsche PDFs for authentic philosophical quotes
+
+_metadata:
+  name: "Iron Forge Fitness Substack"
+  version: "2.0"
+  description: "Substack articles combining fitness discipline with Nietzsche philosophy"
+  user_created: true
+
+# =============================================================================
+# BRAND CONTEXT - Iron Forge Fitness
+# =============================================================================
+brand_context:
+  identity: "Iron Forge Fitness Club"
+  tagline: "Strength. Discipline. No Excuses."
+
+  description: |
+    A community for serious lifters who believe fitness builds character.
+    We combine hard physical training with Nietzschean philosophy -
+    the will to power, overcoming oneself, rejecting mediocrity.
+
+  # =============================================================================
+  # TARGET AUDIENCE
+  # =============================================================================
+  audience:
+    demographics: "Men and women 25-45, serious about fitness, intellectually curious"
+    psychographics: |
+      Values: Hard work, self-overcoming, discipline, personal responsibility
+      Anti-victimhood, anti-excuse mentality, pro-excellence
+      Want to improve physically AND mentally
+      Drawn to philosophy that justifies the grind
+    pain_points: |
+      - Tired of "body positivity" that glorifies mediocrity
+      - Frustrated by blame culture and victimhood mentality
+      - Want deeper meaning behind the suffering of training
+      - Looking for motivation that's intellectual, not just "hustle porn"
+
+  # =============================================================================
+  # CONTENT STRATEGY
+  # =============================================================================
+  tone:
+    style: "intense, philosophical, direct, no-nonsense"
+    voice: "direct_address"  # Talk directly to "you"
+    energy: "high"  # Intense and urgent
+    keywords: ["discipline", "excellence", "will to power", "overcoming", "standards"]
+
+  # =============================================================================
+  # THEMES - Fitness meets Nietzsche
+  # =============================================================================
+  themes:
+    - "The gym as arena for self-overcoming"
+    - "Discipline as the highest form of freedom"
+    - "Suffering as necessary for growth"
+    - "Rejecting herd mentality in fitness and life"
+    - "The will to power through progressive overload"
+    - "Creating your own values, standards, and excellence"
+    - "Amor fati - loving your training grind"
+    - "The last man vs. the übermensch in fitness culture"
+    - " Eternal recurrence of the daily grind"
+    - "Beyond good and evil: fitness as self-creation"
+
+  # =============================================================================
+  # THINGS TO AVOID
+  # =============================================================================
+  avoid:
+    - "Generic motivational fluff without substance"
+    - "Oversimplified 'just do it' advice"
+    - "Political content (stay focused on philosophy/lifestyle)"
+    - "Misappropriating Nietzsche quotes without context"
+    - "Being too academic - stay grounded in gym reality"
+
+  # =============================================================================
+  # ENGAGEMENT STRATEGY
+  # =============================================================================
+  cta:
+    follow: true  # "Follow for more philosophy that pumps you up"
+    engagement: "Ask questions that make people think about WHY they train"
+    link_in_bio: false
+
+# =============================================================================
+# TOOLS - UNIFIED CONFIGURATION
+# =============================================================================
+# ONE WAY to specify tools: Just list tool names
+# Includes web_research_agent (YOUR web-sub-agent) and pdf_deep_agent (YOUR RAG lab-sub-agent)
+# =============================================================================
+enabled_tools:
+  - web_search
+  - web_get
+  - web_map
+  - web_crawl
+  - community_scrape
+  - web_research_agent  # YOUR web-sub-agent
+  - pdf_deep_agent      # YOUR RAG lab-sub-agent (Nietzsche PDFs)
+  - vector_search       # For RAG queries
+
+# =============================================================================
+# PROMPTS: Nietzsche Fitness Article Extensions
+# =============================================================================
+prompts:
+  synthesis:
+    synthesis_role: "Nietzschean Fitness Article Producer"
+    synthesis_guidance: |
+      Combine all worker outputs into compelling Substack article brief that:
+
+      1. BLENDS FITNESS + PHILOSOPHY
+         - Use Nietzsche quotes authentically (from RAG PDFs)
+         - Connect philosophical concepts to gym reality
+         - Show how physical training embodies philosophical principles
+
+      2. ARTICLE STRUCTURE
+         - Compelling headline options (provocative, philosophical)
+         - Detailed outline with sections
+         - Nietzsche quotes with proper citations
+         - Modern fitness applications
+         - Call to action that challenges readers
+
+      3. UNIQUE ANGLE
+         - What does Nietzsche say about suffering? Connect to training
+         - What does "will to power" mean in the gym?
+         - How is lifting weight an act of self-creation?
+         - Why does comfort destroy us?
+
+      4. ENGAGEMENT HOOKS
+         - Opening that grabs attention
+         - Stories that illustrate the philosophy
+         - Examples from gym culture
+         - Challenges to the reader
+
+      Focus on:
+      - Authentic Nietzsche integration (not misquotes)
+      - Practical fitness applications
+      - Intellectual depth + emotional intensity
+      - Something the reader hasn't heard before
+
+  critic:
+    critic_role: "Nietzschean Fitness Critic"
+    output_type: "article research brief"
+    evaluation_focus: |
+      NIETZSCHE FITNESS RUBRIC:
+
+      1. PHILOSOPHICAL AUTHENTICITY (0-1):
+         - Are Nietzsche quotes accurate and contextual?
+         - Is the philosophy actually understood (not misappropriated)?
+         - Are connections to fitness genuine (not forced)?
+
+      2. FITNESS REALITY (0-1):
+         - Does this connect to real training experience?
+         - Is the advice practical, not just poetic?
+         - Does it respect the actual grind of gym work?
+
+      3. DEPTH OF INSIGHT (0-1):
+         - Does it go beyond surface motivational quotes?
+         - Are there non-obvious connections?
+         - Is the synthesis genuinely novel?
+
+      4. EMOTIONAL IMPACT (0-1):
+         - Does it make the reader want to train?
+         - Is it intense without being cringe?
+         - Does it challenge the reader?
+
+      5. ORIGINALITY (0-1):
+         - Is this something they've seen on Instagram?
+         - Does it create new understanding?
+         - Is the angle unique?
+
+      6. READINESS (0-1):
+         - Ready for long-form writing?
+         - Proper citations included?
+         - Sufficient depth for 1500-2000 words?
+
+      Pass if overall score >= 0.8
+
+# =============================================================================
+# SPAWNER CONFIG
+# =============================================================================
+spawner_config:
+  min_complexity: 0.5
+  max_researchers: 5
+  max_iterations: 3
+  quality_threshold: 0.8
+  completeness_threshold: 0.85
+  worker_execution_mode: parallel  # Should respect dependencies while running independent workers in parallel
+  worker_specialization_mode: hybrid
+  level_of_detail: 8
+
+  # Pass all worker outputs to critic/synthesis
+  pass_all_workers_to_critic: true
+
+  # =============================================================================
+  # TOOL CONFIGURATION - UNIFIED PATTERN
+  # =============================================================================
+  # Tools specified at top level in enabled_tools list.
+  # NO MORE enable_* flags here - use enabled_tools instead.
+  # =============================================================================
+
+  # =============================================================================
+  # RAG DATASOURCES - Nietzsche PDFs
+  # =============================================================================
+  # Note: These are also at root level for RAG initialization
+  # The RAG system reads from config.get("tool_settings", {})
+  # So we need tool_settings at the merged config root
+
+# =============================================================================
+# ROOT LEVEL TOOL SETTINGS (for RAG initialization)
+# =============================================================================
+# These settings are read by the RAG system during initialize_rag()
+# They must be at root level because the config merge happens before
+# the spawner_config is applied
+tool_settings:
+  # Vector store settings - REQUIRED for pdf_deep_agent to work
+  vector_store:
+    enabled: true
+    collection: "nietzsche_fitness"
+    persist_directory: "/home/ubuntu/Documents/programs/text/unified-llm-interface/data/vectorstores/chroma"
+
+  # RAG datasources - PDFs to ingest into vector store
+  rag_datasources:
+    - type: file
+      path: /home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/books/nietzsche/Beyond Good and Evil.pdf
+      metadata:
+        source: "Beyond Good and Evil"
+        author: "Friedrich Nietzsche"
+        type: "book"
+        language: "en"
+    - type: file
+      path: /home/ubuntu/Documents/programs/text/unified-llm-interface/data/inputs/books/nietzsche/Thus Spoke Zarathustra.pdf
+      metadata:
+        source: "Thus Spoke Zarathustra"
+        author: "Friedrich Nietzsche"
+        type: "book"
+        language: "en"
+
+  # =============================================================================
+  # AGENT TOOLS - Web + RAG sub-agents for workers
+  # =============================================================================
+  # Workers can spawn these autonomous sub-agents for deep research
+  agent_tools:
+      pdf_deep_agent:
+        mode: "agentic"  # Options: basic, enhanced, agentic
+        top_k: 10
+        max_attempts: 3
+      web_research_agent:
+        mode: "investigative"  # Options: simple, investigative
+        max_urls: 3
+        max_steps: 4
+        max_refinements: 2
+
+# =============================================================================
+# WORKER GRAPH - Nietzsche Fitness Researchers
+# =============================================================================
+worker_graph:
+  worker_order:
+    - philosopher_connector
+    - fitness_researcher
+    - synthesis_bridger
+    - article_framer
+    - quote_hunter
+
+  dependencies:
+    philosopher_connector: []
+    fitness_researcher: []
+    synthesis_bridger: [philosopher_connector, fitness_researcher]
+    article_framer: [synthesis_bridger]
+    quote_hunter: [synthesis_bridger]
+
+# =============================================================================
+# SPECIALIST CONFIGS - Nietzsche Fitness Workers
+# =============================================================================
+specialist_configs:
+  # =============================================================================
+  # Level 1: Parallel research - Philosophy and Fitness
+  # =============================================================================
+  philosopher_connector:
+    prompt_weights:
+      philosophical: 0.95
+      analytical: 0.85
+      precise: 0.8
+    specialist_prompt: |
+      You are a PHILOSOPHER CONNECTOR for {{ yaml_config.brand_context.identity }}.
+
+      Your role: Connect Nietzschean philosophy to the research topic.
+
+      Use the pdf_deep_agent to explore the Nietzsche PDFs:
+      - Beyond Good and Evil
+      - Thus Spoke Zarathustra
+
+      Find relevant philosophical concepts for: {topic}
+
+      Key themes to explore:
+      - Will to Power - How does it apply to physical strength?
+      - Self-overcoming - How training creates who you are
+      - Amor fati - Loving the grind, embracing suffering
+      - Master morality vs slave morality - Excellence vs mediocrity
+      - The Übermensch - Becoming more than you are
+      - Eternal recurrence - Would you live this workout forever?
+
+      Return:
+      1. Relevant Nietzsche quotes with citations (book, context)
+      2. Philosophical concepts explained clearly
+      3. How these concepts connect to the topic
+      4. Unique angles that haven't been explored
+
+      Be authentic. Don't force quotes. Use only what genuinely fits.
+
+  fitness_researcher:
+    prompt_weights:
+      practical: 0.9
+      fitness_focused: 0.95
+      research: 0.8
+    specialist_prompt: |
+      You are a FITNESS RESEARCHER for {{ yaml_config.brand_context.identity }}.
+
+      Brand: {{ yaml_config.brand_context.tagline }}
+      Theme: {{ yaml_config.brand_context.themes | join(', ') }}
+
+      Research the fitness/training aspects of: {topic}
+
+      Use web_research_agent to find:
+      1. Current fitness science on this topic
+      2. Expert opinions from credible sources
+      3. Real-world examples and case studies
+      4. Training methodologies that work
+      5. Common myths vs reality
+
+      Focus on:
+      - Evidence-based information
+      - Practical applications
+      - Expert coaching insights
+      - Things serious lifters need to know
+
+      Return comprehensive fitness research with sources.
+
+  # =============================================================================
+  # Level 2: Synthesis - Philosophy meets Fitness
+  # =============================================================================
+  synthesis_bridger:
+    prompt_weights:
+      synthetic: 0.95
+      creative: 0.85
+      philosophical: 0.9
+    specialist_prompt: |
+      You are a SYNTHESIS BRIDGER for {{ yaml_config.brand_context.identity }}.
+
+      Your role: Combine Nietzsche philosophy with fitness research into unique insights.
+
+      Take outputs from philosopher_connector and fitness_researcher.
+
+      Create synthesis that:
+      1. FINDS THE CONNECTION
+         - How does the philosophy explain the training?
+         - How does the training embody the philosophy?
+         - What's the deeper meaning behind the physical?
+
+      2. CREATES UNIQUE INSIGHTS
+         - What can Nietzsche teach lifters that fitness influencers can't?
+         - How does philosophy elevate the physical act?
+         - What's the intellectual justification for the grind?
+
+      3. AVOIDS CLICHÉS
+         - Don't just slap quotes on generic advice
+         - Make genuine connections
+         - Go deeper than surface-level motivation
+
+      Return:
+      - 3-5 unique synthesized insights
+      - Each insight combines philosophy + fitness
+      - Quote support from Nietzsche (when genuine)
+      - Practical applications for readers
+
+  article_framer:
+    prompt_weights:
+      structural: 0.9
+      creative: 0.85
+      audience_focused: 0.8
+    specialist_prompt: |
+      You are an ARTICLE FRAMER for {{ yaml_config.brand_context.identity }}.
+
+      Brand: {{ yaml_config.brand_context.tagline }}
+      Audience: {{ yaml_config.brand_context.audience.demographics }}
+      Tone: {{ yaml_config.brand_context.tone.style }}
+
+      Take the synthesized insights and create a comprehensive article brief.
+
+      **1. HEADLINE OPTIONS** (5-8 variations)
+         - Provocative: Challenge the reader
+         - Philosophical: Reference Nietzsche concepts
+         - Practical: Promise fitness value
+         - Curiosity gaps: Make them wonder
+
+      **2. ARTICLE STRUCTURE**
+         - Compelling opening hook
+         - 5-7 main sections with flow
+         - Nietzsche quotes woven throughout
+         - Practical takeaways
+         - Powerful conclusion
+
+      **3. KEY ARGUMENTS**
+         - Main thesis statement
+         - Supporting points with evidence
+         - Counter-arguments addressed
+         - Nietzsche citations
+
+      **4. NARRATIVE ARC**
+         - Begin with the problem/struggle
+         - Introduce Nietzsche's perspective
+         - Show practical application
+         - End with challenge/transformation
+
+      **5. ENGAGEMENT ELEMENTS**
+         - Questions that make readers think
+         - Challenges to their current approach
+         - Discussion prompts
+
+      **6. IMAGE PROMPTS** (3-5 for ComfyUI)
+         Format:
+         ```
+         [Position: hero/section/mid-article]
+         Style: [editorial illustration/dark moody/inspirational/etc.]
+         Subject: [main subject]
+         Composition: [layout details]
+         Mood: [atmosphere - dark, intense, philosophical]
+         Details: [specific elements]
+         ```
+
+      Target: 1500-2000 word outline ready for writing.
+
+      Return publication-ready article brief.
+
+  quote_hunter:
+    prompt_weights:
+      precise: 0.95
+      philosophical: 0.9
+      thorough: 0.85
+    specialist_prompt: |
+      You are a QUOTE HUNTER specializing in Nietzsche.
+
+      Your role: Find EXACT quotes from the Nietzsche PDFs that support the article thesis.
+
+      Use pdf_deep_agent in agentic mode for comprehensive search.
+
+      Topic: {topic}
+
+      Find quotes that are:
+      1. RELEVANT to the fitness/training angle
+      2. AUTHENTIC - exact wording from the texts
+      3. PROPERLY CONTEXTUALIZED - explain what Nietzsche meant
+      4. GENUINELY APPLICABLE - not forced connections
+
+      For each quote provide:
+      - The exact quote
+      - Source (book and context)
+      - Original meaning in Nietzsche's philosophy
+      - How it applies to the fitness topic
+      - Where it fits in the article structure
+
+      Prioritize quality over quantity. 3-5 perfect quotes > 20 mediocre ones.
+
+# =============================================================================
+# OUTPUT CONFIG
+# =============================================================================
+output:
+  mode: "mdx"
+  validate: false
+
+  mdx:
+    title: null
+    frontmatter:
+      date: null
+      draft: false
+      tags: ["fitness", "philosophy", "nietzsche", "strength", "discipline"]
+      images: []  # Image prompts from article_brief
+    metadata:
+      author: "Iron Forge Fitness"
+      subtitle: "Where Philosophy Meets the Iron"

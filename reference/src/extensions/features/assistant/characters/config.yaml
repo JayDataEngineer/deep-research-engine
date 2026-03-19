@@ -1,0 +1,38 @@
+extension:
+  name: characters
+  type: feature
+  display_name: Characters
+  description: Character card management (TavernCard v2, PNG, JSON, YAML)
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true
+
+capabilities:
+  input_type:
+    - text
+    - file
+    - image
+  output_type:
+    - text
+    - file
+    - image
+  streaming: false
+
+tags:
+  - characters
+  - cards
+  - tavern
+  - management
+
+ui:
+  sidebar_component: characters
+  icon: "users"
+
+# CLI command name
+cli_command: characters
+
+# Aliases
+aliases: ["char", "chars"]

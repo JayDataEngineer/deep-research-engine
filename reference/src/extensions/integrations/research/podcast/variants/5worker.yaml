@@ -1,0 +1,88 @@
+# Podcast 5-Worker Variant
+# Full pipeline with dedicated research and character workers
+
+_metadata:
+  name: "Podcast 5-Worker"
+  version: "1.0"
+  description: "Full 5-worker pipeline with news aggregator and dedicated character researchers"
+  user_created: false  # This is a built-in example variant
+
+# Full spawner config for 5-worker mode
+spawner_config:
+  max_researchers: 5
+  max_iterations: 2
+  worker_execution_mode: dynamic_graph
+
+# Full worker graph with 5 workers
+worker_graph:
+  worker_order:
+    - news_aggregator
+    - character_a_research
+    - character_b_research
+    - character_a
+    - character_b
+
+  dependencies:
+    news_aggregator: []
+    character_a_research: [news_aggregator]
+    character_b_research: [news_aggregator]
+    character_a: [character_a_research]
+    character_b: [character_b_research]
+
+# Character mappings
+character_card_mappings:
+  character_a: "EMMA"
+  character_b: "OLIVIA"
+
+# Specialist configs for all 5 workers
+specialist_configs:
+  news_aggregator:
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+    prompt_weights:
+      analytical: 0.8
+      thorough: 0.9
+      neutral: 0.9
+    worker_role: context_only
+
+  character_a_research:
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+    prompt_weights:
+      curious: 0.8
+      progressive: 0.9
+      skeptical: 0.7
+    worker_role: context_only
+
+  character_a:
+    tools:
+      enabled_tools:
+      - community_scrape
+    prompt_weights:
+      creative: 0.8
+      expressive: 0.9
+      emotional: 0.85
+
+  character_b_research:
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+    prompt_weights:
+      analytical: 0.8
+      traditional: 0.9
+      critical: 0.8
+    worker_role: context_only
+
+  character_b:
+    tools:
+      enabled_tools:
+      - community_scrape
+    prompt_weights:
+      creative: 0.7
+      philosophical: 0.9
+      cynical: 0.85

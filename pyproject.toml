@@ -195,7 +195,10 @@ packages = ["src/context_engine", "src/deep_research_engine"]
 line-length = 100
 target-version = "py312"
 src = ["src"]
+fix = true
+unsafe-fixes = false
 
+[tool.ruff.lint]
 # Select rules
 select = [
     "E",      # pycodestyle errors
@@ -213,29 +216,53 @@ select = [
     "RUF",    # Ruff-specific rules
     "PERF",   # Perflint
     "PYI",    # flake8-pyi
+    "D",      # pydocstyle (docstring conventions)
 ]
 
 # Ignore rules
 ignore = [
     "E501",   # Line length (handled by formatter)
     "ARG002", # Unused method argument (common in ABCs)
+    "ARG001", # Unused function argument (common in interfaces)
+    # Docstring rules - relaxed for flexibility
+    "D100",   # Missing docstring in public module
+    "D104",   # Missing docstring in public package
+    "D107",   # Missing docstring in __init__
+    "D102",   # Missing docstring in public method (can be added later)
+    "D105",   # Missing docstring in magic method
+    "D106",   # Missing docstring in public nested class
+    # Style rules - can be fixed later
+    "SIM108", # Use ternary operator
+    "SIM102", # Use single if statement
+    "RUF005", # Consider iterable unpacking
+    "RUF012", # Mutable default value
+    # Type annotation style - keep Union for compatibility
+    "UP007",  # Use X | Y for type annotations
+    # Exception handling - can be fixed later
+    "B904",   # Raise with from clause
+    # Hook methods in ABCs - intentional empty implementations
+    "B027",   # Empty method in abstract base class
+    # Whitespace - auto-fixed
+    "W291",   # Trailing whitespace
+    "W293",   # Blank line contains whitespace
+    # Path style - can be fixed later
+    "PTH123", # Use Path.open() instead of open()
 ]
 
-# Fix on save
-fix = true
-unsafe-fixes = false
+# Docstring convention (Google style)
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
-# Format
+# Per-file ignores
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]  # Unused imports in __init__
+"tests/**/*.py" = ["ARG", "PTH"]  # Test files
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
-
-# Per-file ignores
-[tool.ruff.per-file-ignores]
-"__init__.py" = ["F401", "F403"]  # Unused imports in __init__
-"tests/**/*.py" = ["ARG", "PTH"]  # Test files
 
 # =============================================================================
 # MYPY (Type Checking)

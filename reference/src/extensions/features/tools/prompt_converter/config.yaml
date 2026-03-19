@@ -1,0 +1,34 @@
+extension:
+  name: prompt_converter
+  type: feature
+  display_name: Prompt Converter
+  description: Convert prompts between different formats (SillyTavern, Claude, ChatGPT, etc.)
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - prompts
+  - conversion
+  - formats
+  - tools
+
+ui:
+  sidebar_component: prompt_converter
+  icon: "swap"
+
+# CLI command name
+cli_command: convert
+
+# Aliases
+aliases: ["prompt", "converter"]

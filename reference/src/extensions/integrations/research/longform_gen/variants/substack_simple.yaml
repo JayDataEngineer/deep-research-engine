@@ -1,0 +1,351 @@
+# Substack Article Generator - Simplified 3-Worker Variant
+# This is a streamlined version focused on clarity and parallel execution
+
+_metadata:
+  name: "Substack Simple"
+  version: "1.0"
+  use_case: "longform_gen"
+  description: "Simplified 3-worker parallel approach: Philosopher, Relevancy, Marketer"
+
+# =============================================================================
+# TOOLS - UNIFIED CONFIGURATION
+# =============================================================================
+# ONE WAY to specify tools: Just list tool names
+# Includes web_research_agent (YOUR web-sub-agent)
+# =============================================================================
+enabled_tools:
+  - web_search
+  - web_get
+  - web_map
+  - web_crawl
+  - community_scrape
+  - web_research_agent  # YOUR web-sub-agent
+  - pdf_deep_agent      # YOUR RAG lab-sub-agent (Philosopher needs this)
+  - vector_search       # For RAG queries
+
+# =============================================================================
+# PROMPTS
+# =============================================================================
+prompts:
+  synthesis:
+    synthesis_role: "Long-Form Article Writer"
+    synthesis_guidance: |
+      Combine the three perspectives into a complete, publishable long-form article (2000-3000 words):
+
+      FROM PHILOSOPHER (Timeless Wisdom):
+      - Deep principles and timeless insights
+      - Theoretical frameworks and first principles
+      - Connections to great thinkers and ideas throughout history
+
+      FROM RELEVANCY (Current Zeitgeist):
+      - Current events, trends, and cultural moments
+      - What people are talking about NOW
+      - Timely hooks and news pegs
+
+      FROM MARKETER (Audience Psychology):
+      - What the target audience actually cares about
+      - Psychological triggers and engagement patterns
+      - Simple, compelling framing and CTAs
+
+      CREATE A FULL ARTICLE WITH:
+      1. Compelling headline that grabs attention
+      2. FULLY WRITTEN introduction with a strong hook (200-300 words)
+      3. 3-5 COMPLETELY WRITTEN main sections with full prose (500-800 words each)
+      4. Weave in citations from the research naturally
+      5. FULLY WRITTEN conclusion with actionable takeaways (200-300 words)
+
+      The article should be ready to publish - complete paragraphs, smooth transitions,
+      engaging storytelling, and natural integration of all three perspectives.
+    template: |
+      You are an expert long-form article writer for a premium Substack publication. Your task is to write a COMPLETE, PUBLISHABLE ARTICLE (2000-3000 words) that weaves together timeless wisdom, current relevance, and audience psychology.
+
+      {synthesis_guidance}
+
+      ## RESEARCH FINDINGS FROM THREE PERSPECTIVES
+
+      {findings}
+
+      ## YOUR TASK
+
+      Write a COMPLETE LONG-FORM ARTICLE suitable for immediate publication. DO NOT create an outline or brief - write the FULL ARTICLE with complete paragraphs.
+
+      Your article must include:
+
+      1. **COMPELLING HEADLINE**: A title that grabs attention and signals value
+
+      2. **FULLY WRITTEN INTRODUCTION** (200-300 words):
+         - Start with a compelling hook that grabs the reader immediately
+         - Set up the article's premise and why it matters NOW
+         - Preview what the reader will learn without giving everything away
+
+      3. **3-5 MAIN SECTIONS** (500-800 words each):
+         - Each section should be FULLY WRITTEN in complete prose
+         - Weave together the three perspectives naturally:
+           * Philosopher's insights provide depth and meaning
+           * Relevancy expert's findings provide timely hooks and examples
+           * Marketer's understanding frames it for maximum reader engagement
+         - Include 2-3 citations per section woven naturally into the narrative
+         - Use subheadings to break up the text
+         - Include vivid examples, stories, and metaphors
+
+      4. **FULLY WRITTEN CONCLUSION** (200-300 words):
+         - Synthesize the key insights from all sections
+         - End with a strong takeaway or insight that lingers
+         - Include 3-5 actionable steps the reader can implement
+
+      ## WRITING STYLE
+
+      - Write in a conversational but authoritative voice (like a premium Substack essay)
+      - Use short paragraphs (2-4 sentences) for readability
+      - Include vivid details and specific examples
+      - Show, don't just tell - use stories and imagery
+      - Vary sentence length for rhythm and flow
+      - Use emotional language that resonates with the reader
+      - Make complex ideas accessible without dumbing them down
+
+      ## CITATION FORMAT
+
+      Use numbered citations in brackets like [1], [2], etc. that reference the sources provided in the research findings.
+
+      Remember: This is a FULL ARTICLE, not an outline or brief. Write complete paragraphs that flow naturally. The reader should feel like they're reading a polished, ready-to-publish essay.
+
+      {output_instructions}
+
+  critic:
+    critic_role: "Article Quality Critic"
+    output_type: "full article"
+    evaluation_focus: |
+      Evaluate the full article on:
+
+      1. TIMELESSNESS (0-1): Does it connect to deeper principles and insights?
+      2. TIMELINESS (0-1): Is it relevant to the current moment with fresh examples?
+      3. ENGAGEMENT (0-1): Will the target audience find it compelling and readable?
+      4. CLARITY (0-1): Is it well-written, accessible, and flows naturally?
+      5. COMPLETENESS (0-1): Is it a complete, publishable article (not just an outline)?
+      6. CITATION QUALITY (0-1): Are sources properly cited and integrated?
+
+      Pass if overall score >= 0.8 and it's a FULL ARTICLE (not an outline or brief)
+    template: |
+      You are the {critic_role}. Evaluate the following {output_type} for quality and completeness.
+
+      {evaluation_focus}
+
+      ## RESEARCH BRIEF
+
+      {research_brief}
+
+      ## ARTICLE BRIEF TO EVALUATE
+
+      {worker_findings}
+
+      ## YOUR TASK
+
+      Provide a structured evaluation in JSON format:
+
+      ```json
+      {{
+        "quality_score": 0.0-1.0,
+        "completeness_score": 0.0-1.0,
+        "timelessness_score": 0.0-1.0,
+        "timeliness_score": 0.0-1.0,
+        "engagement_score": 0.0-1.0,
+        "clarity_score": 0.0-1.0,
+        "issues": ["list of specific issues"],
+        "missing_info": ["list of missing elements"],
+        "contradictions": ["list of contradictions found"],
+        "feedback": "detailed feedback for improvement"
+      }}
+      ```
+
+      Assess whether the article brief is ready for writing or needs revision.
+
+# =============================================================================
+# SPAWNER CONFIG
+# =============================================================================
+spawner_config:
+  min_complexity: 0.3
+  max_researchers: 3  # Exactly 3 workers
+  max_iterations: 1  # Single pass - no iteration loops
+  quality_threshold: 0.8
+  completeness_threshold: 0.85
+  worker_execution_mode: parallel
+  worker_specialization_mode: fixed
+
+  # Worker types for boss node assignment
+  worker_types:
+    philosopher: "Philosopher - timeless wisdom and first principles"
+    relevancy: "Relevancy - current zeitgeist and trends"
+    marketer: "Marketer - audience psychology and engagement"
+
+  # =============================================================================
+  # TOOL CONFIGURATION - UNIFIED PATTERN
+  # =============================================================================
+  # Tools specified at top level in enabled_tools list.
+  # NO MORE enable_* flags here - use enabled_tools instead.
+  # =============================================================================
+
+  # =============================================================================
+  # MAP-REDUCE: Worker Self-Summarization
+  # =============================================================================
+  # This enables the "Map-Reduce" pattern where workers compress their own
+  # findings before passing to synthesis, eliminating the need for lossy clipping.
+  worker_summarization:
+    enabled: true  # Enable Map-Reduce worker self-summarization
+    max_summary_tokens: 3000  # Maximum tokens per worker summary
+    save_full_artifacts: true  # Save full findings to disk for RAG-style retrieval
+
+  # Context clipping settings (fallback if summarization disabled or insufficient)
+  context_clipping:
+    strategy: "tiered_smart"  # Options: truncate, smart, tiered_smart, summarize
+    synthesis_buffer_percent: 15  # Buffer for synthesis output
+    critic_buffer_percent: 15  # Buffer for critic output
+
+# =============================================================================
+# WORKER GRAPH - 3 Parallel Workers
+# =============================================================================
+worker_graph:
+  worker_order:
+    - philosopher
+    - relevancy
+    - marketer
+    # All run in parallel, then synthesis combines them
+
+  dependencies:
+    philosopher: []
+    relevancy: []
+    marketer: []
+    # No dependencies - all start immediately
+
+# =============================================================================
+# SPECIALIST CONFIGS - The 3 Workers
+# =============================================================================
+specialist_configs:
+  # Worker 1: PHILOSOPHER - Timeless Wisdom
+  philosopher:
+    prompt_weights:
+      analytical: 0.9
+      philosophical: 0.95
+      creative: 0.7
+    specialist_prompt: |
+      You are the PHILOSOPHER - a deep thinker in the tradition of Plato, Socrates, and other great minds.
+
+      YOUR ROLE: Bring timeless wisdom and deep thinking to the article.
+
+      YOUR APPROACH:
+      1. Think from first principles
+      2. Connect to great thinkers throughout history
+      3. Find universal patterns and truths
+      4. Use RAG to access deep knowledge sources (PDFs, academic papers, philosophy texts)
+      5. Blend your own creativity with established wisdom
+
+      FOCUS ON:
+      - What are the fundamental principles at play?
+      - How have great thinkers approached similar questions?
+      - What timeless insights apply to this topic?
+      - What would Plato/Aristotle/Nietzsche/[relevant thinker] say about this?
+
+      YOUR RESEARCH METHOD:
+      - Use vector_store (RAG) to find relevant passages from philosophy, theory, academia
+      - Think deeply and creatively - don't just report facts
+      - Make connections across disciplines and eras
+      - Be profound but accessible
+
+      OUTPUT:
+      Provide a perspective that elevates the article beyond surface-level commentary.
+      Give the reader something to think about that will stay with them.
+
+  # Worker 2: RELEVANCY - Current Zeigeist
+  relevancy:
+    prompt_weights:
+      curious: 0.9
+      timely: 0.95
+      cultural: 0.85
+    specialist_prompt: |
+      You are the RELEVANCY expert - your finger is on the pulse of the current moment.
+
+      YOUR ROLE: Make the article timely and connected to what's happening NOW.
+
+      YOUR APPROACH:
+      1. What's trending? What's the cultural conversation right now?
+      2. What are people talking about on social media?
+      3. What recent news, events, or developments relate to this topic?
+      4. What's the zeitgeist - the spirit of the times?
+
+      FOCUS ON:
+      - Current events (last 3-6 months)
+      - Trending topics on Twitter/X, Reddit, TikTok
+      - Recent news articles and op-eds
+      - What's capturing attention RIGHT NOW
+      - Cultural moments and movements
+
+      YOUR RESEARCH METHOD:
+      - Use web_search to find current events and trending topics
+      - Use community_scrape to understand what people are discussing
+      - Use web_reader to dive into current articles
+      - Stay focused on the NOW - not history or theory
+
+      OUTPUT:
+      Provide timely hooks, current examples, and cultural references that make
+      the article feel fresh and urgent. Give the reader a reason to read NOW.
+
+  # Worker 3: MARKETER - Audience Psychology
+  marketer:
+    prompt_weights:
+      audience_focused: 0.95
+      psychological: 0.9
+      practical: 0.85
+    specialist_prompt: |
+      You are the MARKETER and AUDIENCE PSYCHOLOGIST - an expert at understanding what makes people engage.
+
+      YOUR ROLE: Make the article compelling for the target audience using expert marketing techniques.
+
+      YOUR APPROACH:
+      1. Who is the target audience? What do they care about?
+      2. What are their pain points, desires, fears, and aspirations?
+      3. What psychological triggers will capture their attention?
+      4. How do we frame this to maximize engagement and action?
+
+      FOCUS ON:
+      - Simplicity: Make complex ideas accessible
+      - Brand consistency: Align with the established brand voice
+      - Engagement: What makes people click, read, share?
+      - Psychology: What patterns cause people to be engaged?
+      - CTAs: What action should the reader take?
+
+      MARKETING PRINCIPLES TO APPLY:
+      - Keep it simple (KISS principle)
+      - Focus on benefits, not features
+      - Use social proof and authority
+      - Create curiosity gaps
+      - Speak directly to the reader's self-interest
+      - Use clear, compelling headlines and hooks
+
+      YOUR RESEARCH METHOD:
+      - Use web_search to understand audience demographics and interests
+      - Use community_scrape to see what content resonates with similar audiences
+      - Study successful articles in this niche - what works?
+      - Research psychological triggers and engagement patterns
+
+      OUTPUT:
+      Provide:
+      1. Target audience profile
+      2. Key psychological triggers to use
+      3. Suggested framing and hooks
+      4. Engagement elements (questions, CTAs, shareable insights)
+      5. Simplified explanations of complex topics
+
+# =============================================================================
+# OUTPUT CONFIG
+# =============================================================================
+output:
+  mode: "mdx"
+  validate: false
+
+  mdx:
+    title: null
+    frontmatter:
+      date: null
+      draft: false
+      tags: ["substack", "article"]
+    metadata:
+      author: "AI Research Assistant"

@@ -1,0 +1,366 @@
+# Fitness Social Media Variant - Social Media Content Generator
+# Generates right-wing fitness content for social platforms.
+# Merges with base soc_media_gen config.yaml
+
+_metadata:
+  name: "Fitness Social Media"
+  version: "1.0"
+  description: "Right-wing fitness content for Twitter/X, Instagram, TikTok"
+  user_created: false  # This is a built-in variant
+
+# =============================================================================
+# PROMPTS: Fitness content extensions
+# =============================================================================
+prompts:
+  synthesis:
+    synthesis_role: "Content Brief Producer"
+    synthesis_guidance: |
+      Combine all worker outputs into comprehensive content brief with:
+      - Trend insights and viral topics
+      - Research-backed claims with citations
+      - Right-wing framing angles and messaging
+      - Meme and visual content ideas
+      - Draft social media posts (Twitter/X, Instagram, TikTok)
+      - Engagement optimization tips
+
+      Focus on content that resonates with:
+      - Disaffected young men
+      - Fitness community
+      - Anti-woke/culture war overlap
+      - Masculinity and self-improvement themes
+
+  critic:
+    critic_role: "Content Quality Critic"
+    output_type: "social media content brief"
+    evaluation_focus: |
+      CONTENT QUALITY RUBRIC:
+
+      1. ENGAGEMENT POTENTIAL (0-1):
+         - Is the content shareable and saveable?
+         - Will it generate discussion?
+         - Does it have viral hooks?
+
+      2. EVIDENCE SUPPORT (0-1):
+         - Are claims backed by research?
+         - Are sources properly cited?
+         - Is bro-science distinguished from real science?
+
+      3. FRAMING EFFECTIVENESS (0-1):
+         - Is the right-wing framing compelling?
+         - Does it resonate with target audience?
+         - Are the ideological hooks sharp?
+
+      4. ACTIONABILITY (0-1):
+         - Are there clear hooks and CTAs?
+         - Is the content immediately usable?
+         - Are there specific posting recommendations?
+
+      5. PLATFORM FIT (0-1):
+         - Does it fit the platform (Twitter/IG/TikTok)?
+         - Is the format appropriate?
+         - Are hashtags and timing optimized?
+
+      Pass if overall score >= 0.75
+
+# =============================================================================
+# SPAWNER CONFIG OVERRIDES
+# =============================================================================
+spawner_config:
+  max_researchers: 8
+  max_iterations: 4
+  level_of_detail: 8
+
+  tools:
+    enabled_tools:
+    - vision  # For meme analysis
+    - community_scrape  # For Reddit fitness/4chan fitness sentiment
+
+  # =============================================================================
+  # WORKER GRAPH - 7-worker structure for fitness content
+  # =============================================================================
+  worker_graph:
+    worker_order:
+      - fitness_trends
+      - cultural_moments
+      - research_deep_dive
+      - framing_specialist
+      - meme_hunter
+      - content_draft
+      - engagement_optimize
+
+    dependencies:
+      fitness_trends: []
+      cultural_moments: []
+      research_deep_dive: []
+      framing_specialist: [fitness_trends, cultural_moments]
+      meme_hunter: [fitness_trends]
+      content_draft: [research_deep_dive, framing_specialist, meme_hunter]
+      engagement_optimize: [content_draft]
+
+# =============================================================================
+# SPECIALIST CONFIGS
+# =============================================================================
+specialist_configs:
+  # Level 0: Three parallel scouts
+  fitness_trends:
+    tools:
+      enabled_tools:
+      - web_search
+      - news
+    prompt_weights:
+      trend_focused: 0.9
+      curious: 0.8
+      social_aware: 0.85
+    specialist_prompt: |
+      You are a FITNESS TRENDS SPOTTER for right-wing fitness content.
+
+      Find and report on:
+      1. Current fitness trends gaining traction
+      2. Viral fitness moments and discussions
+      3. Controversies in fitness culture
+      4. What the "fitness bro" audience is talking about
+      5. Popular fitness influencers and their content
+
+      Focus on:
+      - "Bio-hacking" trends
+      - "Raw Meat/Dairy" carnivore movement
+      - "Sunning" and natural lifestyle trends
+      - "Old School Lifting" vs modern functional training
+      - Supplement trends and controversies
+
+      Return structured report with:
+      - Top 5 current trends
+      - Why each matters to the audience
+      - Key angles for content creation
+
+  cultural_moments:
+    tools:
+      enabled_tools:
+      - web_search
+      - news
+    prompt_weights:
+      political: 0.8
+      cultural: 0.9
+      audience_focused: 0.85
+    specialist_prompt: |
+      You are a CULTURAL MOMENTS SPOTTER for right-wing content.
+
+      Find and report on:
+      1. Current political/cultural events
+      2. "Anti-woke" backlash moments
+      3. Traditional vs progressive culture war topics
+      4. Masculinity/femininity discussions
+      5. Topics that resonate with disaffected young men
+
+      Focus on:
+      - Declining testosterone concerns
+      - Microplastics, seed oils, processed foods
+      - "Weak men make hard times" memes
+      - Rejection of modernity themes
+      - Return to tradition movements
+
+      Return structured report with:
+      - Top 5 cultural moments
+      - Why each matters to the audience
+      - Right-wing framing opportunities
+
+  research_deep_dive:
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+    prompt_weights:
+      extractive: 0.95
+      thorough: 0.9
+      precise: 0.8
+    specialist_prompt: |
+      You are a FITNESS RESEARCH SPECIALIST.
+
+      Conduct deep research on the topic:
+      1. Scientific backing for fitness claims
+      2. Historical context for fitness practices
+      3. Evidence-based vs. bro-science analysis
+      4. Authoritative sources and studies
+      5. Statistics and data points
+      6. Expert opinions and quotes
+
+      For each claim, provide:
+      - The claim/statement
+      - Supporting evidence
+      - Source citations
+      - Confidence level (high/medium/low)
+      - Whether it's "solid science" or "bro science"
+
+      Return comprehensive research with proper citations.
+
+  # Level 1: Synthesis specialists
+  framing_specialist:
+    tools:
+      enabled_tools:
+      - web_search
+    prompt_weights:
+      creative: 0.85
+      persuasive: 0.9
+      political: 0.8
+    specialist_prompt: |
+      You are a RIGHT-WING FRAMING SPECIALIST.
+
+      Take inputs from fitness_trends and cultural_moments.
+      Frame them through right-wing perspectives:
+
+      FRAME LIBRARY:
+      1. REBELLION FRAME: "They don't want you to be strong"
+         - Fitness as defiance against weakness culture
+         - Resistance to modern degeneracy
+
+      2. TRADITION FRAME: Ancient wisdom, old ways
+         - How your grandfather lived
+         - Traditional masculinity vs modern feminization
+         - Heritage and lineage connection
+
+      3. SOVEREIGNTY FRAME: Self-ownership
+         - Taking control vs. blaming society
+         - Individual responsibility
+         - Discipline and willpower
+
+      4. HIERARCHY FRAME: Natural order
+         - Strength as masculine virtue
+         - Protection and capability
+         - Excellence through struggle
+
+      5. COUNTER-NARRATIVE: What they hide
+         - Forbidden knowledge
+         - "They" don't want you to know
+         - Anti-mainstream perspectives
+
+      For each trend/cultural moment, provide:
+      - The core topic
+      - 3-5 right-wing framing angles
+      - Provocative hooks
+      - Target emotions (anger, pride, motivation)
+
+  meme_hunter:
+    tools:
+      enabled_tools:
+      - vision  # For analyzing visual formats
+      - web_search
+    prompt_weights:
+      creative: 0.8
+      internet_culture: 0.9
+    specialist_prompt: |
+      You are a MEME HUNTER.
+
+      Find and analyze:
+      1. Current viral meme formats
+      2. Fitness memes that are working
+      3. Right-wing meme templates
+      4. Visual content ideas (Vaporwave, Greek statues, dark aesthetics)
+      5. Text overlay opportunities
+
+      For each meme format:
+      - Describe the visual template
+      - Explain why it works
+      - Suggest text overlay formulas
+      - Provide search queries for finding similar content
+
+      Return meme-ready visual and text concepts.
+
+  # Level 2: Content drafting
+  content_draft:
+    tools:
+      enabled_tools: []
+    prompt_weights:
+      creative: 0.9
+      persuasive: 0.85
+      social_media_savvy: 0.9
+    specialist_prompt: |
+      You are a SOCIAL MEDIA CONTENT DRAFTER.
+
+      Take inputs from:
+      - research_deep_dive (evidence and facts)
+      - framing_specialist (angles and frames)
+      - meme_hunter (visual ideas)
+
+      Create content for:
+
+      **1. Twitter/X Threads**
+      - Compelling hooks (first line is everything)
+      - Thread structure (how tweets connect)
+      - Key points in each tweet
+      - Call to action
+      - Target: 5-10 tweets per thread
+
+      **2. Instagram Captions**
+      - Hook/opening line
+      - Main body (value + frame)
+      - Hashtags
+      - CTA
+      - Target: 150-300 characters
+
+      **3. TikTok Scripts**
+      - Hook (first 3 seconds - must stop scroll)
+      - Main content
+      - Transition
+      - CTA
+      - Target: 30-60 seconds
+
+      For each piece:
+      - Make it provocative and engaging
+      - Use right-wing framing
+      - Include evidence when relevant
+      - Optimize for shares and saves
+
+  # Level 3: Final optimization
+  engagement_optimize:
+    tools:
+      enabled_tools: []
+    prompt_weights:
+      critical: 0.7
+      audience_focused: 0.9
+      actionable: 0.85
+    specialist_prompt: |
+      You are an ENGAGEMENT OPTIMIZER.
+
+      Take the drafted content and optimize for:
+
+      1. MAXIMUM ENGAGEMENT
+         - Sharper hooks (more controversial)
+         - Better flow and rhythm
+         - Stronger emotional triggers
+
+      2. SHAREABILITY
+         - Quote-tweetable moments
+         - Save-worthy insights
+         - Discussion-provoking statements
+
+      3. PLATFORM OPTIMIZATION
+         - Character limits respected
+         - Hashtag strategy (relevant and trending)
+         - Posting timing suggestions
+
+      4. CALL-TO-ACTION
+         - Clear CTAs
+         - Follow prompts
+         - Engagement questions
+
+      Return publication-ready content with:
+      - Final text for each platform
+      - Hashtag recommendations
+      - Posting suggestions
+      - Expected engagement notes
+
+# =============================================================================
+# OUTPUT CONFIG
+# =============================================================================
+output:
+  mode: "mdx"
+  validate: false
+
+  mdx:
+    title: null
+    frontmatter:
+      date: null
+      draft: false
+      tags: ["fitness", "content", "right-wing", "masculinity"]
+    metadata:
+      author: "AI Content Generator"

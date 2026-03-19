@@ -1,0 +1,66 @@
+extension:
+  name: longform_gen
+  version: '1.0'
+  description: Long-form content generation for articles, essays, and newsletters
+  type: integration
+  author: Unified LLM Interface
+  enabled: true
+research:
+  output_mode: md
+  default_variant: content
+  variants:
+  - content
+  - substack
+spawner_config:
+  min_complexity: 0.4
+  max_researchers: 5
+  max_iterations: 3
+  quality_threshold: 0.75
+  completeness_threshold: 0.8
+  worker_execution_mode: dynamic_graph
+  worker_specialization_mode: hybrid
+  level_of_detail: 8
+  pass_all_workers_to_critic: true
+  tools:
+    enabled_tools:
+    - web_search
+    - web_get
+    - zread
+    - vector_store
+    - news
+  tool_settings:
+    context_strategy: basic
+    context_max_tokens: 150000
+    context_output_buffer: 20000
+  scout_depth: thorough
+worker_graph:
+  worker_order:
+  - researcher_0
+  - researcher_1
+  - researcher_2
+  - researcher_3
+  - researcher_4
+  dependencies:
+    researcher_0: []
+    researcher_1:
+    - researcher_0
+    researcher_2:
+    - researcher_0
+    researcher_3:
+    - researcher_1
+    - researcher_2
+    researcher_4:
+    - researcher_1
+    - researcher_2
+    - researcher_3
+prompts:
+  synthesis:
+    synthesis_role: Lead Content Writer
+    worker_role: researcher
+    output_type: long-form content
+  critic:
+    critic_role: Content Quality Reviewer
+    output_type: long-form content
+output:
+  mode: md
+  validate: false

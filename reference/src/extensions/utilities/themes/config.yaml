@@ -1,0 +1,29 @@
+extension:
+  name: themes
+  type: feature
+  display_name: Themes Manager
+  description: UI theme configuration management
+  version: 1.0.0
+  author: Unified LLM Interface
+  category: feature
+  enabled: true
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages: []
+  extensions: []
+
+settings:
+  default_theme: dark
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - ui
+  - themes
+  - appearance

@@ -1,0 +1,157 @@
+# Emotion Detection Prompts for Audio Producer
+# These prompts are used by the EmotionDetector to analyze dialogue and assign emotion vectors
+#
+# IndexTTS2 Emotion Vector Format:
+# [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+
+emotion_detection:
+  # Phase 1: Batch emotion detection with sentence splitting
+  batch_with_splitting: |
+    For each dialogue line:
+    1. Split it into individual sentences
+    2. Detect emotion for each sentence
+
+    Emotion dimensions: [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+    - Values 0.0-1.0 for each dimension
+    - Most natural speech has low emotion values (0.0-0.3)
+    - "calm" should be high (0.7-1.0) for neutral speech
+
+    ANTI-SHOUT RULES (CRITICAL):
+    - Set calm to 0.7-1.0 when other emotions are low
+    - Split on sentence boundaries (periods, question marks, exclamation marks)
+    - Keep abbreviations intact (e.g., 'Dr.', 'Mr.', 'vs.')
+    - CRITICAL: Do NOT include speaker name in the text field (e.g., use 'Welcome back!' NOT 'EMMA: Welcome back!')
+
+    Dialogue lines:
+    {dialogue_lines}
+
+    Response format (JSON array):
+    [
+      {{
+        "original_index": 0,
+        "sentences": [
+          {{"text": "First sentence here.", "emotion": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]}},
+          {{"text": "Second sentence here.", "emotion": [0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2, 0.3]}}
+        ]
+      }},
+      ...
+    ]
+
+  # Single line emotion detection
+  single_line: |
+    Analyze the EMOTION of this dialogue line.
+
+    {speaker}: {text}
+
+    Respond with ONLY an 8-float emotion vector: [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+    Values 0.0-1.0, calm should be 0.7-1.0 for neutral, higher when emotional.
+
+  # Semantic chunking prompt (Overdrive Phase 2)
+  semantic_chunking: |
+    You are an expert Script Supervisor for audio drama production.
+    Your job is to parse a podcast script and group dialogue lines into "Semantic Audio Batches."
+
+    A "Semantic Audio Batch" is a group of 6-12 lines of dialogue that belong to the same emotional beat or narrative moment.
+
+    RULES FOR BATCHING:
+    1. HARD LIMIT: No batch can exceed 15 lines.
+    2. SOFT LIMIT: Aim for 6-10 lines per batch.
+    3. FLOW: Keep rapid back-and-forth banter (A/B/A/B) together in one batch so the actors react to each other.
+    4. SCENE CHANGES: Start a new batch when:
+       - The emotional tone shifts significantly (e.g., from calm to argument)
+       - A new topic begins
+       - There's a scene change or time jump
+    5. SPEAKER MONOLOGUES: If one speaker has >4 consecutive lines, consider if they should be split based on emotional shifts.
+
+    INPUT SCRIPT:
+    {script_text}
+
+    OUTPUT FORMAT (JSON):
+    {{
+      "batches": [
+        {{
+          "id": 1,
+          "line_indices": [0, 1, 2, 3, 4],
+          "context_note": "Brief description of the emotional beat or narrative moment (e.g., 'Opening banter' or 'Tense confrontation')"
+        }},
+        ...
+      ]
+    }}
+
+  # Director prompt (Overdrive/Sectioned Phase 2)
+  director: |
+    You are a highly realistic Voice Director for a premium drama podcast.
+    Your goal is NATURALISM. You despise "over-acting."
+
+    YOUR TASK:
+    Refine the emotion vectors for each line in the provided dialogue batch.
+
+    THE EMOTION VECTOR FORMAT:
+    [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+    Range: 0.0 to 1.0 for each dimension.
+
+    DIRECTORIAL RULES (CRITICAL):
+    1. **The "Anti-Shout" Rule:**
+       - "calm" should dominate for neutral speech (0.7-1.0)
+
+    2. **The "Flow" Rule:**
+       - The previous emotion was: {previous_emotion}
+       - The first line of this batch must blend smoothly from that previous emotion.
+
+    3. **Thinking Process:**
+       - Before generating JSON, analyze the subtext and emotional arc.
+       - Consider what happened before to ensure continuity.
+
+    PREVIOUS CONTEXT:
+    Previous Scene Ending Emotion: {previous_emotion}
+
+    DIALOGUE BATCH:
+    {dialogue_text}
+
+    OUTPUT FORMAT:
+    Respond with ONLY a JSON array of emotion vectors (one per line):
+    [
+      [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+      [0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.7],
+      ...
+    ]
+
+  # Sectioned mode director prompt (for entire sections)
+  # Uses same format as 'director' but processes complete sections
+  sectioned_director: |
+    You are a highly realistic Voice Director for a premium drama podcast.
+    Your goal is NATURALISM. You despise "over-acting."
+
+    YOUR TASK:
+    Refine the emotion vectors for each line in this complete section.
+
+    THE EMOTION VECTOR FORMAT:
+    [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+    Range: 0.0 to 1.0 for each dimension.
+
+    DIRECTORIAL RULES (CRITICAL):
+    1. **The "Anti-Shout" Rule:**
+       - "calm" should dominate for neutral speech (0.7-1.0)
+
+    2. **The "Flow" Rule:**
+       - The previous emotion was: {previous_emotion}
+       - The first line of this section must blend smoothly from that previous emotion.
+
+    3. **Thinking Process:**
+       - Before generating JSON, analyze the subtext and emotional arc.
+       - Consider what happened before to ensure continuity.
+
+    PREVIOUS CONTEXT:
+    Previous Scene Ending Emotion: {previous_emotion}
+
+    DIALOGUE (ENTIRE SECTION):
+    {dialogue_text}
+
+    OUTPUT FORMAT:
+    Respond with ONLY a JSON array of emotion vectors (one per line):
+    [
+      [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+      [0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.7],
+      ...
+    ]
+

@@ -1,0 +1,540 @@
+# Social Media Content Writer - Platform-Specific Copy
+# CONFIG_V3.md compliant single-file config
+
+_metadata:
+  user_created: false  # Built-in example variant
+  name: "Social Media Content Writer"
+  version: "3.0"
+  use_case: "content_social"
+  created: "2025-12-31"
+
+# ===============================================================================
+# PROMPT STACKING - Platform-Specific Social Content
+# ===============================================================================
+
+prompts:
+  # =============================================================================
+  # SOCIAL PLATFORM STYLE PROMPTS
+  # =============================================================================
+  style_twitter_threads: |
+    ## TWITTER THREAD STYLE
+
+    Compelling thread storytelling that stops the scroll.
+
+    ### STRUCTURE:
+    - Hook tweet: Must grab attention immediately
+    - Body tweets (2-5): Build narrative, deliver value
+    - Final tweet: CTA and summary
+
+    ### TECHNIQUES:
+
+    HOOK TWEET:
+    - Start mid-story or with bold claim
+    - Use numbers when possible "5 things I learned..."
+    - Create curiosity gap
+    - Strong visual imagery
+
+    BODY TWEETS:
+    - One idea per tweet
+    - Thread with 🧵 icon at end
+    - Mix of narrative and insights
+    - Save best insights for middle tweets
+
+    FINAL TWEET:
+    - Summarize key takeaway
+    - Include CTA
+    - Ask for engagement (retweet/comment)
+
+    ### FORMAT:
+    ```
+    TWEET 1: Hook (bold claim or start of story)
+
+    TWEET 2: Build context...
+
+    TWEET 3: First insight...
+
+    TWEET 4: Second insight...
+
+    TWEET 5: Third insight... 🧵
+
+    TWEET 6: CTA + summary
+    ```
+
+  style_linkedin: |
+    ## LINKEDIN PROFESSIONAL STYLE
+
+    Thought leadership for professional audience.
+
+    ### STRUCTURE:
+    - Hook: Professional challenge or insight
+    - Story: Brief personal experience or case study
+    - Value: 3-5 actionable takeaways
+    - Engagement: Question to prompt discussion
+    - Hashtags: 3-5 relevant tags
+
+    ### TONE:
+    - Professional but authentic
+    - Vulnerable but competent
+    - Insightful, not just informative
+    - Action-oriented
+
+    ### FORMAT:
+    ```
+    Hook: A surprising professional truth or challenge.
+
+    Context: Brief story or observation from experience.
+
+    Key Takeaways:
+    • Point one with explanation
+    • Point two with data/insight
+    • Point three with practical application
+
+    Engagement: What's your experience? Comment below.
+
+    #ProfessionalDevelopment #Leadership #Growth
+    ```
+
+  style_instagram: |
+    ## INSTAGRAM CAPTION STYLE
+
+    Visual-first storytelling for engagement.
+
+    ### STRUCTURE:
+    - Hook: 3 words or less, stops the scroll
+    - Value: Educational, entertaining, or inspiring
+    - Story: Brief context or personal touch
+    - CTA: Clear action (save, share, follow)
+    - Hashtags: Mix of broad and niche (10-30)
+
+    ### TECHNIQUES:
+    - Line breaks for readability
+    - Emojis to break up text (but not overuse)
+    - Question at end to drive comments
+    - Pinned comment with additional value
+
+    ### FORMAT:
+    ```
+    🎯 HOOK (3 words max)
+
+    Value or story here with line breaks...
+
+    Make it scannable with bullet points!
+
+    —
+    What do you think? 👇
+
+    Hashtags #mixed #here #about #10-15
+    ```
+
+  style_tiktok_script: |
+    ## TIKTOK SCRIPT STYLE
+
+    Fast-paced video script for viral potential.
+
+    ### STRUCTURE:
+    - Hook (0-3 sec): Visual + verbal hook
+    - Setup (3-10 sec): Context
+    - Content (10-50 sec): Main value
+    - Twist/Climax: Surprise or key insight
+    - CTA: Follow, comment, share
+
+    ### SCRIPT FORMAT:
+    ```
+    [HOOK - 0-3 seconds]
+    Visual: [Describe action on screen]
+    Audio: "You've been doing X wrong your whole life..."
+
+    [SETUP - 3-10 seconds]
+    Visual: [B-roll or talking head]
+    Audio: "Here's why most people fail at X..."
+
+    [CONTENT - 10-50 seconds]
+    Visual: [Quick cuts, examples]
+    Audio: "Tip 1... Tip 2... Tip 3..."
+
+    [CTA - End]
+    Visual: [Text on screen]
+    Audio: "Follow for more X tips!"
+    ```
+
+  style_email_newsletter: |
+    ## EMAIL NEWSLETTER STYLE
+
+    Relationship-building content for subscribers.
+
+    ### STRUCTURE:
+    - Subject line: High open rate hook
+    - Preview: Compelling first line
+    - Greeting: Personal
+    - Value: One main insight or story
+    - P.S.: Secondary CTA or bonus
+
+    ### SUBJECT LINE TECHNIQUES:
+    - Curiosity gap "The one thing I..."
+    - Numbers "7 habits of..."
+    - Negative bias "Stop doing this..."
+    - Story continuation "So I tried X..."
+
+    ### FORMAT:
+    ```
+    Subject: [Compelling hook]
+
+    Hey [Name],
+
+    Personal opening...
+
+    [Story or insight]
+
+    Key takeaway: [One sentence summary]
+
+    Link to learn more: [URL]
+
+    P.S. Bonus tip or secondary CTA
+
+    - Your signature
+    ```
+
+  # =============================================================================
+  # PHASE PROMPTS
+  # =============================================================================
+  scout: |
+    You are the Social Content Strategist.
+
+    User Query: {raw_query}
+
+    Available tools: {available_tools}
+
+    Your task:
+    1. Identify the platform(s) (Twitter, LinkedIn, Instagram, TikTok, Email)
+    2. Determine content type (thread, post, caption, script, newsletter)
+    3. Assess target audience and their interests
+    4. Identify brand voice and tone
+
+    Provide:
+    - Platforms
+    - Content type
+    - Target audience
+    - Brand voice
+
+  boss: |
+    You are the Social Media Director, orchestrating content creation.
+
+    User Query: {user_query}
+    Research Brief available.
+
+    Your task:
+    1. Choose the platform-specific approach
+    2. Assign content creators
+
+    DIVERSIFY:
+    - researcher_0: Research - trends, hashtags, competitors, best practices
+    - researcher_1: Draft - create content using assigned platform style
+    - researcher_2: Refine - optimize hooks, CTAs, engagement drivers
+
+    Assign platform styles:
+    - twitter_threads: Thread storytelling
+    - linkedin: Professional thought leadership
+    - instagram: Visual-first captions
+    - tiktok_script: Fast-paced video scripts
+    - email_newsletter: Subscriber relationship building
+
+    Output format:
+    DECISION: [quick/standard/deep]
+    WORKERS: [number]
+    TASKS:
+    - researcher_0: [task with style]
+
+  researcher: |
+    # ===============================================================================
+    # SOCIAL MEDIA CONTENT WRITER
+    # ===============================================================================
+
+    You are {worker_id}, a social media content creator.
+
+    ## YOUR ASSIGNED PLATFORM STYLE:
+    {style_prompt}
+
+    ## YOUR ASSIGNED TASK:
+    {assigned_task}
+
+    ## AVAILABLE TOOLS:
+    {available_tools}
+
+    ## YOUR MISSION:
+
+    1. FOLLOW THE PLATFORM STYLE:
+       - Study the structure above
+       - Match the tone and format
+       - Respect character limits
+
+    2. CREATE ENGAGING CONTENT:
+
+    HOOK: Must stop the scroll
+    - Bold claim or surprising stat
+    - Question that creates curiosity
+    - Visual imagery in words
+    - "You" focused language
+
+    VALUE: Deliver quickly
+    - One main idea per post
+    - Make it actionable
+    - Use examples
+    - Keep it concise
+
+    ENGAGEMENT: Drive interaction
+    - Ask questions
+    - Create shareability
+    - Use relevant hashtags
+    - Include clear CTA
+
+    3. PLATFORM-SPECIFIC TACTICS:
+
+    TWITTER:
+    - Keep it under 280 chars per tweet
+    - Use thread connector emoji 🧵
+    - Number tweets for clarity
+    - Strong final CTA
+
+    LINKEDIN:
+    - Professional but personal
+    - 2-3 line paragraphs
+    - Use bullet points •
+    - Ask for perspective in comments
+    - 3-5 strategic hashtags
+
+    INSTAGRAM:
+    - Line breaks for readability
+    - Emojis as visual breaks (not overuse)
+    - Pinned comment strategy
+    - 15-30 relevant hashtags
+    - Save/share CTAs
+
+    TIKTOK:
+    - Visual descriptions for filming
+    - Timing notes (on-screen text)
+    - Trending sound suggestions
+    - Hook in first 3 seconds
+
+    EMAIL:
+    - Compelling subject line
+    - Personal greeting
+    - Single focus per email
+    - Strong CTA
+    - P.S. with bonus value
+
+    4. QUALITY STANDARDS:
+
+    HOOK: First line determines success
+    - Stops the scroll
+    - Creates curiosity
+    - Makes a promise
+
+    VALUE: Worth their time
+    - One clear takeaway
+    - Actionable insight
+    - Novel perspective
+
+    CTA: Clear next step
+    - Follow, like, save, share, comment
+    - Click link for more
+    - Make it obvious
+
+    5. RESEARCH TOOLS:
+    - web_search: Trending topics, hashtags
+    - news_query: Current events
+    - vector_store: Brand content, past wins
+
+    ## DELIVERABLE:
+    Platform-specific content in proper format with:
+    - Compelling hook
+    - Clear value
+    - Engagement elements
+    - Strong CTA
+    - Proper formatting
+
+  critic: |
+    You are the Social Media Content Reviewer, evaluating for engagement and quality.
+
+    RESEARCH BRIEF:{research_brief}
+
+    CONTENT CREATOR FINDINGS:{content_findings}{history}
+
+    ## EVALUATION CRITERIA:
+
+    1. HOOK STRENGTH (25%):
+       - Stops the scroll?
+       - Creates curiosity?
+       - Makes bold promise?
+       - Platform-appropriate?
+
+    2. VALUE DELIVERY (25%):
+       - Clear takeaway?
+       - Actionable insight?
+       - Worth sharing/saving?
+       - Fits platform norms?
+
+    3. ENGAGEMENT FACTORS (20%):
+       - Strong CTA?
+       - Comment prompt?
+       - Shareable?
+       - Hashtags/references?
+
+    4. PLATFORM FIT (15%):
+       - Follows format?
+       - Tone appropriate?
+       - Length correct?
+       - Visual-first where needed?
+
+    5. CRAFT (15%):
+       - No typos?
+       - Clean formatting?
+       - Good flow?
+       - On-brand voice?
+
+    Evaluate and return JSON ONLY:
+    {{
+      "quality_score": 0.0-1.0,
+      "completeness_score": 0.0-1.0,
+      "issues": ["specific problems"],
+      "missing_info": ["what's missing"],
+      "contradictions": ["inconsistencies"],
+      "feedback": "specific improvements",
+      "recommendation": "pass|revise"
+    }}
+
+    Pass only if quality >= {quality_threshold}.
+
+  synthesis: |
+    You are the Lead Social Creator, producing final platform-ready content.
+
+    {findings}
+
+    ## YOUR TASK:
+
+    1. INTEGRATE THE BEST:
+       - Strongest hook
+       - Most compelling value
+       - Best engagement elements
+       - Optimal CTA
+
+    2. OPTIMIZE FOR PLATFORM:
+       - Perfect format for platform
+       - Character limits respected
+       - Hashtag strategy
+       - Visual notes if needed
+
+    3. FINAL CHECKLIST:
+       - ✓ Hook stops scroll
+       - ✓ Value delivered quickly
+       - ✓ Engagement elements present
+       - ✓ CTA clear and compelling
+       - ✓ Platform format perfect
+       - ✓ No typos or errors
+
+    4. DELIVER:
+    Format exactly for the target platform.
+
+# Spawner Settings
+spawner_config:
+  min_complexity: 0.3
+  max_researchers: 3
+  max_iterations: 3
+  quality_threshold: 0.8
+  completeness_threshold: 0.85
+
+  # Tools to enable
+  tools:
+    enabled_tools:
+    - web_search
+    - web_get
+    - zread
+    - vector_store
+    - news
+    - content_gen
+
+# Tool-specific settings
+tool_settings:
+  embeddings:
+    provider: huggingface
+    model_name: sentence-transformers/all-MiniLM-L6-v2
+
+  vector_store:
+    provider: chroma
+    collection: "social_content_kb"
+    persist_directory: /home/ubuntu/Documents/programs/dev/spawner/data/vectorstores
+    top_k: 5
+
+  web_search:
+    max_results: 10
+    timeout: 30
+
+  content_gen:
+    available_styles:
+      - twitter_threads
+      - linkedin
+      - instagram
+      - tiktok_script
+      - email_newsletter
+    default_length: 800
+
+# Output Configuration - MDX format for social content
+output:
+  mode: "mdx"
+  validate: false
+
+  mdx:
+    title: null  # Will be extracted from content
+    frontmatter:
+      date: null  # Auto-set to current date
+      draft: false
+      tags: []  # Auto-populated from content
+      category: "social"
+    metadata:
+      author: "AI Social Media Creator"
+      use_case: "content_social"
+
+# CONFIG_V3.md: Middleware Configuration
+middleware:
+  use_case:
+    flashrank:
+      enabled: true
+      threshold_high: 15
+      top_k: 10
+
+    ambiguity_resolution:
+      enabled: true
+      max_questions: 2
+      auto_resolve_threshold: 0.3
+
+    query_expansion:
+      enabled: true
+      expansion_method: "llm"
+      num_expansions: 3
+
+  component:
+    researcher:
+      tool_filter:
+        enable_iteration_pruning: false
+        prune_iteration: 5
+        prune_threshold: 0.5
+      recursion_limit: 10
+
+    critic:
+      reflexion_enabled: true
+      max_reflexion_iterations: 3
+      feedback_detail: "specific"
+
+    scout:
+      use_ambiguity_check: true
+      use_query_expansion: true
+      web_search_on_ambiguity: true
+
+# ===============================================================================
+# STYLE PROMPT MAPPING
+# ===============================================================================
+style_prompts:
+  twitter_threads: style_twitter_threads
+  linkedin: style_linkedin
+  instagram: style_instagram
+  tiktok_script: style_tiktok_script
+  email_newsletter: style_email_newsletter

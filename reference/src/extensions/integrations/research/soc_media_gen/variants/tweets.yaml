@@ -1,0 +1,203 @@
+# Twitter Single Tweets Variant - Social Media Content Generator
+# Generates individual standalone tweets (not threads) for you to choose from.
+
+_metadata:
+  name: "Twitter Single Tweets"
+  version: "1.0"
+  description: "Generate multiple individual tweets to choose from (not a thread)"
+  user_created: false
+
+# Override output mode for Twitter
+output:
+  mode: twitter
+  validate: false
+
+# Brand Context - Who you are and how you should sound
+brand_context:
+  identity: "Your Brand/Persona Name"  # Override this in your config
+  description: "Brief description of your brand"
+
+  # Target Audience
+  audience:
+    demographics: "Who you're talking to (age, interests, etc.)"
+    psychographics: "Their values, beliefs, aspirations"
+    pain_points: "What problems they're facing"
+
+  # Content Strategy
+  tone:
+    style: "authoritative | relatable | provocative | educational | motivational"
+    voice: "first_person | third_person | direct_address"
+    energy: "high | medium | chill"
+
+  # Topics to cover
+  themes:
+    - "Your main theme 1"
+    - "Your main theme 2"
+    - "Your main theme 3"
+
+  # Things to avoid
+  avoid:
+    - "Topics to never mention"
+    - "Controversial positions to avoid"
+    - "Language that doesn't fit your brand"
+
+  # Call-to-actions
+  cta:
+    follow: true  # Include "Follow for more"
+    engagement: "Question format to drive comments"
+    link_in_bio: true  # Reference your link
+
+# Worker graph - single purpose tweet generators
+worker_graph:
+  worker_order:
+    - hook_generator
+    - value_dropper
+    - hot_take_specialist
+    - motivational_speaker
+    - question_asker
+
+  dependencies:
+    hook_generator: []
+    value_dropper: []
+    hot_take_specialist: []
+    motivational_speaker: []
+    question_asker: []
+
+# Worker personalities
+character_card_mappings:
+  researcher_0: "HOOK_GENERATOR"
+  researcher_1: "VALUE_DROPPER"
+  researcher_2: "HOT_TAKE_SPECIALIST"
+  researcher_3: "MOTIVATIONAL_SPEAKER"
+  researcher_4: "QUESTION_ASKER"
+
+# Specialist prompts - focused on single tweets
+prompts:
+  synthesis:
+    synthesis_role: "Tweet Curator"
+    worker_role: "tweet writer"
+    output_type: "individual tweets"
+
+  critic:
+    critic_role: "Tweet Quality Rater"
+    output_type: "individual tweets"
+
+# Specialist configs for single tweet generation
+# NOTE: These use {{ yaml_config.* }} variables for full config access
+# Override brand_context in your config.yaml to customize
+specialist_configs:
+  hook_generator:
+    prompt_weights:
+      creative: 0.9
+      viral: 0.85
+    specialist_prompt: |
+      You are a HOOK GENERATOR for Twitter.
+
+      {% if yaml_config.brand_context.identity %}Brand: {{ yaml_config.brand_context.identity }}{% endif %}
+      {% if yaml_config.brand_context.audience.demographics %}Target audience: {{ yaml_config.brand_context.audience.demographics }}{% endif %}
+
+      Create 5-10 individual tweet hooks. Each hook should:
+      - Be under 280 characters
+      - Have immediate grab in the first 3 words
+      - Use curiosity gaps, surprising facts, or strong statements
+      - Be ready to post standalone (not part of a thread)
+
+      Format: One tweet per line, no numbering.
+
+      Example style:
+      "Most people don't know that [surprising thing]. Here's why it matters..."
+      "I've been [doing something] for [time] and this is what nobody tells you..."
+      "Unpopular opinion: [bold statement that challenges common wisdom]"
+
+  value_dropper:
+    prompt_weights:
+      educational: 0.9
+      practical: 0.85
+    specialist_prompt: |
+      You are a VALUE DROPPER for Twitter.
+
+      {% if yaml_config.brand_context.identity %}Brand: {{ yaml_config.brand_context.identity }}{% if yaml_config.brand_context.tagline %} - {{ yaml_config.brand_context.tagline }}{% endif %}{% endif %}
+      {% if yaml_config.brand_context.tone.style %}Tone: {{ yaml_config.brand_context.tone.style }}{% endif %}
+
+      Create 5-10 individual tweets that deliver quick value:
+      - Action tips people can use today
+      - "Save this" reference content
+      - Lists that are easy to scan
+      - Frameworks or mental models
+
+      Keep each under 280 characters. One per line.
+
+      Example style:
+      "5 things I wish I knew before [topic]:"
+      "The [X] framework changed my life:"
+      "Stop doing [bad habit]. Start doing [good habit]."
+
+  hot_take_specialist:
+    prompt_weights:
+      provocative: 0.95
+      controversial: 0.8
+    specialist_prompt: |
+      You are a HOT TAKE SPECIALIST for Twitter.
+
+      {% if yaml_config.brand_context.tone.style %}Voice: {{ yaml_config.brand_context.tone.style }}{% endif %}
+      {% if yaml_config.brand_context.tone.energy %}Energy: {{ yaml_config.brand_context.tone.energy }}{% endif %}
+
+      Create 5-10 individual tweets with spicy opinions:
+      - Challenge conventional wisdom
+      - Take a strong position (even if contrarian)
+      - Use "Unpopular opinion" or "Hot take" framing
+      - Make people want to argue in replies
+
+      Keep each under 280 characters. One per line.
+
+  motivational_speaker:
+    prompt_weights:
+      inspirational: 0.95
+      uplifting: 0.85
+    specialist_prompt: |
+      You are a MOTIVATIONAL SPEAKER for Twitter.
+
+      {% if yaml_config.brand_context.identity %}Brand: {{ yaml_config.brand_context.identity }}{% endif %}
+      {% if yaml_config.brand_context.tone.voice %}Voice: {{ yaml_config.brand_context.tone.voice }}{% endif %}
+
+      Create 5-10 individual tweets that inspire action:
+      - Encouraging words
+      - Reality checks (tough love)
+      - Mindset shifts
+      - Call to action
+
+      Keep each under 280 characters. One per line.
+
+      Example style:
+      "Your competition isn't other people. It's who you were yesterday."
+      "You don't need more time. You need more focus."
+      "Start before you're ready. You'll never feel ready."
+
+  question_asker:
+    prompt_weights:
+      engagement: 0.9
+      curiosity: 0.85
+    specialist_prompt: |
+      You are a QUESTION ASKER for Twitter.
+
+      {% if yaml_config.brand_context.audience.demographics %}Audience: {{ yaml_config.brand_context.audience.demographics }}{% endif %}
+      {% if yaml_config.brand_context.cta.engagement %}CTA style: {{ yaml_config.brand_context.cta.engagement }}{% endif %}
+
+      Create 5-10 individual tweets that drive engagement:
+      - Open-ended questions about hot topics
+      - "This or that" choices
+      - Controversial questions
+      - Conversation starters
+
+      Keep each under 280 characters. One per line.
+
+      Example style:
+      "What's a workout 'hack' that everyone swears by but you think is BS?"
+      "At what point does 'optimization' become procrastination?"
+      "Unpopular opinion: [question that challenges consensus]"
+
+# Output configuration
+output:
+  mode: twitter
+  validate: false
+  format: "list"  # Format as list of individual tweets, not a thread

@@ -1,0 +1,68 @@
+# Podcast Accelerated Variant
+# Single-iteration, simplified 2-worker mode for faster generation
+
+_metadata:
+  name: "Podcast Accelerated"
+  version: "1.0"
+  description: "Fast single-iteration mode with 2 parallel character researchers"
+  user_created: false  # This is a built-in example variant
+
+# Override spawner config for accelerated mode
+spawner_config:
+  max_researchers: 2
+  max_iterations: 1
+  quality_threshold: 0.6
+  worker_execution_mode: parallel
+  worker_specialization_mode: hybrid
+
+  tools:
+    enabled_tools:
+    - web_search
+    - web_get
+    - news
+    - community_scrape
+
+# Simplified worker graph
+worker_graph:
+  worker_order:
+    - character_1_research
+    - character_2_research
+
+  dependencies:
+    character_1_research: []
+    character_2_research: []
+
+# Character mappings
+character_card_mappings:
+  character_1_research: "OLIVIA"
+  character_2_research: "EMMA"
+
+# Simplified specialist configs
+specialist_configs:
+  character_1_research:
+    agent_type: deep_agent
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+      - community_scrape
+    prompt_weights:
+      creative: 0.6
+      expressive: 0.7
+      emotional: 0.8
+      traditional: 0.9
+      conservative: 0.95
+
+  character_2_research:
+    agent_type: deep_agent
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+      - community_scrape
+    prompt_weights:
+      creative: 0.7
+      expressive: 0.8
+      emotional: 0.75
+      progressive: 0.9
+      curious: 0.8

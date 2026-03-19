@@ -1,0 +1,460 @@
+# Research Extension Config
+
+extension:
+  name: substack_research
+  version: "1.0"
+  description: "Research extension for substack_research"
+  type: research
+  author: "Unified LLM Interface"
+
+# Substack Article Research with PDF Support
+# Uses DeepSeek's cleaner 7-worker graph structure
+
+_metadata:
+  name: "Substack Research Generator"
+  version: "1.0"
+  use_case: "substack_research"
+
+# =============================================================================
+# PROMPTS: Substack research extensions
+# =============================================================================
+prompts:
+  synthesis:
+    synthesis_role: "Article Brief Producer"
+    template: |
+      You are the {synthesis_role}, combining {output_type} into a final response.
+
+      {findings}
+
+      Your task:
+      1. Synthesize findings from all {worker_role}s into a comprehensive answer
+      2. Ensure proper attribution and citations
+      3. Structure the response clearly with sections if needed
+
+      {synthesis_guidance}
+
+      {citation_instructions}
+
+      {output_instructions}
+    synthesis_guidance: |
+      Combine all worker outputs into comprehensive Substack article brief with:
+      - Compelling headline options
+      - Detailed article outline with sections
+      - Key arguments with evidence from both PDF and web sources
+      - Proper citations for all claims
+      - Narrative arc and story flow
+      - Engagement hooks and openers
+      - Call-to-action or conclusion ideas
+
+      Focus on:
+      - Novel insights from combining PDF + web sources
+      - Gaps between academic consensus and current discourse
+      - Implications and predictions
+      - Actionable takeaways for readers
+
+  critic:
+    critic_role: "Research Quality Critic"
+    output_type: "article research brief"
+    evaluation_focus: |
+      RESEARCH QUALITY RUBRIC:
+
+      1. SOURCE QUALITY (0-1):
+         - Are PDF sources academic/authoritative?
+         - Are web sources recent and credible?
+         - Is there sufficient source diversity?
+
+      2. CLAIM SUPPORT (0-1):
+         - Are claims properly supported with citations?
+         - Are contradictory sources acknowledged?
+         - Is the distinction between fact and interpretation clear?
+
+      3. DEPTH OF ANALYSIS (0-1):
+         - Does it go beyond surface-level?
+         - Are there non-obvious insights?
+         - Is the complexity of the topic addressed?
+
+      4. NOVELTY (0-1):
+         - Does synthesis create new understanding?
+         - Are there unique insights from combining sources?
+         - Does it identify gaps others miss?
+
+      5. ARTICLE STRUCTURE (0-1):
+         - Is there a clear narrative arc?
+         - Are sections logically organized?
+         - Is there a compelling thesis?
+
+      6. READINESS (0-1):
+         - Is this ready for long-form article writing?
+         - Are citations complete and accurate?
+         - Is the outline sufficient for 2000+ words?
+
+      Pass if overall score >= 0.8
+
+# =============================================================================
+# SPAWNER CONFIG
+# =============================================================================
+# =============================================================================
+# TOOLS - UNIFIED CONFIGURATION
+# =============================================================================
+# ONE WAY to specify tools: Just list tool names
+# Includes web_research_agent (YOUR web-sub-agent) and pdf_deep_agent (YOUR RAG lab-sub-agent)
+# =============================================================================
+enabled_tools:
+  - web_search
+  - web_get
+  - web_map
+  - web_crawl
+  - community_scrape
+  - web_research_agent  # YOUR web-sub-agent
+  - pdf_deep_agent      # YOUR RAG lab-sub-agent
+  - vector_search       # For RAG queries
+spawner_config:
+  min_complexity: 0.4
+  max_researchers: 7
+  max_iterations: 5
+  quality_threshold: 0.85
+  completeness_threshold: 0.9
+  worker_execution_mode: dynamic_graph
+  worker_specialization_mode: hybrid
+  level_of_detail: 10  # Maximum for academic rigor
+
+  # Pass all worker outputs to critic/synthesis (bypasses role filtering)
+  # This is needed for complex multi-worker workflows where intermediate workers
+  # provide valuable context that should be included in the final evaluation
+  pass_all_workers_to_critic: true
+
+  tools:
+    # DEPRECATED: Use enabled_tools list at top level instead
+
+  # =============================================================================
+  # WORKER GRAPH - DeepSeek's 7-worker structure
+  # =============================================================================
+  worker_graph:
+    worker_order:
+      - topic_mapper
+      - pdf_collector
+      - web_researcher
+      - pdf_vectorizer
+      - pdf_analyst
+      - argument_synthesizer
+      - article_brief
+
+    dependencies:
+      topic_mapper: []
+      pdf_collector: [topic_mapper]
+      web_researcher: [topic_mapper]
+      pdf_vectorizer: [pdf_collector]
+      pdf_analyst: [pdf_vectorizer]
+      argument_synthesizer: [pdf_analyst, web_researcher]
+      article_brief: [argument_synthesizer]
+
+# =============================================================================
+# SPECIALIST CONFIGS
+# =============================================================================
+specialist_configs:
+  # Level 0: Topic mapping
+  topic_mapper:
+    tools:
+    # DEPRECATED: Use enabled_tools list at top level instead
+    prompt_weights:
+      analytical: 0.8
+      structural: 0.9
+    specialist_prompt: |
+      You are a TOPIC MAPPER for Substack research.
+
+      Map out the research landscape:
+
+      1. MAIN DIMENSIONS
+         - What are the key aspects/debates?
+         - Different perspectives and viewpoints
+         - Sub-topics worth exploring
+
+      2. KEY THINKERS
+         - Who are the main voices?
+         - Different schools of thought
+         - Authorities to reference
+
+      3. HISTORICAL CONTEXT
+         - How did we get here?
+         - Key historical developments
+         - Important precedents
+
+      4. OPEN QUESTIONS
+         - What's still debated?
+         - Controversial points
+         - Areas needing more research
+
+      Return structured topic map with:
+      - Research vectors to explore
+      - Key entities and concepts
+      - Suggested research methods
+
+  # Level 1: Parallel collection
+  pdf_collector:
+    tools:
+    # DEPRECATED: Use enabled_tools list at top level instead
+    prompt_weights:
+      extractive: 0.95
+      thorough: 0.9
+    specialist_prompt: |
+      You are a PDF COLLECTOR.
+
+      Find and collect relevant PDFs:
+
+      1. ACADEMIC PAPERS
+         - Scholarly articles on the topic
+         - Peer-reviewed research
+         - University publications
+         - Use Google Scholar, JSTOR, arXiv
+
+      2. POLICY REPORTS
+         - Think tank publications
+         - Government reports
+         - Policy briefs
+         - Whitepapers
+
+      3. BOOKS
+         - Relevant books available as PDF
+         - Book excerpts and previews
+         - Use Google Books, academic publishers
+
+      4. PRIMARY SOURCES
+         - Historical documents
+         - Original source material
+         - Data and statistics
+         - Use government archives, data portals
+
+      For each PDF:
+      - Title and author
+      - Source URL
+      - Brief description of relevance
+      - Key topics covered
+      - Why it's valuable for this research
+
+      Return curated list of PDFs with download URLs.
+
+  web_researcher:
+    tools:
+    # DEPRECATED: Use enabled_tools list at top level instead
+    prompt_weights:
+      curious: 0.8
+      thorough: 0.85
+    specialist_prompt: |
+      You are a WEB RESEARCHER.
+
+      Complement PDF research with current web sources:
+
+      1. CURRENT EVENTS
+         - Recent developments (last 3 months)
+         - Breaking news
+         - Current discussions
+
+      2. EXPERT COMMENTARY
+         - Op-eds and analysis
+         - Expert takes
+         - Thought leadership
+         - Use Substack, Twitter, Medium
+
+      3. COUNTER-ARGUMENTS
+         - Different perspectives
+         - Critiques and rebuttals
+         - Alternative viewpoints
+
+      4. REAL-WORLD APPLICATIONS
+         - Case studies
+         - Examples
+         - Practical implications
+         - Market data, statistics
+
+      Return comprehensive web research with proper citations.
+
+  # Level 2: PDF processing
+  pdf_vectorizer:
+    tools:
+    # DEPRECATED: Use enabled_tools list at top level instead
+    prompt_weights:
+      technical: 0.9
+      precise: 0.95
+    specialist_prompt: |
+      You are a PDF VECTRIZER.
+
+      Your role:
+      1. Download the PDFs identified by pdf_collector
+      2. Extract text content from PDFs
+      3. Chunk and vectorize the content (100 token overlapping chunks)
+      4. Store in vector database for retrieval
+
+      Prioritize:
+      - Abstract, Methodology, Conclusion sections
+      - Preserve context through overlapping chunks
+      - Maintain citation metadata
+
+      Return:
+      - List of PDFs successfully processed
+      - Number of chunks per PDF
+      - Storage confirmation
+
+  pdf_analyst:
+    tools:
+    # DEPRECATED: Use enabled_tools list at top level instead
+    prompt_weights:
+      analytical: 0.9
+      extractive: 0.85
+      precise: 0.8
+    specialist_prompt: |
+      You are a PDF ANALYST.
+
+      Query the vectorized PDF knowledge base for:
+      1. KEY ARGUMENTS
+         - Main claims from academic sources
+         - Central theses from reports
+         - Core arguments from books
+
+      2. EVIDENCE AND DATA
+         - Statistics and numbers
+         - Study results
+         - Empirical findings
+
+      3. AUTHORITATIVE QUOTES
+         - Citations from experts
+         - Key passages worth quoting
+         - Source material for attribution
+
+      4. TECHNICAL DETAILS
+         - Nuances and qualifications
+         - Methodology notes
+         - Limitations and caveats
+
+      For each finding:
+      - The claim or information
+      - Source (document, page if available)
+      - Context/interpretation
+      - Reliability assessment
+
+      Return deep PDF-based insights with proper citations.
+
+  # Level 3: Synthesis and brief
+  argument_synthesizer:
+    tools:
+    # DEPRECATED: Use enabled_tools list at top level instead
+    prompt_weights:
+      synthetic: 0.9
+      analytical: 0.8
+      creative: 0.7
+    specialist_prompt: |
+      You are an ARGUMENT SYNTHESIZER.
+
+      Combine insights from pdf_analyst and web_researcher:
+
+      1. IDENTIFY STRONGEST ARGUMENTS
+         - Best-supported claims
+         - Most compelling evidence
+         - Well-founded conclusions
+
+      2. RESOLVE CONTRADICTIONS
+         - Where sources disagree
+         - Which sources are more reliable
+         - How to reconcile differences
+
+      3. FIND UNIQUE INSIGHTS
+         - Novel combinations of sources
+         - Cross-domain connections
+         - Synthesis-generated insights
+
+      4. IDENTIFY THE GAP
+         - What is the news missing that the science shows?
+         - What is the science missing that reality shows?
+         - This GAP is the thesis of the article
+
+      5. ORGANIZE BY THEME
+         - Natural groupings
+         - Thematic clusters
+         - Logical flow
+
+      Return synthesized argument framework with:
+      - Main argument structure
+      - Supporting points with citations
+      - Counter-arguments and responses
+      - Unique insights from synthesis
+      - The "Gap" - your article's thesis
+
+  article_brief:
+    tools:
+    # DEPRECATED: Use enabled_tools list at top level instead
+    prompt_weights:
+      creative: 0.85
+      structural: 0.9
+      audience_focused: 0.8
+    specialist_prompt: |
+      You are an ARTICLE BRIEF WRITER for Substack.
+
+      Take the synthesized arguments and create comprehensive article brief:
+
+      **1. HEADLINE OPTIONS**
+         - 5-10 headline variations
+         - Different angles (provocative, analytical, how-to)
+         - Curiosity gap headlines
+         - SEO-considered options
+
+      **2. ARTICLE STRUCTURE**
+         - Detailed outline with sections
+         - Word count per section
+         - Key points in each section
+         - Logical flow and transitions
+
+      **3. CORE ARGUMENTS**
+         - Main thesis
+         - Supporting arguments
+         - Evidence for each claim
+         - Citations (PDF and web sources)
+
+      **4. NARRATIVE ARC**
+         - Opening hook
+         - Story progression
+         - Climax/key insight
+         - Conclusion and takeaways
+
+      **5. ENGAGEMENT ELEMENTS**
+         - Discussion questions
+         - Shareable insights
+         - Call-to-action
+         - Follow-up topics
+
+      **6. VISUAL ELEMENTS (IMAGE PROMPTS FOR COMFYUI)**
+         For the article brief, generate 3-5 image prompts in this format:
+
+         ```
+         [Position: hero/section/mid-article/section-break]
+         Style: [photorealistic/illustration/data visualization/editorial cartoon/etc.]
+         Subject: [main subject of the image]
+         Composition: [layout, angle, framing - e.g., "close-up portrait", "wide landscape", "split screen comparison"]
+         Mood: [atmosphere, lighting - e.g., "dramatic side lighting", "warm and inviting", "cold and clinical"]
+         Details: [specific visual elements to include]
+         ```
+
+         Generate prompts for:
+         - Hero image for the headline/topic
+         - Section headers for major sections
+         - Data visualizations for key statistics
+         - Illustrative examples for key concepts
+
+      Target: 2000-3000 word outline ready for writing
+
+      Return publication-ready article brief with image prompts.
+
+# =============================================================================
+# OUTPUT CONFIG
+# =============================================================================
+output:
+  mode: "mdx"
+  validate: false
+
+  mdx:
+    title: null
+    frontmatter:
+      date: null
+      draft: false
+      tags: ["research", "substack", "deep-dive"]
+      images: []  # Image prompts for ComfyUI (will be populated by article_brief worker)
+    metadata:
+      author: "AI Research Assistant"

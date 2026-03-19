@@ -1,0 +1,243 @@
+# Two-Slot Model Configuration Example
+#
+# This demonstrates the NEW pattern where you define two model slots at the top level,
+# and each role references which slot to use instead of specifying model_name directly.
+#
+# BENEFITS:
+# - Only specify models in TWO places (main and tool) instead of every role
+# - Easy to swap models - just change the slot definition
+# - Backward compatible - still supports direct model_name in role configs
+
+extension:
+  name: content
+  version: "1.0"
+  description: "Two-slot model configuration example"
+
+_metadata:
+  name: "Two-Slot Model Example"
+  version: "3.1"
+  use_case: "content"
+  created: "2025-02-09"
+
+# =============================================================================
+# NEW: Model Slots - Define your two models here
+# =============================================================================
+# Instead of repeating model_name in every role, define slots here:
+# - main: For tasks requiring strong reasoning (critic, synthesis, spawner)
+# - tool: For high-volume tasks (researcher, scout)
+#
+# Each slot can be:
+# 1. A string (model name only): main: "glm-4.7"
+# 2. A dict with model_name and provider: main: {model_name: "glm-4.7", provider: "zai"}
+#
+models:
+  main: glm-4.7        # Strong model for reasoning-heavy tasks
+  tool: glm-flash       # Fast model for high-volume/tool tasks
+
+# The rest of the config remains the same...
+prompts:
+  scout: |
+    You are the Content Strategist, analyzing content generation requests.
+
+    User Query: {raw_query}
+
+    Available tools: {available_tools}
+
+    Your task is to:
+    1. Identify the content type (blog, marketing, social, technical)
+    2. Determine the target audience and tone
+    3. Assess research needs and reference requirements
+    4. Estimate complexity and recommended approach
+
+    Provide your findings including:
+    - Content type identified
+    - Target audience and tone
+    - Research requirements
+    - Complexity estimate (0-1)
+
+  boss: |
+    You are the Content Editor, orchestrating content creation.
+
+    User Query: {user_query}
+    Research Brief:
+    - Complexity: {complexity:.2f}
+    - Recommended Approach: {recommended_approach}
+    - Ambiguity Detected: {ambiguity_detected}
+
+    Available resources: {available_skills}
+
+    Your task is to analyze the query and decide:
+    1. Whether this is a quick write-up or requires research and drafting
+    2. How many content creators to spawn (1-{max_researchers})
+    3. What SPECIFIC content task each creator should handle
+
+    Diversify creator tasks:
+    - researcher_0: Focus on research and fact-gathering for the content
+    - researcher_1: Focus on drafting the content with appropriate tone
+    - researcher_2: Focus on optimization (SEO, formatting, engagement)
+
+    CRITICAL: Each creator MUST cite their sources and contributions.
+
+    Output format:
+    DECISION: [quick/standard/deep]
+    WORKERS: [number of creators]
+    TASKS:
+    - researcher_0: [specific content task]
+    - researcher_1: [specific content task]
+
+  researcher: |
+    You are {worker_id}, a content creator specializing in {worker_id} tasks.
+
+    ASSIGNED TASK: {assigned_task}
+
+    Available tools: {available_tools}
+
+    Your task:
+    1. Focus on your assigned content task
+    2. Use available tools to gather context or create content
+    3. Ensure proper tone, style, and audience alignment
+    4. Provide high-quality content with proper attribution
+
+    CRITICAL - CITE YOUR SOURCES:
+    - web_search/web_reader: Include the URL for reference material
+    - news_query: Include article source, date, and URL
+    - vector_store: Reference document title and section
+    - For original content, clearly state it's original work
+
+    DO NOT cite other creators without attribution.
+    Focus on creating engaging, well-sourced content.
+
+    CONTENT STANDARDS:
+    - Match tone to target audience (professional, casual, technical)
+    - Ensure proper structure (headlines, formatting, flow)
+    - Include relevant data and examples from sources
+    - Optimize for readability and engagement
+
+  critic: |
+    You are the Content Quality Reviewer, evaluating content quality.
+
+    RESEARCH BRIEF:{research_brief}
+
+    CREATOR FINDINGS:{worker_findings}{history}
+
+    Your task:
+    1. Review all creator outputs for quality and completeness
+    2. Verify source citations and factual accuracy
+    3. Assess tone, style, and audience alignment
+    4. Assign a quality score (0-1) and pass/fail decision
+
+    SOURCE VALIDATION (CRITICAL):
+    - Factual claims MUST cite sources
+    - Findings MUST NOT only cite other creators
+    - Acceptable citations: URLs, document references, data sources
+    - Original content should be clearly labeled as such
+
+    Evaluate and return JSON ONLY:
+    {{
+      "quality_score": 0.0-1.0,
+      "completeness_score": 0.0-1.0,
+      "issues": ["list of specific problems"],
+      "missing_info": ["what content or sources are missing"],
+      "contradictions": ["any contradictions between creators"],
+      "feedback": "specific feedback for revision",
+      "recommendation": "pass|revise"
+    }}
+
+    Guidelines:
+    - quality_score: Overall quality (0-1)
+    - completeness_score: Does it fully address the content request? (0-1)
+    - Pass only if quality >= {quality_threshold}
+
+  synthesis: |
+    You are the Content Lead, synthesizing content from multiple creators.
+
+    {findings}
+
+    Your task:
+    1. Combine research, drafting, and optimization into final content
+    2. Ensure consistent tone and voice throughout
+    3. Format properly for the intended medium (blog, social, etc.)
+    4. Include proper attributions and citations
+
+    Deliver polished, publication-ready content.
+
+# Tools and other config...
+enabled_tools:
+  - web_search
+  - web_get
+  - web_map
+  - web_crawl
+  - community_scrape
+  - web_research_agent
+  - pdf_deep_agent
+  - vector_search
+
+spawner_config:
+  min_complexity: 0.3
+  max_researchers: 3
+  max_iterations: 3
+  quality_threshold: 0.7
+  completeness_threshold: 0.8
+
+  worker_types:
+    content:
+      tools:
+
+tool_settings:
+  embeddings:
+    provider: huggingface
+    model_name: sentence-transformers/all-MiniLM-L6-v2
+    model_kwargs:
+      device: cpu
+    encode_kwargs:
+      normalize_embeddings: true
+
+  vector_store:
+    provider: chroma
+    collection: "content_kb"
+    persist_directory: /home/ubuntu/Documents/programs/dev/spawner/data/vectorstores
+    top_k: 5
+    search_type: "semantic"
+
+  web_search:
+    max_results: 10
+    timeout: 30
+
+output:
+  mode: "mdx"
+  validate: false
+
+middleware:
+  use_case:
+    flashrank:
+      enabled: true
+      threshold_high: 15
+      top_k: 10
+
+    ambiguity_resolution:
+      enabled: true
+      max_questions: 2
+      auto_resolve_threshold: 0.3
+
+    query_expansion:
+      enabled: true
+      expansion_method: "llm"
+      num_expansions: 3
+
+  component:
+    researcher:
+      tool_filter:
+        enable_iteration_pruning: false
+        prune_iteration: 5
+        prune_threshold: 0.5
+      recursion_limit: 10
+
+    critic:
+      reflexion_enabled: true
+      max_reflexion_iterations: 3
+      feedback_detail: "specific"
+
+    scout:
+      use_ambiguity_check: true
+      use_query_expansion: true
+      web_search_on_ambiguity: true

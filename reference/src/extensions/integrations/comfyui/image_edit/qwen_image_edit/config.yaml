@@ -1,0 +1,133 @@
+# =============================================================================
+# Qwen Image Edit - ComfyUI Image Editing Extension
+# =============================================================================
+# Image editing using Qwen 2 VL GGUF vision model
+# =============================================================================
+
+extension:
+  name: qwen_image_edit
+  type: service
+  subprocess_only: true
+  display_name: "Qwen Image Edit"
+  description: "Image editing using Qwen 2 VL GGUF vision model"
+  version: 1.0.0
+  author: "Qwen Team"
+  category: comfyui
+  subcategory: image_edit
+  enabled: true
+
+capabilities:
+  input_type:
+    - image
+    - text
+  output_type:
+    - image
+  streaming: false
+
+tags:
+  - image
+  - editing
+  - comfyui
+  - qwen
+  - vision
+
+# =============================================================================
+# Workflow Configuration
+# =============================================================================
+workflow:
+  name: qwen_image_edit
+  display_name: "Qwen Image Edit"
+  description: "Edit images with natural language instructions"
+  # For ComfyUI UI (drag and drop loading)
+  file: "qwen_image_edit_workflow.json"
+  # For HTTP API programmatic access
+  api_file: "qwen_image_edit_api.json"
+  type: image_edit
+
+  # Editing parameters
+  parameters:
+    prompt:
+      type: string
+      required: true
+      description: "Edit instruction (e.g., 'make the person smile')"
+
+    image:
+      type: string
+      required: true
+      description: "Path to source image or base64 data"
+
+    strength:
+      type: float
+      min: 0.1
+      max: 1.0
+      default: 0.5
+      description: "Edit strength (lower = more faithful, higher = more change)"
+
+    negative_prompt:
+      type: string
+      default: ""
+      description: "Things to avoid in the edit"
+
+# =============================================================================
+# Models Configuration
+# =============================================================================
+# Models are downloaded to backend/vendor/ComfyUI/models/<type>/
+# The download utility reads this configuration
+#
+# Each model entry includes:
+#   - name: Unique identifier
+#   - url: Direct download link
+#   - destination: Where to save the file (relative to project root)
+#   - required: Whether this model is required for operation
+# =============================================================================
+models:
+  # =============================================================================
+  # Qwen 2 VL GGUF Model - Vision Model for Image Editing
+  # =============================================================================
+  - name: qwen_2_vl_gguf
+    display_name: "Qwen 2 VL 7B GGUF (Q5_K_M)"
+    description: "Qwen vision model for image understanding and editing (5GB)"
+    url: "https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct-GGUF/resolve/main/qwen2-vl-7b-instruct-q5_k_m.gguf"
+    destination: "backend/vendor/ComfyUI/models/vae_pred/qwen2-vl-7b-instruct-q5_k_m.gguf"
+    required: true
+    size: ~5GB
+
+# =============================================================================
+# Download Configuration
+# =============================================================================
+# For the download utility to process all models at once
+# =============================================================================
+download:
+  type: huggingface
+  destination: backend/vendor/ComfyUI/models/vae_pred
+  size: ~5GB
+  required: true
+  description: "Qwen 2 VL GGUF model for image editing"
+
+# =============================================================================
+# Service Configuration
+# =============================================================================
+service:
+  # ComfyUI server requirements
+  server_required: true
+  server_type: comfyui
+  default_address: "http://127.0.0.1:18188"
+
+  # Paths
+  paths:
+    workflow_file: "data/inputs/workflows/Qwen_GGUF_API.json"
+    output_dir: "data/outputs/generated_images"
+
+# =============================================================================
+# Dependencies
+# =============================================================================
+dependencies:
+  system:
+    - description: "ComfyUI server must be running"
+      check_command: "curl -s http://127.0.0.1:18188/system_stats"
+
+  python:
+    - description: "requests for HTTP API communication"
+      package: "requests"
+    - description: "Pillow for image processing"
+      package: "Pillow"

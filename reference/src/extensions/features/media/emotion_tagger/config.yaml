@@ -1,0 +1,47 @@
+extension:
+  name: emotion_tagger
+  type: feature
+  display_name: Emotion Tagger
+  description: Analyzes emotions in text using LLM for TTS processing
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true  # Use host environment for LLM access
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - emotions
+  - tts
+  - analysis
+  - text-processing
+
+ui:
+  provides_features:
+    - emotion_tagging
+
+settings_schema:
+  - name: emotion_intensity
+    type: range
+    label: Intensity
+    default: 0.7
+    min: 0
+    max: 1
+    step: 0.1
+
+  - name: context_type
+    type: select
+    label: Default Context Type
+    default: conversation
+    options:
+      - conversation
+      - narrative
+      - presentation
+      - casual

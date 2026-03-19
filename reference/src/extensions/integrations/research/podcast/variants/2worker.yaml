@@ -1,0 +1,73 @@
+# Podcast 2-Worker Variant
+# Simplified 2-worker mode with parallel character researchers
+# Each worker spawns sub-agents in parallel for research, then synthesizes in their character voice
+
+_metadata:
+  name: "Podcast 2-Worker"
+  version: "2.0"
+  description: "2-worker mode with agent tools for autonomous research"
+  user_created: false
+
+# Override spawner config for 2-worker mode
+spawner_config:
+  max_researchers: 2
+  max_iterations: 2
+  worker_execution_mode: parallel
+
+# Simplified worker graph for 2 workers
+worker_graph:
+  worker_order:
+    - left_character
+    - right_character
+
+  dependencies:
+    left_character: []
+    right_character: []
+
+# Character mappings for 2-worker mode
+# These can be overridden in the parent config.yaml
+character_card_mappings:
+  left_character: "EMMA"    # Can be overridden via config
+  right_character: "OLIVIA"  # Can be overridden via config
+
+# Specialist configs for 2-worker mode
+# Each worker is self-sufficient: spawns sub-agents, synthesizes, writes in character voice
+specialist_configs:
+  left_character:
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+      - community_scrape
+      - vector_store
+    # Agent tools - workers spawn these for autonomous research
+    agent_tools:
+      pdf_deep_agent:
+        mode: "agentic"  # Options: basic, enhanced, agentic
+        top_k: 10
+        max_attempts: 3
+    prompt_weights:
+      creative: 0.8
+      expressive: 0.9
+      emotional: 0.85
+      progressive: 0.9
+
+  right_character:
+    tools:
+      enabled_tools:
+      - web_search
+      - web_get
+      - community_scrape
+      - vector_store
+    # Agent tools - workers spawn these for autonomous research
+    agent_tools:
+      pdf_deep_agent:
+        mode: "agentic"  # Options: basic, enhanced, agentic
+        top_k: 10
+        max_attempts: 3
+    prompt_weights:
+      creative: 0.7
+      philosophical: 0.9
+      cynical: 0.85
+      traditional: 0.9
+

@@ -1,0 +1,34 @@
+extension:
+  name: chat_history
+  type: feature
+  display_name: Chat History
+  description: Chat history management with JSONL import/export (SillyTavern compatible)
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+python:
+  use_host_env: true
+
+capabilities:
+  input_type:
+    - text
+    - file
+  output_type:
+    - text
+    - file
+  streaming: false
+
+tags:
+  - chat
+  - history
+  - import
+  - export
+  - jsonl
+
+ui:
+  sidebar_component: chat_history
+  icon: "history"
+
+# CLI command name
+cli_command: chat

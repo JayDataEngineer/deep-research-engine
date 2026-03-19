@@ -1,0 +1,45 @@
+{# Macro for batch emotion tagging - Single LLM call for all dialogue lines #}
+{% macro batch_emotion_prompt(dialogue_lines) -%}
+Analyze the EMOTION of each dialogue line and respond with ONLY a JSON array of 8-float vectors.
+
+Emotion dimensions: [anger, disgust, fear, happiness, sadness, surprise, neutral, intensity]
+- Values 0.0-1.0 for each dimension
+- intensity should be 0.8 for neutral speech, higher for emotional speech
+- Set neutral to 0.2-0.4 when other emotions are present
+
+Dialogue lines:
+{% for line in dialogue_lines -%}
+{{ loop.index }}. {{ line.speaker }}: {{ line.text[:100] }}{% if line.text|length > 100 %}...{% endif %}
+{% endfor %}
+
+Response format (JSON array, one 8-float vector per line):
+[
+  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8, 0.1],
+  ...
+]
+{%- endmacro %}
+
+{# Macro for single line emotion tagging with context #}
+{% macro single_emotion_with_context_prompt(line, previous_lines) -%}
+Analyze the EMOTION of this dialogue line considering the conversation context.
+
+Previous context:
+{% for prev_line in previous_lines[:3] -%}
+{{ prev_line.speaker }}: {{ prev_line.text[:50] }}
+{% endfor %}
+
+Current line: {{ line.speaker }}: {{ line.text }}
+
+Respond with ONLY an 8-float emotion vector: [anger, disgust, fear, happiness, sadness, surprise, neutral, intensity]
+Values 0.0-1.0, intensity 0.8 for neutral, higher when emotional.
+{%- endmacro %}
+
+{# Macro for single line emotion tagging without context #}
+{% macro single_emotion_prompt(line) -%}
+Analyze the EMOTION of this dialogue line.
+
+{{ line.speaker }}: {{ line.text }}
+
+Respond with ONLY an 8-float emotion vector: [anger, disgust, fear, happiness, sadness, surprise, neutral, intensity]
+Values 0.0-1.0, intensity 0.8 for neutral, higher when emotional.
+{%- endmacro %}

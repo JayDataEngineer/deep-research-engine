@@ -1,0 +1,29 @@
+extension:
+  name: connection_manager
+  type: feature
+  display_name: Connection Manager
+  description: Multi-endpoint profiles and API connection management
+  version: 1.0.0
+  category: feature
+  enabled: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - connections
+  - api
+  - endpoints
+  - profiles
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages: []
+  extensions: []
+
+settings:
+  storage_path: inputs/connections

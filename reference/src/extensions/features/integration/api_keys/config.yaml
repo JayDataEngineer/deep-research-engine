@@ -1,0 +1,37 @@
+extension:
+  name: api_keys
+  type: feature
+  display_name: API Key Management
+  description: Secure storage and management of encrypted API keys
+  version: "1.0.0"
+  author: "Unified LLM Interface"
+  category: feature
+  enabled: true
+  api_prefix: /api/v1/keys
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages:
+    - fastapi
+    - pydantic
+  extensions: []
+
+settings:
+  enabled: true
+
+capabilities:
+  input_type:
+    - text
+  output_type:
+    - text
+  streaming: false
+
+tags:
+  - api
+  - keys
+  - security
+  - management
+
+ui:
+  provides_features:
+    - api_key_management

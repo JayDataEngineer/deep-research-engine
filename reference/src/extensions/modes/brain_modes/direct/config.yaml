@@ -1,0 +1,14 @@
+extension:
+  name: direct
+  type: mode
+  display_name: Direct
+  description: Pure LLM call, no tools
+  category: brain_mode
+  enabled: true
+
+capabilities:
+  input_type: [text]
+  output_type: [text]
+  streaming: true
+
+enabled_tools: []

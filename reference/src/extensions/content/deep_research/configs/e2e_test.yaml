@@ -1,0 +1,21 @@
+# E2E Test Variant Configuration
+# This variant is optimized for faster end-to-end testing with reduced resource usage
+# To use: _load_yaml_config(use_case="rag", variant="e2e_test")
+
+# Metadata
+_metadata:
+  name: E2E Test Config
+  version: '1.0'
+  description: Fast E2E testing variant with reduced recursion limits
+
+# Override spawner_config for faster testing
+spawner_config:
+  max_researchers: 2  # Spawn fewer Flash Explorers (default: 3)
+  max_iterations: 2  # Fewer critic loops (default: 3)
+  flash_recursion_limit: 20  # Reduced steps per Flash Explorer (default: 50)
+  flash_max_angles: 2  # Fewer research angles per avenue (default: 3-5)
+
+# Output settings for testing
+output:
+  mode: mdx
+  validate: false

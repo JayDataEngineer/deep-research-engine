@@ -14,17 +14,23 @@ Unified engine for:
 # Install
 pip install deep-research-engine
 
+# Setup LangFuse (prompt management)
+cd ../../shared-docker-infra
+make up-langfuse
+# Get keys from http://langfuse.local
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your LangFuse keys
+
+# Upload prompts to LangFuse
+uv run python scripts/upload_prompts_to_langfuse.py
+
 # Run a workflow
 deep-research research "quantum computing" --config rag.yaml
 
 # Run PDF summarizer
 deep-research pdf ./book.pdf --config pdf_summarizer.yaml
-
-# Run Telegram ingestion
-deep-research ingest ./ChatExport --config telegram_ingest.yaml
-
-# Run skill generator
-deep-research scrape https://docs.example.com --config skill_generator.yaml
 ```
 
 ## Architecture
@@ -45,6 +51,7 @@ Config (YAML) → Engine → Workflow Graph
 | Section | Description |
 |---------|-------------|
 | **[Getting Started](docs/getting-started/)** | Installation and quick start |
+| **[LangFuse Prompts](docs/langfuse-prompt-management.md)** | Prompt management setup |
 | **[Workflow Configs](docs/workflow-configs/)** | YAML configuration reference |
 | **[Workers](docs/workers/)** | Worker types and how to create custom ones |
 | **[Storage](docs/storage/)** | Pluggable storage backends |

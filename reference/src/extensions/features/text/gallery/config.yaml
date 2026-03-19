@@ -1,0 +1,38 @@
+extension:
+  name: gallery
+  type: feature
+  display_name: Image Gallery
+  description: Image gallery for chat attachments and generated images
+  version: 1.0.0
+  author: Unified LLM Interface
+  category: feature
+  enabled: true
+
+dependencies:
+  python_version: ">=3.10"
+  pip_packages: []
+  extensions: []
+
+settings:
+  storage_path: inputs/gallery
+  supported_formats:
+    - png
+    - jpg
+    - jpeg
+    - gif
+    - webp
+
+capabilities:
+  input_type:
+    - text
+    - image
+  output_type:
+    - text
+    - image
+  streaming: false
+
+tags:
+  - images
+  - gallery
+  - storage
+  - media
