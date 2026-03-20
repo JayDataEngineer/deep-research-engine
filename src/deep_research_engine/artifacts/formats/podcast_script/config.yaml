@@ -1,0 +1,7 @@
+# Used by ArtifactMakerWorker to format findings as a podcast script
+
+format: podcast_script
+max_retries: 5
+model:
+  name: qwen-35-27
+  enable_thinking: false

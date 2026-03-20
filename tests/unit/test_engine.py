@@ -33,11 +33,11 @@ class TestRunWorkflow:
 
             with patch('deep_research_engine.engine.drafter_node') as mock_drafter:
                 with patch('deep_research_engine.engine.critic_node') as mock_critic:
-                    with patch('deep_research_engine.engine.synthesizer_node') as mock_synthesis:
+                    with patch('deep_research_engine.engine.artifact_maker_node') as mock_synthesis:
                         # Setup mock nodes
                         mock_drafter.return_value = {"plan": ["task"], "current_phase": "critic", "phase_history": ["drafter", "critic"]}
-                        mock_critic.return_value = {"critique": {"passed": True}, "current_phase": "synthesizer", "phase_history": ["drafter", "critic", "synthesizer"]}
-                        mock_synthesis.return_value = {"synthesis_output": "Final report", "current_phase": "complete"}
+                        mock_critic.return_value = {"critique": {"passed": True}, "current_phase": "artifact_maker", "phase_history": ["drafter", "critic", "artifact_maker"]}
+                        mock_synthesis.return_value = {"artifact_output": "Final report", "current_phase": "complete"}
 
                         events = []
                         async for event in run_workflow(
@@ -65,10 +65,10 @@ class TestRunWorkflow:
 
             with patch('deep_research_engine.engine.drafter_node') as mock_drafter:
                 with patch('deep_research_engine.engine.critic_node') as mock_critic:
-                    with patch('deep_research_engine.engine.synthesizer_node') as mock_synthesis:
+                    with patch('deep_research_engine.engine.artifact_maker_node') as mock_synthesis:
                         mock_drafter.return_value = {"plan": ["task"], "current_phase": "critic", "phase_history": ["drafter", "critic"]}
-                        mock_critic.return_value = {"critique": {"passed": True}, "current_phase": "synthesizer", "phase_history": ["drafter", "critic", "synthesizer"]}
-                        mock_synthesis.return_value = {"synthesis_output": "Final report", "current_phase": "complete"}
+                        mock_critic.return_value = {"critique": {"passed": True}, "current_phase": "artifact_maker", "phase_history": ["drafter", "critic", "artifact_maker"]}
+                        mock_synthesis.return_value = {"artifact_output": "Final report", "current_phase": "complete"}
 
                         events = []
                         async for event in run_workflow(
@@ -246,14 +246,14 @@ class TestEngineIntegration:
         # Create state transitions
         state_sequence = [
             {"plan": ["task"], "current_phase": "critic", "phase_history": ["drafter", "critic"]},
-            {"critique": {"passed": True}, "current_phase": "synthesizer", "phase_history": ["drafter", "critic", "synthesizer"]},
-            {"synthesis_output": "Final report", "current_phase": "complete"},
+            {"critique": {"passed": True}, "current_phase": "artifact_maker", "phase_history": ["drafter", "critic", "artifact_maker"]},
+            {"artifact_output": "Final report", "current_phase": "complete"},
         ]
 
         with patch('deep_research_engine.engine.StorageManager'):
             with patch('deep_research_engine.engine.drafter_node', return_value=state_sequence[0]):
                 with patch('deep_research_engine.engine.critic_node', return_value=state_sequence[1]):
-                    with patch('deep_research_engine.engine.synthesizer_node', return_value=state_sequence[2]):
+                    with patch('deep_research_engine.engine.artifact_maker_node', return_value=state_sequence[2]):
                         events = []
                         async for event in run_workflow(
                             input_data="Test query",

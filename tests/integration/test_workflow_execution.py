@@ -136,7 +136,7 @@ class TestWorkflowPhases:
         assert "critic" in phase_names
         
         # Should have synthesis
-        assert "synthesis" in phase_names or "synthesizer" in phase_names
+        assert "synthesis" in phase_names or "artifact_maker" in phase_names
 
 
 # =============================================================================
