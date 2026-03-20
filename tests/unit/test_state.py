@@ -104,15 +104,15 @@ class TestEngineState:
         state = initial_state.copy()
         
         # Simulate phase transitions
-        state["current_phase"] = "workers"
-        state["phase_history"].append("workers")
+        state["current_phase"] = "drafter"
+        state["phase_history"].append("drafter")
         
         state["current_phase"] = "critic"
         state["phase_history"].append("critic")
         
         assert state["current_phase"] == "critic"
-        assert "boss" in state["phase_history"]
-        assert "workers" in state["phase_history"]
+        assert "ingestion" in state["phase_history"]
+        assert "drafter" in state["phase_history"]
         assert len(state["phase_history"]) == 3
 
 
@@ -176,8 +176,8 @@ class TestCreateInitialState:
         assert state["context"]["chunk_size"] == 1000
     
     @pytest.mark.unit
-    def test_create_sets_initial_phase_to_boss(self):
-        """Test that initial phase is always 'boss'."""
+    def test_create_sets_initial_phase_to_ingestion(self):
+        """Test that initial phase is always 'ingestion'."""
         state = create_initial_state(
             workflow_name="test",
             workflow_type="research",
@@ -186,8 +186,8 @@ class TestCreateInitialState:
             run_id="run-456"
         )
         
-        assert state["current_phase"] == "boss"
-        assert state["phase_history"] == ["boss"]
+        assert state["current_phase"] == "ingestion"
+        assert state["phase_history"] == ["ingestion"]
     
     @pytest.mark.unit
     def test_create_initializes_empty_collections(self):
@@ -445,9 +445,9 @@ class TestTypeAliases:
     @pytest.mark.unit
     def test_phase_name_literals(self):
         """Test PhaseName type accepts valid literals."""
-        valid_phases: list = ["boss", "workers", "critic", "synthesis"]
+        valid_phases: list = ["ingestion", "drafter", "critic", "neo4j_builder", "synthesizer"]
         # Type checking would catch invalid values at compile time
-        assert len(valid_phases) == 4
+        assert len(valid_phases) == 5
     
     @pytest.mark.unit
     def test_workflow_type_literals(self):
