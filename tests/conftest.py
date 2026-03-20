@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
-from typing import Any, AsyncGenerator, Generator
+from typing import Any, AsyncGenerator, Generator, Dict
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pytest_mock import MockerFixture
 
-from deep_research_engine.state import EngineState
+from deep_research_engine.state import EngineState, WorkerResult
+from deep_research_engine.workers import BaseWorker, WorkerConfig
 
 
 # =============================================================================
@@ -355,3 +356,100 @@ phases:
     config_file = tmp_path / "env_test.yaml"
     config_file.write_text(config_content)
     return config_file
+
+
+# =============================================================================
+# WORKER TEST FIXTURES
+# =============================================================================
+
+
+class StubWorker(BaseWorker):
+    """Mock worker implementation for unit tests."""
+    
+    worker_type = "test_worker"
+    description = "Test worker for unit tests"
+    
+    async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+        """Execute mock worker."""
+        self._start_timing()
+        return self._create_result(
+            success=True,
+            output={"test_data": "test output"},
+            output_type="test",
+            confidence=0.9
+        )
+
+
+@pytest.fixture
+def worker_config() -> WorkerConfig:
+    """Create a test worker config."""
+    return WorkerConfig(
+        worker_id="test_worker_1",
+        worker_type="test_worker",
+        task="test task",
+    )
+
+
+@pytest.fixture
+def test_worker(worker_config: WorkerConfig) -> StubWorker:
+    """Create a test worker instance."""
+    return StubWorker(worker_config)
+
+
+# =============================================================================
+# CONFIG PATH FIXTURES
+# =============================================================================
+
+
+@pytest.fixture
+def rag_config_path_fixed() -> Path:
+    """Return the path to the RAG config file."""
+    return Path(__file__).parent.parent / "configs" / "rag.yaml"
+
+
+@pytest.fixture
+def pdf_summarizer_config_path() -> Path:
+    """Return the path to the PDF summarizer config file."""
+    return Path(__file__).parent.parent / "configs" / "pdf_summarizer.yaml"
+
+
+@pytest.fixture
+def skill_generator_config_path() -> Path:
+    """Return the path to the skill generator config file."""
+    return Path(__file__).parent.parent / "configs" / "skill_generator.yaml"
+
+
+@pytest.fixture
+def telegram_ingest_config_path() -> Path:
+    """Return the path to the telegram ingest config file."""
+    return Path(__file__).parent.parent / "configs" / "telegram_ingest.yaml"
+
+
+@pytest.fixture
+def all_config_paths(
+    rag_config_path_fixed: Path,
+    pdf_summarizer_config_path: Path,
+    skill_generator_config_path: Path,
+    telegram_ingest_config_path: Path,
+) -> list[Path]:
+    """Return all config file paths."""
+    return [
+        rag_config_path_fixed,
+        pdf_summarizer_config_path,
+        skill_generator_config_path,
+        telegram_ingest_config_path,
+    ]
+
+
+@pytest.fixture
+def loaded_rag_config(rag_config_path_fixed: Path) -> WorkflowConfig:
+    """Load and return the RAG config."""
+    from deep_research_engine.config import load_config
+    return load_config(str(rag_config_path_fixed))
+
+
+@pytest.fixture
+def loaded_configs(all_config_paths: list[Path]) -> list[WorkflowConfig]:
+    """Load and return all configs."""
+    from deep_research_engine.config import load_config
+    return [load_config(str(path)) for path in all_config_paths]
