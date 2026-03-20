@@ -1,0 +1,59 @@
+# Direct Chat Workflow
+# Simplified RAG for direct questions against existing context
+
+workflow:
+  name: chat
+  type: chat
+  version: 1.0.0
+  description: Direct RAG chat against existing context
+
+input:
+  type: query
+  source: "${QUERY}"
+
+phases:
+  # Phase 1: Simple RAG Node (Retrieval + Synthesis in one go)
+  - name: synthesizer
+    node: SynthesisNode
+    config:
+      worker_type: synthesis
+      strategy: direct_rag
+      use_existing_context: true
+      tools:
+        - name: vector_search
+          config:
+            k: 5
+      output:
+        format: markdown
+
+storage:
+  postgres:
+    enabled: true
+    connection: "${CONTEXT_POSTGRES_URL-postgresql://localhost:5433/deep_research}"
+    checkpoint: true
+    vector_store: true
+
+  memory:
+    enabled: true
+
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+    embedding: jina-v5-embed
+
+tools:
+  enabled:
+    - vector_search
+
+execution:
+  max_steps: 10
+  timeout: 60
+  use_stategraph: true
+  streaming:
+    enabled: true
+
+output:
+  destination:
+    type: terminal
+  format: markdown
