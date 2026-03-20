@@ -1,17 +1,15 @@
-"""LangGraph nodes for deep research workflow."""
+"""Graph nodes for Deep Research Engine."""
 
-from .boss import boss_node, route_after_boss
-from .critic import critic_node, route_after_critic
-from .synthesis import route_after_synthesis, synthesis_node
-from .workers import route_after_workers, workers_node
+from .ingestion import ingestion_node
+from .drafter import drafter_node
+from .critic import critic_node
+from .neo4j_builder import neo4j_builder_node
+from .synthesizer import synthesizer_node
 
 __all__ = [
-    "boss_node",
+    "ingestion_node",
+    "drafter_node",
     "critic_node",
-    "route_after_boss",
-    "route_after_critic",
-    "route_after_synthesis",
-    "route_after_workers",
-    "synthesis_node",
-    "workers_node",
+    "neo4j_builder_node",
+    "synthesizer_node",
 ]
