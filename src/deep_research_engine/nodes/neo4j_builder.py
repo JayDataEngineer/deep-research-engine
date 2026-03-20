@@ -30,12 +30,12 @@ async def neo4j_builder_node(state: EngineState) -> dict[str, Any]:
 
     if not neo4j_enabled:
         logger.info("Skipping Neo4j Builder (not enabled).")
-        return {"__goto__": "synthesizer"}
+        return {"__goto__": "artifact_maker"}
 
-    synthesis_output = state.get("worker_results", [{}])[-1].get("output", "")
-    if not synthesis_output:
-        logger.warning("No synthesis output found to extract relationships from.")
-        return {"__goto__": "synthesizer"}
+    artifact_output = state.get("worker_results", [{}])[-1].get("output", "")
+    if not artifact_output:
+        logger.warning("No artifact output found to extract relationships from.")
+        return {"__goto__": "artifact_maker"}
 
     try:
         # 1. Initialize storage tools with current config
@@ -43,7 +43,7 @@ async def neo4j_builder_node(state: EngineState) -> dict[str, Any]:
 
         # 2. Extract Triplets using Deep Agent
         logger.info("Extracting triplets using Neo4j Deep Agent...")
-        triplets = await _extract_triplets_agentic(synthesis_output, config_data)
+        triplets = await _extract_triplets_agentic(artifact_output, config_data)
         
         # 3. Write to Neo4j
         uri = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
@@ -55,20 +55,20 @@ async def neo4j_builder_node(state: EngineState) -> dict[str, Any]:
             _write_to_neo4j(uri, user, password, triplets)
             return {
                 "neo4j_result": f"Successfully wrote {len(triplets)} relationships to Neo4j.",
-                "__goto__": "synthesizer"
+                "__goto__": "artifact_maker"
             }
         else:
             logger.info("No triplets extracted.")
             return {
                 "neo4j_result": "No relationships found to write.",
-                "__goto__": "synthesizer"
+                "__goto__": "artifact_maker"
             }
 
     except Exception as e:
         logger.error(f"Neo4j Builder error: {e}", exc_info=True)
         return {
             "neo4j_error": str(e),
-            "__goto__": "synthesizer"
+            "__goto__": "artifact_maker"
         }
 
 async def _extract_triplets_agentic(text: str, config: Dict[str, Any]) -> List[Dict[str, str]]:

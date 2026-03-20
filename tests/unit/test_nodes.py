@@ -1,6 +1,6 @@
 """Unit Tests for LangGraph Nodes.
 
-Tests for ingestion, drafter, critic, neo4j_builder, and synthesizer nodes.
+Tests for ingestion, drafter, critic, neo4j_builder, and artifact_maker nodes.
 """
 
 import pytest
@@ -14,7 +14,7 @@ from deep_research_engine.nodes import (
     drafter_node,
     critic_node,
     neo4j_builder_node,
-    synthesizer_node,
+    artifact_maker_node,
 )
 from deep_research_engine.workers import WorkerConfig, WorkerRegistry
 
@@ -132,7 +132,7 @@ class TestNeo4jBuilderNode:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_neo4j_builder_node_handles_error(self, initial_state: EngineState):
-        """Test that it handles errors gracefully and continues to synthesizer."""
+        """Test that it handles errors gracefully and continues to artifact_maker."""
         state = initial_state.copy()
         state["context"] = {"config": {"neo4j_builder": {"enabled": True}}}
         state["worker_results"] = [{"output": "Test content", "success": True}]
@@ -140,16 +140,16 @@ class TestNeo4jBuilderNode:
         # Mock triplet extraction to raise error
         with patch('deep_research_engine.nodes.neo4j_builder._extract_triplets', side_effect=Exception("LLM Error")):
             command = await neo4j_builder_node(state)
-            assert command.goto == "synthesizer"
+            assert command.goto == "artifact_maker"
             assert "neo4j_error" in command.update
 
 
 # =============================================================================
-# SYNTHESIZER NODE TESTS
+# ARTIFACT MAKER NODE TESTS
 # =============================================================================
 
-class TestSynthesizerNode:
-    """Tests for synthesizer_node function."""
+class TestArtifactMakerNode:
+    """Tests for artifact_maker_node function."""
 
     @pytest.fixture
     def mock_registry(self):
@@ -161,50 +161,50 @@ class TestSynthesizerNode:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_synthesis_node_creates_report(self, state_with_results: EngineState, mock_registry):
-        """Test synthesis node creates final report."""
+    async def test_artifact_maker_node_creates_report(self, state_with_results: EngineState, mock_registry):
+        """Test artifact maker node creates final report."""
         state = state_with_results.copy()
         state["context"] = {
             "config": {
-                "synthesis": {
+                "artifact_maker": {
                     "format": "research_report"
                 }
             }
         }
 
         # Define and Register Mock Worker
-        class TestSynthesisWorker:
+        class TestArtifactMakerWorker:
             def __init__(self, config=None): pass
             async def execute(self, state, config):
-                state["synthesis_output"] = "# Research Report\n\nTest findings"
-                state["synthesis_metadata"] = {"format": "research_report"}
+                state["artifact_output"] = "# Research Report\n\nTest findings"
+                state["artifact_metadata"] = {"format": "research_report"}
                 return MagicMock(success=True)
 
-        WorkerRegistry.register("synthesis")(TestSynthesisWorker)
+        WorkerRegistry.register("artifact_maker")(TestArtifactMakerWorker)
 
-        command = await synthesizer_node(state)
+        command = await artifact_maker_node(state)
 
-        assert "synthesis_output" in command.update
-        assert "# Research Report" in command.update["synthesis_output"]
+        assert "artifact_output" in command.update
+        assert "# Research Report" in command.update["artifact_output"]
         assert command.goto == "complete"
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_synthesis_node_handles_failure(self, state_with_results: EngineState, mock_registry):
-        """Test synthesis node handles worker failure by falling back."""
+    async def test_artifact_maker_node_handles_failure(self, state_with_results: EngineState, mock_registry):
+        """Test artifact maker node handles worker failure by falling back."""
         state = state_with_results.copy()
-        state["context"] = {"config": {"synthesis": {"enabled": True}}}
+        state["context"] = {"config": {"artifact_maker": {"enabled": True}}}
 
-        class FailingSynthesisWorker:
+        class FailingArtifactMakerWorker:
             def __init__(self, config=None): pass
             async def execute(self, state, config):
-                return MagicMock(success=False, error="Synthesis failed")
+                return MagicMock(success=False, error="Artifact generation failed")
 
-        WorkerRegistry.register("synthesis")(FailingSynthesisWorker)
+        WorkerRegistry.register("artifact_maker")(FailingArtifactMakerWorker)
 
-        command = await synthesizer_node(state)
+        command = await artifact_maker_node(state)
 
-        # Should fallback to basic synthesis
-        assert "synthesis_output" in command.update
-        assert "# Final Research Synthesis" in command.update["synthesis_output"]
+        # Should fallback to basic aggregation
+        assert "artifact_output" in command.update
+        assert "# Final Research Artifact" in command.update["artifact_output"]
         assert command.goto == "complete"

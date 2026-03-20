@@ -30,7 +30,7 @@ class EngineState(TypedDict, total=False):
     workflow_type: str  # "research" | "ingestion" | "generation"
 
     # ===== Current Phase =====
-    current_phase: str  # "ingestion" | "drafter" | "critic" | "neo4j_builder" | "synthesizer"
+    current_phase: str  # "ingestion" | "drafter" | "critic" | "neo4j_builder" | "artifact_maker"
     phase_history: list[str]  # Track phase transitions
 
     # ===== Input (Generic) =====
@@ -50,9 +50,9 @@ class EngineState(TypedDict, total=False):
     critique_history: list[dict[str, Any]]  # Full critique history
     critic_passed: bool  # Simple pass/fail flag
 
-    # ===== Synthesis =====
-    synthesis_output: str | None  # Final output (markdown, json, etc.)
-    synthesis_metadata: dict[str, Any]  # Token usage, timing, etc.
+    # ===== Artifact Maker =====
+    artifact_output: str | None  # Final output (markdown, json, etc.)
+    artifact_metadata: dict[str, Any]  # Token usage, timing, etc.
 
     # ===== Execution Control =====
     remaining_steps: int  # LangGraph RemainingSteps
@@ -88,7 +88,7 @@ class WorkerResult(TypedDict, total=False):
     This enables:
     - Uniform accumulation in state
     - Generic critic evaluation
-    - Consistent synthesis input
+    - Consistent artifact maker input
     """
 
     # ===== Identity =====
@@ -99,7 +99,7 @@ class WorkerResult(TypedDict, total=False):
     # ===== Result =====
     success: bool  # Did worker complete successfully?
     output: Any  # Worker-specific output (findings, chunks, etc.)
-    output_type: str  # Schema hint for synthesis
+    output_type: str  # Schema hint for artifact maker
 
     # ===== Quality =====
     confidence: float  # 0-1 confidence score
@@ -142,7 +142,7 @@ class CriticResult(TypedDict, total=False):
 
     # ===== Routing =====
     recommendation: str  # "pass" | "revise" | "terminate"
-    feedback_to: str  # "boss" | "workers" | "synthesis"
+    feedback_to: str  # "boss" | "workers" | "artifact_maker"
 
     # ===== Metadata =====
     evaluation_time: float  # Seconds spent evaluating
@@ -191,8 +191,8 @@ def create_initial_state(
         "critique": None,
         "critique_history": [],
         "critic_passed": False,
-        "synthesis_output": None,
-        "synthesis_metadata": {},
+        "artifact_output": None,
+        "artifact_metadata": {},
         "remaining_steps": 100,  # Will be set by LangGraph
         "iteration_count": 0,
         "max_iterations": max_iterations,
@@ -231,7 +231,7 @@ def overwrite_reducer(left: Any, right: Any) -> Any:
 # =============================================================================
 
 # Phase names
-PhaseName = Literal["ingestion", "drafter", "critic", "neo4j_builder", "synthesizer"]
+PhaseName = Literal["ingestion", "drafter", "critic", "neo4j_builder", "artifact_maker"]
 
 # Workflow types
 WorkflowType = Literal["research", "ingestion", "generation"]
