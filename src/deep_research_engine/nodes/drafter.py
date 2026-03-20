@@ -10,6 +10,7 @@ from ..utils.logging import get_loguru_logger
 from ..utils.nodes import node_context
 from ..config import get_phase_config
 from deepagents import create_deep_agent, SubAgent
+from ..tools.storage import initialize_storage_tools, vector_search_datastore
 
 logger = get_loguru_logger("nodes.drafter")
 
@@ -30,6 +31,9 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
     if not node_enabled:
         logger.info("Drafter node disabled. Skipping.")
         return {"__goto__": "critic"}
+
+    # Initialize storage tools with current config
+    initialize_storage_tools(config_data)
 
     # 2. Map workers to SubAgent specs
     subagents: List[SubAgent] = []
@@ -72,6 +76,7 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
         model="openai:gpt-4o", # Smart King model
         system_prompt=king_prompt,
         subagents=subagents,
+        tools=[vector_search_datastore],
         debug=True
     )
 

@@ -11,6 +11,7 @@ from ..state import WorkerResult as WorkerResultDict
 
 if TYPE_CHECKING:
     from ..state import EngineState
+    from shared.base import BaseLLM
 
 
 # =============================================================================
@@ -169,7 +170,7 @@ class BaseWorker(ABC):
         """
         if self.start_time is None:
             return 0.0
-        return time.time() - self.start_time
+        return time.time() - self.start_time  # type: ignore[operator]
 
     def _create_result(
         self,
@@ -216,6 +217,62 @@ class BaseWorker(ABC):
             error=error,
             error_type=None,
             retry_count=0,
+        )
+
+    async def _get_llm(
+        self,
+        state: EngineState,
+        role: str = "worker",
+        **kwargs: Any,
+    ) -> BaseLLM:
+        """Get an LLM instance for a specific role.
+
+        Resolves model settings from:
+        1. worker-specific config (self.config.custom)
+        2. phase-specific config (from state['context']['config'])
+        3. global defaults
+
+        Args:
+            state: Current engine state.
+            role: LLM role ("worker", "boss", "critic").
+            **kwargs: Overrides for get_chat_llm (temperature, tags, etc.).
+
+        Returns:
+            LLM instance.
+        """
+        try:
+            from shared.chat_llm import get_chat_llm
+        except ImportError:
+            # Fallback for environments where shared is not available
+            self._log("shared.chat_llm not found, using direct fallback", level="warning")
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(model="gpt-4o-mini", **kwargs)  # type: ignore
+
+        # 1. Get phase/global config from state
+        yaml_config = state.get("context", {}).get("config", {})
+
+        # 2. Resolve model name
+        # Priority: custom config > phase config > global config > default
+        model_name = self.config.custom.get("model")
+        
+        if not model_name:
+            # Try to get from phase config in state
+            from ..config import get_phase_config
+            phase_cfg = get_phase_config(yaml_config, role)
+            model_name = phase_cfg.get("model", {}).get("name")
+
+        if not model_name:
+            # Try global llm config
+            llm_cfg = yaml_config.get("llm", {})
+            model_name = llm_cfg.get("models", {}).get(role) or \
+                         llm_cfg.get("models", {}).get("default", "qwen-35-27-fast")
+
+        # 3. Create LLM
+        return await get_chat_llm(
+            model=model_name,
+            session_id=state.get("session_id"),
+            tags=[f"worker:{self.worker_type}", role],
+            **kwargs,
         )
 
     def _log(self, message: str, level: str = "info", **kwargs: Any) -> None:
