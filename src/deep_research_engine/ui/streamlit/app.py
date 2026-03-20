@@ -15,16 +15,172 @@ from deep_research_engine.config import load_config
 from deep_research_engine.engine import run_workflow
 
 
+def inject_custom_css():
+    st.markdown("""
+        <style>
+        /* General Theme Settings */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        html, body, [class*="css"] {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .stApp {
+            background-color: #0B0F19;
+            background-image: radial-gradient(circle at 50% 0%, #1E293B 0%, transparent 50%);
+            color: #E2E8F0;
+        }
+
+        /* Typography & Gradients */
+        h1, h2, h3 {
+            font-weight: 700 !important;
+            letter-spacing: -0.025em;
+        }
+
+        h1 {
+            background: linear-gradient(135deg, #818CF8 0%, #C084FC 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 3rem !important;
+            margin-bottom: 0.5rem !important;
+        }
+
+        /* Sidebar Styling */
+        [data-testid="stSidebar"] {
+            background-color: rgba(15, 23, 42, 0.6) !important;
+            backdrop-filter: blur(12px) !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        [data-testid="stSidebar"] h2 {
+            color: #94A3B8 !important;
+            text-transform: uppercase;
+            font-size: 0.85rem !important;
+            letter-spacing: 0.05em;
+            margin-bottom: 1rem;
+        }
+
+        /* Buttons */
+        .stButton>button {
+            border-radius: 8px !important;
+            transition: all 0.3s ease !important;
+            font-weight: 600 !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            background: linear-gradient(180deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.8) 100%) !important;
+            color: #E2E8F0 !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+        }
+
+        .stButton>button:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1) !important;
+            border: 1px solid rgba(129, 140, 248, 0.5) !important;
+            background: linear-gradient(180deg, rgba(49, 46, 129, 0.8) 0%, rgba(30, 27, 75, 0.8) 100%) !important;
+        }
+
+        /* Chat Input */
+        [data-testid="stChatInput"] {
+            border-radius: 16px !important;
+            background-color: rgba(30, 41, 59, 0.7) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            backdrop-filter: blur(12px) !important;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        [data-testid="stChatInput"] textarea {
+            color: #F8FAFC !important;
+        }
+
+        [data-testid="stChatInput"]:focus-within {
+            border-color: #818CF8 !important;
+            box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.2), 0 20px 25px -5px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        /* Chat Messages */
+        [data-testid="stChatMessage"] {
+            background-color: rgba(30, 41, 59, 0.4) !important;
+            border-radius: 16px !important;
+            padding: 1.5rem !important;
+            margin-bottom: 1.5rem !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            backdrop-filter: blur(8px) !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        /* User message distinct style */
+        [data-testid="stChatMessage"][data-testid*="user"] {
+            background-color: rgba(99, 102, 241, 0.1) !important;
+            border: 1px solid rgba(99, 102, 241, 0.2) !important;
+        }
+
+        /* Status Expanders / Status */
+        [data-testid="stStatusWidget"] {
+            background-color: rgba(15, 23, 42, 0.6) !important;
+            border-radius: 12px !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            backdrop-filter: blur(8px) !important;
+        }
+
+        /* File Uploader */
+        [data-testid="stFileUploader"] {
+            background-color: rgba(30, 41, 59, 0.4) !important;
+            border-radius: 12px !important;
+            padding: 1rem !important;
+            border: 1px dashed rgba(129, 140, 248, 0.5) !important;
+            transition: all 0.3s ease !important;
+        }
+
+        [data-testid="stFileUploader"]:hover {
+            background-color: rgba(30, 41, 59, 0.6) !important;
+            border-color: rgba(129, 140, 248, 0.8) !important;
+        }
+
+        /* Info/Warning/Error alerts */
+        .stAlert {
+            border-radius: 12px !important;
+            border: none !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        /* Selectbox */
+        div[data-baseweb="select"] > div {
+            background-color: rgba(30, 41, 59, 0.6) !important;
+            border-radius: 8px !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* Text input */
+        div[data-baseweb="input"] > div {
+            background-color: rgba(30, 41, 59, 0.6) !important;
+            border-radius: 8px !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* Dividers */
+        hr {
+            border-color: rgba(255, 255, 255, 0.05) !important;
+        }
+
+        /* Top bar padding fix */
+        .block-container {
+            padding-top: 2rem !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+
 def setup_page():
     """Setup streamlit page configuration."""
     st.set_page_config(
         page_title="Deep Research Engine",
-        page_icon="🔍",
+        page_icon="🔮",
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    st.title("🔍 Deep Research Engine")
-    st.markdown("---")
+    inject_custom_css()
+
+    st.markdown("<h1>Deep Research Engine</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size: 1.2rem; color: #94A3B8; margin-top: -10px; margin-bottom: 2rem;'>Next-Generation Autonomous Intelligence Platform</p>", unsafe_allow_html=True)
 
 
 def init_session_state():
@@ -124,10 +280,10 @@ async def run_research(query: str, config_name: str, thread_id: str, uploaded_fi
     st.session_state.is_running = True
     
     # Create containers for the UI
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar="🔮"):
         status_placeholder = st.empty()
         # Use a status component for phases
-        with status_placeholder.status("🔍 Researching...", expanded=True) as status:
+        with status_placeholder.status("🧠 Initializing Deep Research Engine...", expanded=True) as status:
             response_placeholder = st.empty()
             full_response = ""
             
@@ -141,37 +297,37 @@ async def run_research(query: str, config_name: str, thread_id: str, uploaded_fi
                     event_type = event.get("type", "unknown")
                     
                     if event_type == "phase_start":
-                        status.write(f"📍 Starting phase: **{event['phase']}**")
+                        status.write(f"🔄 **Phase started:** {event['phase']}")
                         st.session_state.current_status = f"Running: {event['phase']}"
                     elif event_type == "phase_complete":
-                        status.write(f"✅ Completed phase: **{event['phase']}**")
+                        status.write(f"✅ **Phase completed:** {event['phase']}")
                     elif event_type == "worker_complete":
-                         status.write(f"  🛠️ Worker **{event.get('worker_id', 'unknown')}** complete")
+                         status.write(f"  ⚡ **Worker resolved:** {event.get('worker_id', 'unknown')}")
                     elif event_type == "artifact_maker_complete":
-                        status.write("✨ Artifact creation complete!")
+                        status.write("✨ **Artifact synthesis complete!**")
                         if event.get("output"):
                             full_response = event["output"]
                             response_placeholder.markdown(full_response)
                     elif event_type == "complete":
-                        status.update(label="✅ Research Complete!", state="complete", expanded=False)
+                        status.update(label="✅ **Mission Accomplished!**", state="complete", expanded=False)
                         if event.get("output") and not full_response:
                             full_response = event["output"]
                             response_placeholder.markdown(full_response)
                     elif event_type == "error":
-                        st.error(f"❌ Error: {event.get('error')}")
-                        status.update(label="❌ Research Failed", state="error")
+                        st.error(f"❌ Critical Error: {event.get('error')}")
+                        status.update(label="❌ Mission Failed", state="error")
                 
                 # Save the full response to session state
                 if full_response:
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
                 else:
-                    msg = "Workflow finished but no output was generated."
+                    msg = "Mission concluded but no direct artifact was generated."
                     st.session_state.messages.append({"role": "assistant", "content": msg})
                     response_placeholder.info(msg)
                      
             except Exception as e:
-                st.error(f"Critical Error: {e}")
-                status.update(label="❌ Critical Error", state="error")
+                st.error(f"System Failure: {e}")
+                status.update(label="❌ System Failure", state="error")
             finally:
                 st.session_state.is_running = False
 
@@ -183,27 +339,27 @@ def main():
 
     # Sidebar
     with st.sidebar:
-        st.header("Settings")
+        st.header("⚙️ Configuration Profile")
         config_options = ["rag.yaml", "chat.yaml", "pdf_summarizer.yaml", "telegram_ingest.yaml", "skill_generator.yaml"]
-        selected_config = st.selectbox("Workflow Config", options=config_options, index=0)
+        selected_config = st.selectbox("Intelligence Protocol", options=config_options, index=0)
         
-        thread_id = st.text_input("Thread ID (for persistence)", value=st.session_state.session_id)
+        thread_id = st.text_input("Thread ID (Persistence Layer)", value=st.session_state.session_id)
         if thread_id != st.session_state.session_id:
             st.session_state.session_id = thread_id
             # Reset messages when switching thread
             st.session_state.messages = []
             
         st.markdown("---")
-        st.header("📁 Upload Documents")
-        uploaded_files = st.file_uploader("Upload PDF or Images", accept_multiple_files=True, type=["pdf", "png", "jpg", "jpeg", "txt"])
+        st.header("📁 Knowledge Ingestion")
+        uploaded_files = st.file_uploader("Drop Knowledge Sources", accept_multiple_files=True, type=["pdf", "png", "jpg", "jpeg", "txt"])
         
         st.markdown("---")
-        st.header("📜 History")
+        st.header("📜 Operation History")
         history = get_history()
         for session in history:
             col1, col2 = st.columns([0.8, 0.2])
             with col1:
-                if st.button(f"{session['query']}", key=f"btn_{session['id']}", use_container_width=True):
+                if st.button(f"🔍 {session['query']}", key=f"btn_{session['id']}", use_container_width=True):
                     st.session_state.session_id = session['id']
                     # In a real app, we'd load messages from DB, here we just reset for simplicity or display metadata
                     st.session_state.messages = [{"role": "user", "content": session.get("full_query", session["query"])}]
@@ -212,21 +368,22 @@ def main():
                  st.caption(f"{session['config'].split('.')[0]}")
             
         st.markdown("---")
-        if st.button("Clear Chat"):
+        if st.button("🗑️ Purge Current Session", use_container_width=True):
             st.session_state.messages = []
             st.session_state.session_id = str(uuid.uuid4())
             st.rerun()
             
-        add_vertical_space(5)
-        st.caption("Deep Research Engine v0.2.0")
+        add_vertical_space(3)
+        st.markdown("<div style='text-align: center; color: #475569; font-size: 0.8rem;'>DRE v0.2.0-alpha<br>Secured Channel</div>", unsafe_allow_html=True)
 
     # Display chat history
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
+        avatar = "👤" if message["role"] == "user" else "🔮"
+        with st.chat_message(message["role"], avatar=avatar):
             st.markdown(message["content"])
 
     # Chat input
-    if prompt := st.chat_input("Ask a question or request an artifact..."):
+    if prompt := st.chat_input("Enter command or intelligence query..."):
         if not st.session_state.is_running:
             # We use an event loop to run the async function
             try:
@@ -238,11 +395,12 @@ def main():
             loop.run_until_complete(run_research(prompt, selected_config, st.session_state.session_id, uploaded_files))
             st.rerun()
         else:
-            st.warning("A research task is already running. Please wait.")
+            st.warning("⚠️ An operation is currently in progress. Please hold.")
     
     # If no prompt but files uploaded, show a "Start" button
     if not prompt and uploaded_files and not st.session_state.is_running:
-        if st.button("🚀 Start Pipeline with Uploaded Files"):
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🚀 Execute Pipeline on Ingested Data", use_container_width=True):
              try:
                 loop = asyncio.get_event_loop()
              except RuntimeError:
