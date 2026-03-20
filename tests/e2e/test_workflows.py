@@ -277,7 +277,7 @@ class TestIntegrationE2E:
         # Updated to match actual phase names
         assert "boss" in phase_names or "drafter" in phase_names or "ingestion" in phase_names
         assert "critic" in phase_names
-        assert "synthesis" in phase_names or "synthesizer" in phase_names
+        assert "synthesis" in phase_names or "artifact_maker" in phase_names
 
         # Check storage
         assert config.storage["memory"]["enabled"] is True

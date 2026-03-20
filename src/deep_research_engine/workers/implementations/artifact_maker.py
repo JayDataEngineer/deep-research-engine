@@ -1,12 +1,12 @@
-"""Synthesis Worker - Formats research findings into structured outputs.
+"""Artifact Maker Worker - Formats research findings into structured artifacts.
 
-This worker adapts the content_formatter pattern for the synthesis stage.
+This worker adapts the content_formatter pattern for the artifact maker stage.
 It supports multiple output formats (research_report, findings, markdown, json, etc.)
 with Pydantic-validated structured outputs.
 
 Usage:
-    synthesis_worker = SynthesisWorker(config)
-    result = await synthesis_worker.execute(state, config)
+    artifact_maker_worker = ArtifactMakerWorker(config)
+    result = await artifact_maker_worker.execute(state, config)
 """
 
 import asyncio
@@ -21,36 +21,36 @@ from ...state import EngineState, WorkerResult
 from ..base import BaseWorker, WorkerConfig, WorkerRegistry
 
 
-@WorkerRegistry.register("synthesis")
-class SynthesisWorker(BaseWorker):
-    """Synthesis worker that formats research findings.
+@WorkerRegistry.register("artifact_maker")
+class ArtifactMakerWorker(BaseWorker):
+    """Artifact maker worker that formats research findings.
 
     Uses the content_formatter pattern:
-    - Format configs in synthesis/formats/*/config.yaml
-    - Pydantic schemas in synthesis/formats/*/schema.py
+    - Format configs in artifacts/formats/*/config.yaml
+    - Pydantic schemas in artifacts/formats/*/schema.py
     - Jinja2 templates for prompts
     - Retry logic with validation feedback
     """
 
-    worker_type = "synthesis"
-    description = "Synthesizes research findings into structured outputs"
+    worker_type = "artifact_maker"
+    description = "Formats research findings into structured artifacts"
     required_tools: list = []
 
     def __init__(self, config: WorkerConfig):
         super().__init__(config)
-        self.formats_dir = Path(__file__).parent.parent / "synthesis" / "formats"
+        self.formats_dir = Path(__file__).parent.parent.parent / "artifacts" / "formats"
         self.max_retries = config.custom.get("max_retries", 10)
         self.output_format = config.custom.get("format", "research_report")
 
     async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
-        """Execute synthesis on worker results.
+        """Execute artifact making on worker results.
 
         Args:
             state: Current engine state with worker_results
             config: Worker configuration
 
         Returns:
-            WorkerResult with synthesized output
+            WorkerResult with artifact output
         """
         self._start_timing()
 
@@ -59,14 +59,14 @@ class SynthesisWorker(BaseWorker):
             worker_results = state.get("worker_results", [])
             if not worker_results:
                 return self._create_result(
-                    success=False, output=None, error="No worker results to synthesize"
+                    success=False, output=None, error="No worker results to turn into an artifact"
                 )
 
-            # Get synthesis config
-            synthesis_config = config.custom.get("config", {})
-            output_format = synthesis_config.get("format", self.output_format)
-            citations_enabled = synthesis_config.get("citations", {}).get("enabled", True)
-            citations_format = synthesis_config.get("citations", {}).get("format", "numbered")
+            # Get artifact config
+            artifact_config = config.custom.get("config", {})
+            output_format = artifact_config.get("format", self.output_format)
+            citations_enabled = artifact_config.get("citations", {}).get("enabled", True)
+            citations_format = artifact_config.get("citations", {}).get("format", "numbered")
 
             # Format content
             formatted_output = await self._format_findings(
@@ -78,12 +78,12 @@ class SynthesisWorker(BaseWorker):
             )
 
             # Store in state
-            state["synthesis_output"] = (
+            state["artifact_output"] = (
                 formatted_output.model_dump_json()
                 if isinstance(formatted_output, BaseModel)
                 else str(formatted_output)
             )
-            state["synthesis_metadata"] = {
+            state["artifact_metadata"] = {
                 "format": output_format,
                 "worker_count": len(worker_results),
                 "citations_enabled": citations_enabled,
@@ -97,7 +97,7 @@ class SynthesisWorker(BaseWorker):
             )
 
         except Exception as e:
-            self._log(f"Synthesis failed: {e}", level="error")
+            self._log(f"Artifact generation failed: {e}", level="error")
             return self._create_result(
                 success=False,
                 output=None,
@@ -217,7 +217,7 @@ class SynthesisWorker(BaseWorker):
     def _compile_findings(
         self, worker_results: list[dict[str, Any]], citations_enabled: bool = True
     ) -> str:
-        """Compile worker findings into text for synthesis.
+        """Compile worker findings into text for artifact creation.
 
         Args:
             worker_results: List of worker result dicts
@@ -261,6 +261,12 @@ class SynthesisWorker(BaseWorker):
             "research_report": "research_report.schema",
             "markdown": "markdown.schema",
             "structured_json": "structured_json.schema",
+            "podcast_script": "podcast_script.schema",
+            "substack_article": "substack_article.schema",
+            "twitter_thread": "twitter_thread.schema",
+            "skill": "skill.schema",
+            "llms_txt": "llms_txt.schema",
+            "code": "code.schema",
         }
 
         schema_module = schema_map.get(format_name.lower())
@@ -268,10 +274,10 @@ class SynthesisWorker(BaseWorker):
             available = list(schema_map.keys())
             raise ValueError(f"Schema not found for format '{format_name}'. Available: {available}")
 
-        # Try to import from synthesis.formats package
+        # Try to import from artifacts.formats package
         try:
             module = importlib.import_module(
-                f".synthesis.formats.{format_name}.schema", package="deep_research_engine"
+                f".artifacts.formats.{format_name}.schema", package="deep_research_engine"
             )
         except (ImportError, ModuleNotFoundError):
             # Fallback: load from file path

@@ -158,8 +158,8 @@ def print_event(event: dict) -> None:
     elif event_type == "worker_complete":
         status = "[OK]" if event.get("success") else "[FAIL]"
         print(f"  {status} Worker {event.get('worker_id', 'unknown')} complete")
-    elif event_type == "synthesis_complete":
-        print("\n[Complete] Synthesis complete")
+    elif event_type == "artifact_maker_complete":
+        print("\n[Complete] Artifact maker complete")
         if event.get("output"):
             print(f"\n{event['output']}")
     elif event_type == "error":

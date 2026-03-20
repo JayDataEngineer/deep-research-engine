@@ -88,8 +88,8 @@ critic:
     - accuracy
   min_score: 0.7
 
-# Synthesis Configuration
-synthesis:
+# Artifact Maker Configuration
+artifact_maker:
   format: "markdown"
   include_citations: true
   include_sources: true
