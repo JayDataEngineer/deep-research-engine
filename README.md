@@ -1,163 +1,52 @@
 # Deep Research Engine
 
-**Config-driven multi-agent workflow engine for AI ingestion tasks.**
+**Unified engine for autonomous research, ingestion, and knowledge graph construction.**
 
-Unified engine for:
-- Multi-agent research (RAG + web)
-- PDF summarization
-- Telegram export processing
-- Documentation scraping (llms.txt)
+## Architecture Overview
 
-## Quick Start
+Deep Research Engine is an **isolated, config-driven system** designed to run complex multi-agent workflows. It follows a clean 5-node pipeline:
+
+1.  **Ingestion** (Optional): Converts non-text data (PDFs, Images, Audio) into clean, structured text files.
+2.  **Drafter**: The core node using **Flash Subagents** and **Specialist Sub-sub agents** to gather context and build a comprehensive draft.
+3.  **Critic**: Evaluates the draft quality and either passes it forward or loops back to the Drafter for improvements.
+4.  **Neo4j Builder** (Optional): Extracts entities and relationships to construct a persistent knowledge graph.
+5.  **Synthesizer** (Optional): Formats the final research output into specific products (Reports, Threads, Podcast Scripts).
+
+## 🚀 Quick Start
 
 ```bash
-# Install
-pip install deep-research-engine
-
-# Setup LangFuse (prompt management)
-cd ../../shared-docker-infra
-make up-langfuse
-# Get keys from http://langfuse.local
-
-# Configure environment
+# Setup Environment
 cp .env.example .env
-# Edit .env with your LangFuse keys
+# Strapped to shared-docker-infra environment variables
 
-# Upload prompts to LangFuse
-uv run python scripts/upload_prompts_to_langfuse.py
+# Run a Research Workflow
+deep-research research "Explain Quantum Computing" --config rag.yaml
 
-# Run a workflow
-deep-research research "quantum computing" --config rag.yaml
-
-# Run PDF summarizer
-deep-research pdf ./book.pdf --config pdf_summarizer.yaml
+# Run Ingestion + Research
+deep-research research "Analyze these documents" --config pdf_summarizer.yaml --input ./my_docs/
 ```
 
-## Architecture
+## 🛠️ Infrastructure Integration
 
-```
-Config (YAML) → Engine → Workflow Graph
-                     ↓
-        Boss → Workers → Critic → Synthesis
-```
+This engine is **fully strapped** into the `shared-docker-infra` environment:
 
-**One graph, many configurations.** All workflows use the same `Boss → Workers → Critic → Synthesis` pipeline. The YAML config determines:
-- What workers spawn (web_researcher, chunk_processor, multimodal, scraper)
-- What storage backends are used (Postgres, Neo4j, MongoDB, MinIO, Memory)
-- What the output format is (markdown, JSON, graph)
+-   **LiteLLM**: All model calls are routed through the LiteLLM gateway (usually on port 4000).
+-   **LangFuse**: Used for prompt management, versioning, and full trace observability.
+-   **MCP**: Leverages Model Context Protocol for secure tool execution.
+-   **Audio/Vision**: Integrated with shared multimodal tools for ingestion.
+-   **Databases**: Pluggable support for PostgreSQL (pgvector), Neo4j, MongoDB, and MinIO.
 
-## Documentation
+## 📂 Project Structure
 
-| Section | Description |
-|---------|-------------|
-| **[Getting Started](docs/getting-started/)** | Installation and quick start |
-| **[LangFuse Prompts](docs/langfuse-prompt-management.md)** | Prompt management setup |
-| **[Workflow Configs](docs/workflow-configs/)** | YAML configuration reference |
-| **[Workers](docs/workers/)** | Worker types and how to create custom ones |
-| **[Storage](docs/storage/)** | Pluggable storage backends |
-| **[API Reference](docs/api-reference/)** | Python API reference |
-| **[Examples](docs/examples/)** | Example workflows and configs |
+- `src/deep_research_engine/nodes/`: Core pipeline implementation.
+- `src/deep_research_engine/workers/`: Specialized worker agents used by Drafter.
+- `src/deep_research_engine/storage/`: Pluggable storage backend drivers.
+- `configs/`: YAML-based workflow definitions.
+- `docs/`: Detailed technical documentation.
 
-## Infrastructure Requirements
+## ⚖️ Design Principles
 
-This engine integrates with your existing infrastructure:
-
-```bash
-# Required: Shared Docker Infrastructure
-cd ~/Documents/programs/shared-docker-infra
-
-# Start core services
-make core-up
-
-# Start databases (optional - depends on workflow)
-make db-up
-
-# Verify
-curl http://litellm.local/v1/models
-```
-
-See [shared-docker-infra/docs/](../../shared-docker-infra/docs/) for full infrastructure documentation.
-
-### Service Dependencies by Workflow
-
-| Workflow | LiteLLM | Postgres | Neo4j | MongoDB | MinIO |
-|----------|---------|----------|-------|---------|-------|
-| RAG Research | ✓ | ✓ | ✓ | - | - |
-| PDF Summarizer | ✓ | - | - | - | - |
-| Telegram Ingest | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Skill Generator | ✓ | - | - | - | - |
-
-## Python API
-
-```python
-from deep_research_engine import run_workflow, load_config
-
-# Load config
-config = load_config("configs/rag.yaml")
-
-# Run with streaming
-async for event in run_workflow(
-    query="What is quantum computing?",
-    config=config,
-    stream=True,
-):
-    print(event)
-
-# Run without streaming
-result = await run_workflow(
-    query="What is quantum computing?",
-    config=config,
-    stream=False,
-)
-print(result["output"])
-```
-
-## FastAPI Integration
-
-```python
-from fastapi import FastAPI
-from deep_research_engine import run_workflow, load_config
-
-app = FastAPI()
-
-@app.post("/api/research")
-async def research(query: str):
-    config = load_config("configs/rag.yaml")
-    
-    async def generate():
-        async for event in run_workflow(query, config, stream=True):
-            yield format_sse(event)
-    
-    return StreamingResponse(generate())
-```
-
-## Project Structure
-
-```
-deep-research-engine/
-├── src/deep_research_engine/
-│   ├── engine.py              # Main entry point
-│   ├── config.py              # Config loading
-│   ├── state/                 # EngineState, WorkerResult
-│   ├── graph/                 # Boss, Workers, Critic, Synthesis nodes
-│   ├── workers/               # BaseWorker ABC + implementations
-│   ├── storage/               # StorageBackend ABC + backends
-│   ├── llm/                   # LLM factory
-│   ├── tools/                 # Tool registry
-│   └── critic/                # Critic implementations
-├── configs/                   # Example workflow configs
-├── docs/                      # Documentation
-└── tests/                     # Tests
-```
-
-## Related Projects
-
-This engine extracts and unifies:
-- [unified-llm-interface](../text/unified-llm-interface/) - Deep research mode
-- [pdf-summarizer](../text/pdf-summarizer/) - PDF processing
-- [make-llmstxt](../text/make-llmstxt/) - Skill generation
-- [tracer](../operations/tracer/) - Telegram ingestion
-
-## License
-
-MIT License
+-   **Isolation**: Zero external dependencies beyond the core engine and its config.
+-   **Nice Text Files**: All non-text data is normalized to clean text before agents start work.
+-   **Hierarchical Agents**: Drafter manages subagents; subagents manage specialists.
+-   **Config-Driven**: A single YAML file defines the entire behavior of the 5-node graph.
