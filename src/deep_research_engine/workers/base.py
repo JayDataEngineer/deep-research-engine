@@ -226,17 +226,18 @@ class BaseWorker(ABC):
             level: Logging level (info, warning, error, debug).
             **kwargs: Additional context for logging.
         """
-        from ..utils.logging import get_logger
+        from ..utils.logging import get_loguru_logger
 
-        logger = get_logger(f"worker.{self.worker_type}")
+        logger = get_loguru_logger(f"worker.{self.worker_type}")
 
         log_method = getattr(logger, level, logger.info)
-        log_method(
-            f"[{self.worker_id}] {message}",
-            worker_type=self.worker_type,
-            task=self.task[:50],
-            **kwargs,
-        )
+        
+        # Construct log message with context prefix
+        ctx_msg = f"[{self.worker_id}] {message}"
+        if kwargs:
+            ctx_msg += f" | {kwargs}"
+            
+        log_method(ctx_msg)
 
 
 # =============================================================================
