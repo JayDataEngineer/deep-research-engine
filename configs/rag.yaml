@@ -81,19 +81,21 @@ storage:
   postgres:
     enabled: true
     connection: "${CONTEXT_POSTGRES_URL-postgresql://localhost:5433/deep_research}"
-  
+    checkpoint: true      # Enable checkpointing for resume-from-failure
+    vector_store: true    # Enable LangGraph Store for vectorization
+
   neo4j:
     enabled: true
     uri: "${NEO4J_URI-bolt://localhost:7687}"
     username: neo4j
     password: "${NEO4J_PASSWORD}"
-  
+
   mongodb:
     enabled: false
-  
+
   minio:
     enabled: false
-  
+
   memory:
     enabled: true
 
@@ -113,6 +115,7 @@ tools:
 execution:
   max_steps: 100
   timeout: 600
+  use_stategraph: true    # Use StateGraph instead of legacy loop
   streaming:
     enabled: true
 

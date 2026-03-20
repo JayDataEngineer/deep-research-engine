@@ -36,10 +36,43 @@ def main():
     scrape_parser.add_argument("url", help="URL to scrape")
     scrape_parser.add_argument("--config", default="skill_generator.yaml", help="Config file")
 
-    # Common arguments
+    # Resume command
+    resume_parser = subparsers.add_parser(
+        "resume",
+        help="Resume a workflow from checkpoint",
+    )
+    resume_parser.add_argument(
+        "thread_id",
+        help="Thread ID to resume from",
+    )
+    resume_parser.add_argument(
+        "--config",
+        default="rag.yaml",
+        help="Config file",
+    )
+
+    # Common arguments for all subparsers
     for subparser in subparsers.choices.values():
         subparser.add_argument("--stream", action="store_true", default=True, help="Stream output")
         subparser.add_argument("--output", "-o", help="Output file path")
+        subparser.add_argument("--thread-id", help="Thread ID for checkpointing")
+        subparser.add_argument(
+            "--use-stategraph",
+            action="store_true",
+            default=True,
+            help="Use StateGraph instead of legacy loop",
+        )
+        subparser.add_argument(
+            "--legacy",
+            action="store_true",
+            default=False,
+            help="Use legacy manual loop instead of StateGraph",
+        )
+        subparser.add_argument(
+            "--storage-backends",
+            nargs="+",
+            help="Storage backends to enable (e.g., postgres neo4j)",
+        )
 
     args = parser.parse_args()
 
@@ -57,14 +90,36 @@ def main():
     config = load_config(str(config_path))
 
     # Get input based on command
-    if args.command == "research":
+    if args.command == "resume":
+        # Resume mode
+        input_data = {}  # No input data for resume
+        session_id = args.thread_id
+        resume_from = args.thread_id
+    elif args.command == "research":
         input_data = args.query
+        session_id = args.thread_id
+        resume_from = None
     elif args.command == "pdf":
         input_data = {"pdf_path": args.pdf_path}
+        session_id = args.thread_id
+        resume_from = None
     elif args.command == "ingest":
         input_data = {"export_path": args.export_path}
+        session_id = args.thread_id
+        resume_from = None
     elif args.command == "scrape":
         input_data = {"url": args.url}
+        session_id = args.thread_id
+        resume_from = None
+    else:
+        print(f"Unknown command: {args.command}")
+        return
+
+    # Determine use_stategraph flag
+    use_stategraph = args.use_stategraph and not args.legacy
+
+    # Handle storage backends
+    storage_backends = args.storage_backends if hasattr(args, "storage_backends") else None
 
     # Run workflow
     async def run():
@@ -72,6 +127,10 @@ def main():
             input_data,
             config,
             stream=args.stream,
+            session_id=session_id,
+            resume_from=resume_from,
+            storage_backends=storage_backends,
+            use_stategraph=use_stategraph,
         ):
             if args.stream:
                 print_event(event)
@@ -89,31 +148,35 @@ def print_event(event: dict) -> None:
     event_type = event.get("type", "unknown")
 
     if event_type == "phase_start":
-        print(f"\n▶ Starting phase: {event['phase']}")
+        print(f"\n[Phase] Starting: {event['phase']}")
     elif event_type == "phase_complete":
-        print(f"✓ Phase complete: {event['phase']} ({event.get('duration', 0):.2f}s)")
+        print(f"[Complete] Phase: {event['phase']} ({event.get('duration', 0):.2f}s)")
+    elif event_type == "phase_retry":
+        print(f"[Retry] Phase: {event['phase']} (reason: {event.get('reason', 'unknown')})")
+    elif event_type == "phase_update":
+        print(f"[Update] Phase update from {event.get('node', 'unknown')}")
     elif event_type == "worker_complete":
-        status = "✓" if event.get("success") else "✗"
+        status = "[OK]" if event.get("success") else "[FAIL]"
         print(f"  {status} Worker {event.get('worker_id', 'unknown')} complete")
     elif event_type == "synthesis_complete":
-        print("\n✓ Synthesis complete")
+        print("\n[Complete] Synthesis complete")
         if event.get("output"):
             print(f"\n{event['output']}")
     elif event_type == "error":
-        print(f"✗ ERROR: {event.get('error')}")
+        print(f"[ERROR] {event.get('error')}")
     elif event_type == "complete":
-        print("\n✓ Workflow complete")
+        print("\n[Complete] Workflow complete")
+        if event.get("output"):
+            print(f"\n{event['output'][:500]}...")
 
 
 def write_output(result: dict, path: str) -> None:
     """Write output to file.
 
     Args:
-        result: Result dictionary to write.
-        path: Path to output file.
+        result: Result dictionary to write
+        path: Path to output file
     """
-    from pathlib import Path
-
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
