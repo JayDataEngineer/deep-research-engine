@@ -402,13 +402,31 @@ class PostgresStorage(StorageBackend):
 
         results = []
         try:
-            async with self.pool.acquire() as conn, conn.transaction():
-                for item in items:
-                    resource_id = item.get("id", str(uuid.uuid4()))
-                    embedding = item.pop("embedding", None)
-                    metadata = item.get("metadata", {})
+            query_args = []
+            for item in items:
+                resource_id = item.get("id", str(uuid.uuid4()))
+                embedding = item.pop("embedding", None)
+                metadata = item.get("metadata", {})
 
-                    await conn.execute(
+                query_args.append((
+                    resource_id,
+                    namespace,
+                    item,
+                    embedding,
+                    metadata,
+                ))
+
+                results.append(
+                    StorageResult(
+                        success=True,
+                        id=resource_id,
+                        metadata={"namespace": namespace},
+                    )
+                )
+
+            async with self.pool.acquire() as conn, conn.transaction():
+                if query_args:
+                    await conn.executemany(
                         """
                             INSERT INTO storage_items (id, namespace, data, embedding, metadata)
                             VALUES ($1, $2, $3, $4, $5)
@@ -418,19 +436,7 @@ class PostgresStorage(StorageBackend):
                                 metadata = EXCLUDED.metadata,
                                 updated_at = NOW()
                         """,
-                        resource_id,
-                        namespace,
-                        item,
-                        embedding,
-                        metadata,
-                    )
-
-                    results.append(
-                        StorageResult(
-                            success=True,
-                            id=resource_id,
-                            metadata={"namespace": namespace},
-                        )
+                        query_args
                     )
 
             self._log(f"Batch stored {len(items)} items in namespace {namespace}")
