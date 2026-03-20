@@ -164,7 +164,7 @@ class ChunkProcessorWorker(BaseWorker):
             from langchain_core.prompts import ChatPromptTemplate
 
             # Get LLM from config
-            llm = await self._create_llm(yaml_config, role="worker")
+            llm = await self._get_llm(state, role="worker")
 
             # Classification prompt
             prompt = ChatPromptTemplate.from_messages(
@@ -252,7 +252,7 @@ Respond with JSON:
             from langchain_core.prompts import ChatPromptTemplate
 
             # Get LLM from config
-            llm = await self._create_llm(yaml_config, role="worker")
+            llm = await self._get_llm(state, role="worker")
 
             # Extraction prompt
             prompt = ChatPromptTemplate.from_messages(
@@ -322,34 +322,3 @@ Respond with JSON:
                 "summary": "",
             }
 
-    async def _create_llm(
-        self,
-        yaml_config: dict[str, Any],
-        role: str = "worker",
-    ) -> Any:
-        """Create LLM from config.
-
-        Args:
-            yaml_config: YAML configuration
-            role: LLM role ("worker", "boss", "critic")
-
-        Returns:
-            LLM instance
-        """
-        try:
-            from src.shared.chat_llm import get_chat_llm
-
-            model_config = yaml_config.get("model", {})
-            model_name = model_config.get("name", "qwen-35-27")
-            enable_thinking = model_config.get("enable_thinking", False)
-
-            return await get_chat_llm(model=model_name, enable_thinking=enable_thinking)
-
-        except ImportError:
-            # Fallback to langchain
-            from langchain_openai import ChatOpenAI
-
-            return ChatOpenAI(
-                model="gpt-4o-mini",
-                temperature=0.3,
-            )

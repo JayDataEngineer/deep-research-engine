@@ -204,7 +204,8 @@ class WebResearcherWorker(BaseWorker):
             from src.shared.tools.ulli_langchain.web.web_agent import web_research_agent
 
             # Get tool model from config
-            tool_model = self._get_tool_model(yaml_config)
+            llm = await self._get_llm(state, role="worker")
+            tool_model = getattr(llm, "model_name", None) or getattr(llm, "model", None)
 
             # Run web research agent
             result = await web_research_agent.ainvoke(
@@ -296,24 +297,6 @@ class WebResearcherWorker(BaseWorker):
             self._log(f"Community deep agent failed: {e}", level="warning")
             return ""
 
-    def _get_tool_model(self, yaml_config: dict[str, Any]) -> str | None:
-        """Get tool model from YAML config.
-
-        Args:
-            yaml_config: YAML configuration dict
-
-        Returns:
-            Model name string or None
-        """
-        try:
-            from src.extensions.content.deep_research.graph.helpers.llm import (
-                _resolve_model_slot,
-            )
-
-            tool_model_info = _resolve_model_slot(yaml_config, role="worker")
-            return tool_model_info.get("model")  # type: ignore[union-attr]
-        except Exception:
-            return None
 
     def _needs_community_sentiment(self, query: str) -> bool:
         """Detect if query needs community sentiment research.
