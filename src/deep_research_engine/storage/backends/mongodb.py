@@ -198,14 +198,12 @@ class MongoDBStorage(StorageBackend):
                 {
                     "id": id,
                     "namespace": namespace,
-                }
+                },
+                {"_id": 0},
             )
 
             if not document:
                 return None
-
-            # Remove MongoDB _id
-            document.pop("_id", None)
 
             # Decode binary data if present
             if "binary_data" in document:
@@ -282,7 +280,9 @@ class MongoDBStorage(StorageBackend):
                 json_query = json.loads(query)
                 filter_dict.update(json_query)
                 documents = (
-                    await self.collection.find(filter_dict).limit(limit).to_list(length=limit)
+                    await self.collection.find(filter_dict, {"_id": 0})
+                    .limit(limit)
+                    .to_list(length=limit)
                 )
             except (json.JSONDecodeError, TypeError):
                 # Text search using regex
@@ -296,19 +296,13 @@ class MongoDBStorage(StorageBackend):
                 sort_order = kwargs.get("order", -1)
 
                 documents = (
-                    await self.collection.find(filter_dict)
+                    await self.collection.find(filter_dict, {"_id": 0})
                     .sort(sort_field, sort_order)
                     .limit(limit)
                     .to_list(length=limit)
                 )
 
-            # Clean up documents
-            results = []
-            for doc in documents:
-                doc.pop("_id", None)
-                results.append(doc)
-
-            return results
+            return documents
 
         except Exception as e:
             self._log(f"Query failed: {e}", level="error")
@@ -327,18 +321,20 @@ class MongoDBStorage(StorageBackend):
             cursor = (
                 self.collection.find(
                     {"namespace": namespace},
-                    {"id": 1, "namespace": 1, "type": 1, "created_at": 1, "metadata": 1},
+                    {
+                        "_id": 0,
+                        "id": 1,
+                        "namespace": 1,
+                        "type": 1,
+                        "created_at": 1,
+                        "metadata": 1,
+                    },
                 )
                 .sort("created_at", -1)
                 .limit(limit)
             )
 
-            items = []
-            async for doc in cursor:
-                doc.pop("_id", None)
-                items.append(doc)
-
-            return items
+            return [doc async for doc in cursor]
 
         except Exception as e:
             self._log(f"List failed: {e}", level="error")
