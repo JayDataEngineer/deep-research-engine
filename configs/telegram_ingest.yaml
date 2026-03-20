@@ -67,9 +67,9 @@ phases:
           weight: 0.4
           threshold: 0.6
 
-  # Phase 4: Synthesis (Graph Build)
-  - name: synthesis
-    node: SynthesisNode
+  # Phase 4: Artifact Maker (Graph Build)
+  - name: artifact_maker
+    node: ArtifactMakerNode
     config:
       sources: worker_outputs
       strategy: structured_report

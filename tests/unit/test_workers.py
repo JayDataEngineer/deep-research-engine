@@ -454,7 +454,7 @@ class TestConcreteWorkerImplementation:
             "critique": None,
             "critique_history": [],
             "critic_passed": False,
-            "synthesis_output": None,
+            "artifact_output": None,
             "synthesis_metadata": {},
             "remaining_steps": 50,
             "iteration_count": 0,

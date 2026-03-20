@@ -57,9 +57,9 @@ phases:
         action: retry_workers
         max_retries: 3
 
-  # Phase 4: Synthesis (Generate Output)
-  - name: synthesis
-    node: SynthesisNode
+  # Phase 4: Artifact Maker (Generate Output)
+  - name: artifact_maker
+    node: ArtifactMakerNode
     config:
       sources: worker_outputs
       strategy: structured_report

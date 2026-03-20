@@ -1,10 +1,10 @@
-"""Unit Tests for Synthesis Worker.
+"""Unit Tests for Artifact Maker Worker.
 
 Tests for:
-- SynthesisWorker implementation
+- ArtifactMakerWorker implementation
 - Format schema validation
 - Format config loading
-- Synthesis node integration
+- Artifact maker node integration
 """
 
 import pytest
@@ -14,8 +14,8 @@ from typing import Dict, Any
 
 from deep_research_engine.state import EngineState, create_initial_state
 from deep_research_engine.workers import WorkerConfig, WorkerRegistry
-from deep_research_engine.workers.implementations.synthesis import SynthesisWorker
-from deep_research_engine.nodes import synthesizer_node
+from deep_research_engine.workers.implementations.artifact_maker import ArtifactMakerWorker
+from deep_research_engine.nodes import artifact_maker_node
 
 
 # =============================================================================
@@ -23,12 +23,12 @@ from deep_research_engine.nodes import synthesizer_node
 # =============================================================================
 
 @pytest.fixture
-def synthesis_worker_config() -> WorkerConfig:
-    """Create synthesis worker configuration."""
+def artifact_maker_worker_config() -> WorkerConfig:
+    """Create artifact maker worker configuration."""
     return WorkerConfig(
-        worker_id="synthesis_0",
-        worker_type="synthesis",
-        task="Synthesize research findings into formatted output",
+        worker_id="artifact_maker_0",
+        worker_type="artifact_maker",
+        task="Format research findings into a structured artifact",
         tools=[],
         max_retries=3,
         timeout=600,
@@ -102,43 +102,43 @@ def state_with_worker_results(
 
 
 # =============================================================================
-# SYNTHESIS WORKER TESTS
+# ARTIFACT MAKER WORKER TESTS
 # =============================================================================
 
-class TestSynthesisWorker:
-    """Tests for SynthesisWorker implementation."""
+class TestArtifactMakerWorker:
+    """Tests for ArtifactMakerWorker implementation."""
 
     @pytest.mark.unit
-    def test_synthesis_worker_initialization(
+    def test_artifact_maker_worker_initialization(
         self,
-        synthesis_worker_config: WorkerConfig
+        artifact_maker_worker_config: WorkerConfig
     ):
-        """Test synthesis worker initialization."""
-        worker = SynthesisWorker(synthesis_worker_config)
+        """Test artifact maker worker initialization."""
+        worker = ArtifactMakerWorker(artifact_maker_worker_config)
 
-        assert worker.worker_id == "synthesis_0"
-        assert worker.worker_type == "synthesis"
+        assert worker.worker_id == "artifact_maker_0"
+        assert worker.worker_type == "artifact_maker"
         # max_retries comes from custom config, defaults to 10
         assert worker.max_retries == 10
         assert worker.output_format == "research_report"
 
     @pytest.mark.unit
-    def test_synthesis_worker_registry(self):
-        """Test synthesis worker is registered."""
+    def test_artifact_maker_worker_registry(self):
+        """Test artifact maker worker is registered."""
         # Should be able to get from registry
-        worker_class = WorkerRegistry.get("synthesis")
-        assert worker_class == SynthesisWorker
+        worker_class = WorkerRegistry.get("artifact_maker")
+        assert worker_class == ArtifactMakerWorker
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_synthesis_worker_no_results(
+    async def test_artifact_maker_worker_no_results(
         self,
-        synthesis_worker_config: WorkerConfig,
+        artifact_maker_worker_config: WorkerConfig,
         initial_state: EngineState
     ):
-        """Test synthesis worker handles empty results."""
-        worker = SynthesisWorker(synthesis_worker_config)
-        result = await worker.execute(initial_state, synthesis_worker_config)
+        """Test artifact maker worker handles empty results."""
+        worker = ArtifactMakerWorker(artifact_maker_worker_config)
+        result = await worker.execute(initial_state, artifact_maker_worker_config)
 
         assert result["success"] is False
         assert "error" in result
@@ -147,13 +147,13 @@ class TestSynthesisWorker:
     @pytest.mark.unit
     def test_formats_dir_exists(self):
         """Test that formats directory exists."""
-        formats_dir = Path(__file__).parent.parent.parent / "src" / "deep_research_engine" / "synthesis" / "formats"
+        formats_dir = Path(__file__).parent.parent.parent / "src" / "deep_research_engine" / "artifacts" / "formats"
         assert formats_dir.exists()
 
     @pytest.mark.unit
     def test_format_configs_exist(self):
         """Test that format configs exist."""
-        formats_dir = Path(__file__).parent.parent.parent / "src" / "deep_research_engine" / "synthesis" / "formats"
+        formats_dir = Path(__file__).parent.parent.parent / "src" / "deep_research_engine" / "artifacts" / "formats"
 
         # Check for expected format directories
         expected_formats = ["research_report", "markdown", "structured_json"]
@@ -179,7 +179,7 @@ class TestFormatSchemas:
     @pytest.mark.unit
     def test_research_report_schema_import(self):
         """Test research report schema can be imported."""
-        from deep_research_engine.synthesis.formats.research_report.schema import (
+        from deep_research_engine.artifacts.formats.research_report.schema import (
             ResearchReport,
             Section,
             KeyFinding,
@@ -194,7 +194,7 @@ class TestFormatSchemas:
     @pytest.mark.unit
     def test_markdown_schema_import(self):
         """Test markdown schema can be imported."""
-        from deep_research_engine.synthesis.formats.markdown.schema import (
+        from deep_research_engine.artifacts.formats.markdown.schema import (
             MarkdownOutput,
             MarkdownSource
         )
@@ -205,7 +205,7 @@ class TestFormatSchemas:
     @pytest.mark.unit
     def test_structured_json_schema_import(self):
         """Test structured JSON schema can be imported."""
-        from deep_research_engine.synthesis.formats.structured_json.schema import (
+        from deep_research_engine.artifacts.formats.structured_json.schema import (
             StructuredJSON,
             JSONFinding,
             JSONSource
@@ -218,7 +218,7 @@ class TestFormatSchemas:
     @pytest.mark.unit
     def test_research_report_schema_validation(self):
         """Test research report schema validation."""
-        from deep_research_engine.synthesis.formats.research_report.schema import (
+        from deep_research_engine.artifacts.formats.research_report.schema import (
             ResearchReport,
             Section,
             KeyFinding,
@@ -270,42 +270,42 @@ class TestFormatSchemas:
 
 
 # =============================================================================
-# SYNTHESIS NODE TESTS
+# ARTIFACT MAKER NODE TESTS
 # =============================================================================
 
-class TestSynthesisNode:
-    """Tests for synthesis node integration."""
+class TestArtifactMakerNode:
+    """Tests for artifact maker node integration."""
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Synthesizer node returns Command object, not dict - implementation detail")
-    async def test_synthesis_node_no_results(
+    @pytest.mark.skip(reason="Artifact Maker node returns Command object, not dict - implementation detail")
+    async def test_artifact_maker_node_no_results(
         self,
         initial_state: EngineState
     ):
-        """Test synthesis node handles empty results."""
-        # Add synthesis config to context
+        """Test artifact maker node handles empty results."""
+        # Add artifact config to context
         initial_state["context"] = {
-            "synthesis": {
+            "artifact_maker": {
                 "format": "markdown",
                 "citations": {"enabled": False}
             }
         }
 
-        result_state = await synthesizer_node(initial_state)
+        result_state = await artifact_maker_node(initial_state)
 
         # Should have error
         assert len(result_state["errors"]) > 0
-        assert result_state["errors"][0]["phase"] == "synthesizer"
+        assert result_state["errors"][0]["phase"] == "artifact_maker"
 
     @pytest.mark.unit
-    def test_synthesis_node_import(self):
-        """Test synthesis node can be imported."""
-        from deep_research_engine.nodes.synthesizer import (
-            synthesizer_node,
+    def test_artifact_maker_node_import(self):
+        """Test artifact maker node can be imported."""
+        from deep_research_engine.nodes.artifact_maker import (
+            artifact_maker_node,
         )
 
-        assert synthesizer_node is not None
+        assert artifact_maker_node is not None
 
 
 # =============================================================================
@@ -319,7 +319,7 @@ class TestFormatLoading:
     def test_load_format_config(self):
         """Test loading format config."""
         import yaml
-        formats_dir = Path(__file__).parent.parent.parent / "src" / "deep_research_engine" / "synthesis" / "formats"
+        formats_dir = Path(__file__).parent.parent.parent / "src" / "deep_research_engine" / "artifacts" / "formats"
 
         config_path = formats_dir / "research_report" / "config.yaml"
         with open(config_path, 'r') as f:
@@ -334,7 +334,7 @@ class TestFormatLoading:
     def test_load_schema_class(self):
         """Test loading schema class dynamically."""
         import importlib.util
-        formats_dir = Path(__file__).parent.parent.parent / "src" / "deep_research_engine" / "synthesis" / "formats"
+        formats_dir = Path(__file__).parent.parent.parent / "src" / "deep_research_engine" / "artifacts" / "formats"
 
         schema_path = formats_dir / "markdown" / "schema.py"
         spec = importlib.util.spec_from_file_location("markdown.schema", schema_path)
@@ -358,19 +358,19 @@ class TestFormatLoading:
 # INTEGRATION TESTS
 # =============================================================================
 
-class TestSynthesisIntegration:
-    """Integration tests for synthesis workflow."""
+class TestArtifactMakerIntegration:
+    """Integration tests for artifact maker workflow."""
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_synthesis_worker_compiles_findings(
+    async def test_artifact_maker_worker_compiles_findings(
         self,
-        synthesis_worker_config: WorkerConfig,
+        artifact_maker_worker_config: WorkerConfig,
         sample_worker_results: list
     ):
-        """Test synthesis worker can compile findings (mock test)."""
+        """Test artifact maker worker can compile findings (mock test)."""
         # This test verifies the compilation logic without calling LLM
-        worker = SynthesisWorker(synthesis_worker_config)
+        worker = ArtifactMakerWorker(artifact_maker_worker_config)
 
         # Create a state with worker results
         state = create_initial_state(
@@ -394,19 +394,19 @@ class TestSynthesisIntegration:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_synthesis_format_alias_resolution(self):
+    async def test_artifact_maker_format_alias_resolution(self):
         """Test format alias resolution."""
-        # Test that aliases work in the synthesis worker
+        # Test that aliases work in the artifact maker worker
         worker_config = WorkerConfig(
-            worker_id="synthesis_test",
-            worker_type="synthesis",
+            worker_id="artifact_maker_test",
+            worker_type="artifact_maker",
             task="test",
             custom={
                 "format": "report",  # Alias for research_report
             }
         )
 
-        worker = SynthesisWorker(worker_config)
+        worker = ArtifactMakerWorker(worker_config)
 
         # Check alias mapping exists
         assert hasattr(worker, '_format_findings')

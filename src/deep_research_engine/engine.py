@@ -11,7 +11,7 @@ from .nodes import (
     drafter_node,
     ingestion_node,
     neo4j_builder_node,
-    synthesizer_node,
+    artifact_maker_node,
 )
 from .state import EngineState, create_initial_state
 from .storage import StorageManager
@@ -149,7 +149,7 @@ async def _run_stategraph(
             yield {
                 "type": "complete",
                 "success": True,
-                "output": result.get("synthesis_output"),
+                "output": result.get("artifact_output"),
                 "state": result,
             }
 
@@ -161,7 +161,7 @@ async def _run_legacy_loop(
     logger = get_loguru_logger("engine.legacy")
 
     # Execute phases sequentially
-    phases = ["ingestion", "drafter", "critic", "neo4j_builder", "synthesizer"]
+    phases = ["ingestion", "drafter", "critic", "neo4j_builder", "artifact_maker"]
 
     # Initial state phase
     state["current_phase"] = "ingestion"
@@ -177,7 +177,7 @@ async def _run_legacy_loop(
                 "drafter": drafter_node,
                 "critic": critic_node,
                 "neo4j_builder": neo4j_builder_node,
-                "synthesizer": synthesizer_node,
+                "artifact_maker": artifact_maker_node,
             }.get(phase)
 
             if not node_func:
@@ -229,7 +229,7 @@ async def _run_legacy_loop(
     yield {
         "type": "complete",
         "success": True,
-        "output": state.get("synthesis_output"),
+        "output": state.get("artifact_output"),
         "state": state,
     }
 
@@ -237,7 +237,7 @@ async def _run_legacy_loop(
     yield {
         "type": "complete",
         "success": True,
-        "output": state.get("synthesis_output"),
+        "output": state.get("artifact_output"),
         "state": state,
     }
 

@@ -148,15 +148,15 @@ class TestNodeExecution:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_synthesizer_node_mocked(self, initial_state: EngineState):
-        """Test synthesizer node execution (mocked)."""
-        from deep_research_engine.nodes import synthesizer_node
+    async def test_artifact_maker_node_mocked(self, initial_state: EngineState):
+        """Test artifact maker node execution (mocked)."""
+        from deep_research_engine.nodes import artifact_maker_node
 
-        with patch('deep_research_engine.nodes.synthesizer_node') as mock_node:
-            mock_node.return_value = {**initial_state, "synthesis_output": "Report"}
+        with patch('deep_research_engine.nodes.artifact_maker_node') as mock_node:
+            mock_node.return_value = {**initial_state, "artifact_output": "Report"}
             result = await mock_node(initial_state)
 
-            assert "synthesis_output" in result
+            assert "artifact_output" in result
 
 
 # =============================================================================

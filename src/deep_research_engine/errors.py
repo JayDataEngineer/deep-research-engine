@@ -182,24 +182,24 @@ class GraphStateError(GraphError):
 
 
 # =============================================================================
-# SYNTHESIS ERRORS
+# ARTIFACT MAKER ERRORS
 # =============================================================================
 
 
-class SynthesisError(DeepResearchError):
-    """Base exception for synthesis-related errors."""
+class ArtifactMakerError(DeepResearchError):
+    """Base exception for artifact maker-related errors."""
 
     pass
 
 
-class SynthesisGenerationError(SynthesisError):
-    """Raised when synthesis generation fails."""
+class ArtifactGenerationError(ArtifactMakerError):
+    """Raised when artifact generation fails."""
 
     pass
 
 
-class SynthesisValidationError(SynthesisError):
-    """Raised when synthesis output validation fails."""
+class ArtifactValidationError(ArtifactMakerError):
+    """Raised when artifact output validation fails."""
 
     pass
 

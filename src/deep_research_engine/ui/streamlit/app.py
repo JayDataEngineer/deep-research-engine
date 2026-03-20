@@ -147,8 +147,8 @@ async def run_research(query: str, config_name: str, thread_id: str, uploaded_fi
                         status.write(f"✅ Completed phase: **{event['phase']}**")
                     elif event_type == "worker_complete":
                          status.write(f"  🛠️ Worker **{event.get('worker_id', 'unknown')}** complete")
-                    elif event_type == "synthesis_complete":
-                        status.write("✨ Synthesis complete!")
+                    elif event_type == "artifact_maker_complete":
+                        status.write("✨ Artifact creation complete!")
                         if event.get("output"):
                             full_response = event["output"]
                             response_placeholder.markdown(full_response)
