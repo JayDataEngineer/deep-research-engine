@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from typing import Any, List, Dict
 from neo4j import GraphDatabase
 
@@ -140,6 +141,11 @@ async def _extract_triplets_agentic(text: str, config: Dict[str, Any]) -> List[D
 
 def _write_to_neo4j(uri, user, password, triplets):
     """Write triplets to Neo4j using Cypher MERGE."""
+    # Allowed relationship types based on the ontology
+    ALLOWED_REL_TYPES = {
+        "WORKS_AT", "FOUNDED", "DEVELOPED", "PARTS_OF", "ASSOCIATED_WITH", "LOCATED_IN"
+    }
+
     with GraphDatabase.driver(uri, auth=(user, password)) as driver:
         with driver.session() as session:
             for t in triplets:
@@ -149,8 +155,16 @@ def _write_to_neo4j(uri, user, password, triplets):
                 
                 if not subject or not predicate or not obj:
                     continue
+
+                # Strict validation: must be in the whitelist or follow a strict identifier pattern
+                if predicate not in ALLOWED_REL_TYPES:
+                    # Fallback to strict alphanumeric check if it's not in our predefined list
+                    if not re.match(r"^[A-Z][A-Z0-9_]*$", predicate):
+                        logger.warning(f"Skipping invalid relationship type: {predicate}")
+                        continue
                 
                 # Simple generic Cypher to create nodes and a relationship
+                # Predicate is now validated to be a safe identifier string
                 cypher = (
                     f"MERGE (s:Entity {{name: $subject}}) "
                     f"MERGE (o:Entity {{name: $object}}) "

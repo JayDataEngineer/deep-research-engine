@@ -1,5 +1,6 @@
 """Neo4j storage backend for knowledge graph."""
 
+import re
 import uuid
 from datetime import datetime
 from typing import Any
@@ -130,6 +131,19 @@ class Neo4jStorage(StorageBackend):
             self.health_status = "unhealthy"
             return False
 
+    def _sanitize_identifier(self, identifier: str) -> str:
+        """Sanitize Cypher identifiers (labels, relationship types)."""
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", identifier):
+            # If it's not a simple identifier, it could be dangerous in f-strings.
+            # We strip everything that isn't alphanumeric or underscore.
+            sanitized = re.sub(r"[^a-zA-Z0-9_]", "", identifier)
+            if not sanitized or not sanitized[0].isalpha():
+                # If after stripping it's empty or doesn't start with a letter,
+                # use a generic placeholder.
+                return "Unknown"
+            return sanitized
+        return identifier
+
     async def store(
         self,
         data: dict[str, Any],
@@ -161,8 +175,10 @@ class Neo4jStorage(StorageBackend):
             properties["updated_at"] = datetime.now().isoformat()
 
             async with self.driver.session(database=self.database) as session:
+                # Sanitize labels to prevent Cypher injection
+                sanitized_labels = [self._sanitize_identifier(label) for label in labels]
                 # Build labels string
-                labels_str = ":".join(["Item", *labels])
+                labels_str = ":".join(["Item", *sanitized_labels])
 
                 # Create or merge node
                 await session.run(
@@ -180,7 +196,7 @@ class Neo4jStorage(StorageBackend):
                 # Create relationships if provided
                 for rel in relationships:
                     target_id = rel.get("target_id")
-                    rel_type = rel.get("type", "RELATED_TO")
+                    rel_type = self._sanitize_identifier(rel.get("type", "RELATED_TO"))
                     rel_properties = rel.get("properties", {})
 
                     if target_id:
@@ -312,7 +328,8 @@ class Neo4jStorage(StorageBackend):
                     # Text search
                     label_filter = ""
                     if labels:
-                        label_str = ":".join(labels)
+                        sanitized_labels = [self._sanitize_identifier(label) for label in labels]
+                        label_str = ":".join(sanitized_labels)
                         label_filter = f"(n:Item:{label_str} {{namespace: $namespace}})"
                     else:
                         label_filter = "(n:Item {namespace: $namespace})"
@@ -412,6 +429,7 @@ class Neo4jStorage(StorageBackend):
             return StorageResult(success=False, error="Neo4j not initialized")
 
         try:
+            rel_type = self._sanitize_identifier(rel_type)
             async with self.driver.session(database=self.database) as session:
                 await session.run(
                     f"""
