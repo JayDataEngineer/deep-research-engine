@@ -15,6 +15,7 @@ from .multimodal import MultimodalWorker
 from .scraper import ScraperWorker
 from .synthesis import SynthesisWorker
 from .web_researcher import WebResearcherWorker
+from .social_archive import SocialArchiveWorker
 
 __all__ = [
     "ChunkProcessorWorker",
@@ -22,4 +23,5 @@ __all__ = [
     "ScraperWorker",
     "SynthesisWorker",
     "WebResearcherWorker",
+    "SocialArchiveWorker",
 ]
