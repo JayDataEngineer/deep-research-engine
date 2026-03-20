@@ -82,7 +82,7 @@ class TestEngineState:
         """Test that optional fields can be None or missing."""
         # These should be None initially
         assert initial_state["critique"] is None
-        assert initial_state["synthesis_output"] is None
+        assert initial_state["artifact_output"] is None
         assert initial_state["end_time"] is None
         assert initial_state["fatal_error"] is None
     
@@ -445,7 +445,7 @@ class TestTypeAliases:
     @pytest.mark.unit
     def test_phase_name_literals(self):
         """Test PhaseName type accepts valid literals."""
-        valid_phases: list = ["ingestion", "drafter", "critic", "neo4j_builder", "synthesizer"]
+        valid_phases: list = ["ingestion", "drafter", "critic", "neo4j_builder", "artifact_maker"]
         # Type checking would catch invalid values at compile time
         assert len(valid_phases) == 5
     

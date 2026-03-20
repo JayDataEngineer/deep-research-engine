@@ -12,11 +12,11 @@ input:
   source: "${QUERY}"
 
 phases:
-  # Phase 1: Simple RAG Node (Retrieval + Synthesis in one go)
+  # Phase 1: Simple RAG Node (Retrieval + Artifact Maker in one go)
   - name: synthesizer
-    node: SynthesisNode
+    node: ArtifactMakerNode
     config:
-      worker_type: synthesis
+      worker_type: artifact_maker
       strategy: direct_rag
       use_existing_context: true
       tools:

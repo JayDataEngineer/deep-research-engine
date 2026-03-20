@@ -1,0 +1,7 @@
+# Used by ArtifactMakerWorker to format findings as a twitter thread
+
+format: twitter_thread
+max_retries: 5
+model:
+  name: qwen-35-27
+  enable_thinking: false

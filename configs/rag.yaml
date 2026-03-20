@@ -59,11 +59,11 @@ phases:
         action: retry_workers
         max_retries: 3
 
-  # Phase 4: Synthesis
-  - name: synthesis
-    node: SynthesisNode
+  # Phase 4: Artifact Maker
+  - name: artifact_maker
+    node: ArtifactMakerNode
     config:
-      worker_type: synthesis
+      worker_type: artifact_maker
       output:
         format: research_report  # Options: research_report, markdown, structured_json
         citations:

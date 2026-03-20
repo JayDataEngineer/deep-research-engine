@@ -69,7 +69,7 @@ phases:
     enabled: true
   - name: critic
     enabled: false
-  - name: synthesizer
+  - name: artifact_maker
     enabled: true
 """
     config_file = tmp_path / "test_config.yaml"
@@ -165,7 +165,7 @@ def mock_state() -> dict[str, Any]:
         "critique": None,
         "critique_history": [],
         "critic_passed": False,
-        "synthesis_output": None,
+        "artifact_output": None,
         "synthesis_metadata": {},
         "remaining_steps": 100,
         "iteration_count": 0,
@@ -331,7 +331,7 @@ phases:
   - name: ingestion
   - name: drafter
   - name: critic
-  - name: synthesizer
+  - name: artifact_maker
 """
     config_file = tmp_path / "rag_test.yaml"
     config_file.write_text(config_content)

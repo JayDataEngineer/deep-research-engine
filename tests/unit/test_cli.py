@@ -231,10 +231,10 @@ class TestPrintEvent:
         assert "✗" in captured.out
 
     @pytest.mark.unit
-    def test_print_event_synthesis_complete(self, capsys):
+    def test_print_event_artifact_maker_complete(self, capsys):
         """Test printing synthesis complete event."""
         event = {
-            "type": "synthesis_complete",
+            "type": "artifact_maker_complete",
             "output": "# Research Report\n\nFindings..."
         }
         print_event(event)
