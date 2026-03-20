@@ -1,0 +1,59 @@
+# Telegram Research Workflow
+# Uses simplified ingestion node for processing Telegram exports
+
+workflow:
+  name: telegram_research
+  type: research
+  version: 1.0.0
+  description: Deep research on Telegram chat exports with multimodal support
+
+input:
+  # The path to the Telegram export directory (containing messages.html)
+  # Set this via environment variable EXPORT_PATH
+  source: "${EXPORT_PATH}"
+  type: telegram_export
+
+phases:
+  - name: ingestion
+    node: ingestion_node
+    config:
+      # Ingestion node handles everything automatically if it finds messages.html
+      custom:
+        multimodal_enabled: true
+        entity_extraction_enabled: true
+
+  - name: drafter
+    node: drafter_node
+    config:
+      # Use social archive specialist for Telegram data
+      worker_type: social_archive
+      parallel: true
+      max_concurrent: 5
+
+  - name: critic
+    node: critic_node
+    config:
+      max_retries: 2
+
+  - name: neo4j_builder
+    node: neo4j_builder_node
+    config:
+      enabled: true
+
+  - name: synthesizer
+    node: synthesizer_node
+    config:
+      format: research_report
+
+storage:
+  postgres:
+    enabled: true
+  mongodb:
+    enabled: true
+  neo4j:
+    enabled: true
+
+llm:
+  models:
+    main: gpt-4o
+    tool: gpt-4o-mini

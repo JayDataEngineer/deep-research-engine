@@ -1,0 +1,68 @@
+# Social Archive Workflow
+# Digest and learn from personal data dumps
+
+workflow:
+  name: social_archive
+  type: ingestion
+  version: 1.0.0
+  description: Personal social archive digestion
+
+input:
+  type: telegram_export
+  source: "${EXPORT_PATH}"
+
+ingestion:
+  enabled: true
+  source: "${EXPORT_PATH}"
+
+phases:
+  # Phase 1: Ingestion (Implicitly handled by engine if enabled)
+
+  # Phase 2: Drafter (Specialist Digestion)
+  - name: drafter
+    config:
+      workers:
+        - id: social_specialist_0
+          type: social_archive
+          task: "Digest the social dump and learn about relationships and history."
+          enabled: true
+          config:
+            extract_profiles: true
+            map_relationships: true
+            find_memories: true
+        
+        - id: web_researcher_0
+          type: web_researcher
+          enabled: false  # Internet disabled as requested
+          task: "Don't do anything."
+
+  # Phase 3: Critic
+  - name: critic
+    config:
+      max_retries: 2
+
+  # Phase 4: Neo4j Builder (Optional)
+  - name: neo4j_builder
+    config:
+      enabled: false # Keep it simple for now
+
+  # Phase 5: Synthesizer
+  - name: synthesizer
+    config:
+      enabled: true
+      format: markdown
+
+storage:
+  memory:
+    enabled: true
+
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+
+output:
+  destination:
+    type: filesystem
+    path: ./output/archive
+  format: markdown
