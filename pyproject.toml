@@ -109,34 +109,40 @@ all-ingestion = [
     "pillow>=10.0.0",
 ]
 
+ui = [
+    "streamlit>=1.42.0",
+    "streamlit-extras>=0.5.0",
+]
+
 # Development
 dev = [
-    "pytest>=8.3.4",
-    "pytest-asyncio>=0.25.0",
-    "pytest-cov>=6.0.0",
-    "pytest-xdist>=3.6.1",
-    "pytest-mock>=3.14.0",
-    "vcrpy>=6.0.2",
-    "pytest-recording>=0.13.2",
-    "ruff>=0.9.2",
-    "mypy>=1.14.1",
-    "pre-commit>=4.1.0",
+"pytest>=8.3.4",
+"pytest-asyncio>=0.25.0",
+"pytest-cov>=6.0.0",
+"pytest-xdist>=3.6.1",
+"pytest-mock>=3.14.0",
+"vcrpy>=6.0.2",
+"pytest-recording>=0.13.2",
+"ruff>=0.9.2",
+"mypy>=1.14.1",
+"pre-commit>=4.1.0",
 ]
 
 # Documentation
 docs = [
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.5.50",
-    "mkdocstrings[python]>=0.27.0",
-    "mkdocs-gen-files>=0.5.0",
+"mkdocs>=1.6.1",
+"mkdocs-material>=9.5.50",
+"mkdocstrings[python]>=0.27.0",
+"mkdocs-gen-files>=0.5.0",
 ]
 
 # All-in-one
 all = [
-    "deep-research-engine[all-storage]",
-    "deep-research-engine[dev]",
-    "deep-research-engine[docs]",
-    "anthropic>=0.45.0",
+"deep-research-engine[all-storage]",
+"deep-research-engine[ui]",
+"deep-research-engine[dev]",
+"deep-research-engine[docs]",
+"anthropic>=0.45.0",
 ]
 
 # =============================================================================
@@ -144,6 +150,7 @@ all = [
 # =============================================================================
 [project.scripts]
 deep-research = "deep_research_engine.cli.main:main"
+deep-research-ui = "deep_research_engine.ui.streamlit.app:main"
 
 # =============================================================================
 # URLS
@@ -319,6 +326,8 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "e2e: marks tests as end-to-end tests",
+    "mock: marks tests as mock tests",
+    "unit: marks tests as unit tests",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
