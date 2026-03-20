@@ -12,7 +12,7 @@ from langgraph.constants import END, START
 from langgraph.graph import StateGraph
 from langgraph.pregel import Pregel
 
-from ..config import WorkflowConfig
+from ..config import WorkflowConfig, get_phase_config
 from ..state import EngineState
 from ..utils.logging import get_loguru_logger
 
@@ -69,20 +69,8 @@ def build_workflow_graph(config: WorkflowConfig) -> StateGraph:
 
         # Get critic config for max retries
         config_data = state.get("context", {}).get("config", {})
-        max_retries = 3  # default
-
-        if isinstance(config_data.get("phases"), list):
-            for p in config_data["phases"]:
-                if p.get("name") == "critic":
-                    max_retries = p.get("config", {}).get("max_retries", 3)
-                    break
-        elif isinstance(config_data.get("phases"), dict):
-            max_retries = (
-                config_data.get("phases", {})
-                .get("critic", {})
-                .get("config", {})
-                .get("max_retries", 3)
-            )
+        phase_config = get_phase_config(config_data, "critic")
+        max_retries = phase_config.get("max_retries", 3)
 
         # Count critic iterations
         iteration = len([p for p in state.get("phase_history", []) if p == "critic"])

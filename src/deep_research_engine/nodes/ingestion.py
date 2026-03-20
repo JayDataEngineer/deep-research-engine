@@ -8,108 +8,117 @@ Supports both legacy state return and LangGraph Command return.
 
 import asyncio
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Any
 
 from bs4 import BeautifulSoup
 from langgraph.types import Command
 
 from ..state import EngineState
 from ..utils.logging import get_loguru_logger
+from ..utils.nodes import node_context
+from ..config import get_phase_config
 from ..utils.multimodal import asr_transcribe, face_recognize, video_analyze, vlm_analyze
+from ..utils.nlp import extract_entities
 
 logger = get_loguru_logger("nodes.ingestion")
 
 
-async def ingestion_node(state: EngineState) -> Command[Literal["drafter"]]:
-    """Ingestion node for Telegram exports and other non-text data.
-
-    Returns Command for LangGraph routing.
-    """
+@node_context("ingestion")
+async def ingestion_node(state: EngineState) -> dict[str, Any]:
+    """Ingestion node for Telegram exports and other non-text data."""
     logger.info("Starting ingestion node")
 
-    # Get config and check if enabled
-    config = state.get("context", {}).get("config", {})
-    ingestion_config = config.get("ingestion", {})
-    if not ingestion_config.get("enabled", True):
+    # Get configuration
+    config_data = state.get("context", {}).get("config", {})
+    phase_config = get_phase_config(config_data, "ingestion")
+    
+    if not phase_config.get("enabled", True):
         logger.info("Ingestion node disabled. Skipping.")
-        return Command(
-            update={
-                "current_phase": "drafter",
-                "phase_history": state.get("phase_history", []) + ["drafter"],
-            },
-            goto="drafter",
-        )
+        return {"__goto__": "drafter"}
 
     # Get input path
     input_data = state.get("input_data", {})
-    input_path = input_data.get("path", "")
-
-    # Also check 'source' which is common in configs
-    if not input_path:
-        input_path = input_data.get("source", "")
-
-    if not input_path:
-        # Fallback to session data path if provided in config
-        config = state.get("context", {}).get("config", {})
-        input_path = config.get("ingestion", {}).get("source", "")
+    input_path = input_data.get("path") or input_data.get("source") or phase_config.get("source")
 
     if not input_path:
         logger.info("No input path for ingestion. Skipping.")
-        return Command(
-            update={
-                "current_phase": "drafter",
-                "phase_history": state.get("phase_history", []) + ["drafter"],
-            },
-            goto="drafter",
-        )
+        return {"__goto__": "drafter"}
 
-    input_dir = Path(input_path)
+    input_dir = Path(str(input_path))
     if not input_dir.exists():
         logger.error(f"Input path does not exist: {input_path}")
-        return Command(
-            update={
-                "fatal_error": f"Input path does not exist: {input_path}",
-                "current_phase": "drafter",
-            },
-            goto="drafter",
-        )
+        return {"__goto__": "drafter"}
 
     # Create output directory for ingested files
     output_dir = Path("./output/ingested") / state.get("session_id", "default")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Check for Telegram export (look for messages.html)
-    messages_html = input_dir / "messages.html"
-
     ingested_files: list[Path] = []
+    messages_html = input_dir / "messages.html"
 
     if messages_html.exists():
         logger.info("Detected Telegram export. Processing...")
-        # 1. Parse chat messages
-        chat_text_file = output_dir / "chat_history.md"
-        await _parse_telegram_messages(messages_html, chat_text_file)
-        ingested_files.append(chat_text_file)
+        
+        # 1. Parse structured items
+        items = await _parse_telegram_export(input_dir)
+        logger.info(f"Parsed {len(items)} items from Telegram export")
 
-        # 2. Process Voice Messages
-        voice_dir = input_dir / "voice_messages"
-        if voice_dir.exists():
-            voice_transcripts_file = output_dir / "voice_transcripts.md"
-            await _process_audio_dir(voice_dir, voice_transcripts_file)
-            ingested_files.append(voice_transcripts_file)
+        # 2. Process items (Multimodal + Entity Extraction)
+        processed_messages: list[str] = []
+        
+        # Group items for batch processing where possible
+        for item in items:
+            msg_text = item.get("text") or ""
+            media_path_rel = item.get("path")
+            item_type = item["type"]
+            sender = item.get("sender", "Unknown")
+            timestamp = item.get("timestamp", "Unknown")
+            
+            content_parts = []
+            if msg_text:
+                content_parts.append(msg_text)
+            
+            if media_path_rel:
+                media_path = input_dir / media_path_rel
+                if media_path.exists():
+                    if item_type == "photo":
+                        desc = await vlm_analyze(media_path)
+                        faces = await face_recognize(media_path)
+                        face_names = [f["name"] for f in faces]
+                        content_parts.append(f"[Photo Description: {desc}]")
+                        if face_names:
+                            content_parts.append(f"[People in Photo: {', '.join(face_names)}]")
+                    
+                    elif item_type == "voice":
+                        transcript = await asr_transcribe(media_path)
+                        content_parts.append(f"[Voice Message Transcript: {transcript}]")
+                    
+                    elif item_type == "video":
+                        video_desc = await video_analyze(media_path)
+                        content_parts.append(f"[Video Summary: {video_desc}]")
+                else:
+                    logger.warning(f"Media file missing: {media_path}")
 
-        # 3. Process Photos
-        photos_dir = input_dir / "photos"
-        if photos_dir.exists():
-            photos_desc_file = output_dir / "photo_descriptions.md"
-            await _process_images_dir(photos_dir, photos_desc_file)
-            ingested_files.append(photos_desc_file)
+            item_combined = " ".join(content_parts)
+            if item_combined:
+                # Extract entities for extra context
+                entities = await extract_entities(item_combined)
+                if entities.get("people"):
+                    content_parts.append(f"[Entities - People: {', '.join(entities['people'])}]")
+                if entities.get("topics"):
+                    content_parts.append(f"[Entities - Topics: {', '.join(entities['topics'])}]")
 
-        # 4. Process Videos
-        videos_dir = input_dir / "video_files"
-        if videos_dir.exists():
-            videos_desc_file = output_dir / "video_descriptions.md"
-            await _process_videos_dir(videos_dir, videos_desc_file)
-            ingested_files.append(videos_desc_file)
+            final_combined_content = " ".join(content_parts)
+            if final_combined_content:
+                processed_messages.append(f"**{sender}** [{timestamp}]: {final_combined_content}")
+
+        # 3. Create ingested files
+        chat_history_file = output_dir / "chat_history_processed.md"
+        with chat_history_file.open("w", encoding="utf-8") as f:
+            f.write("# Processed Telegram Chat History\n\n")
+            f.write("\n\n".join(processed_messages))
+        
+        ingested_files.append(chat_history_file)
 
     else:
         # General file ingestion (generic files)
@@ -123,111 +132,101 @@ async def ingestion_node(state: EngineState) -> Command[Literal["drafter"]]:
 
     logger.info(f"Ingestion completed. Big text dump: {big_dump_file}")
 
-    return Command(
-        update={
-            "ingestion_results": [str(f) for f in ingested_files],
-            "context": {
-                **state.get("context", {}),
-                "ingested_text_files": [str(f) for f in ingested_files],
-                "big_text_dump": str(big_dump_file),
-            },
-            "current_phase": "drafter",
-            "phase_history": state.get("phase_history", []) + ["drafter"],
+    return {
+        "ingested_items": [str(f) for f in ingested_files],
+        "context": {
+            **state.get("context", {}),
+            "ingested_text_files": [str(f) for f in ingested_files],
+            "big_text_dump": str(big_dump_file),
         },
-        goto="drafter",
-    )
+        "__goto__": "drafter"
+    }
 
 
-async def _parse_telegram_messages(html_path: Path, output_path: Path):
-    """Parse Telegram messages.html into a markdown chat log."""
-    logger.info(f"Parsing Telegram chat: {html_path}")
+async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
+    """Parse Telegram export (messages.html + orphan media)."""
+    messages_html = input_dir / "messages.html"
+    
+    with messages_html.open("r", encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "lxml")
 
-    with html_path.open("r", encoding="utf-8") as f:
-        soup = BeautifulSoup(f, "html.parser")
+    items = []
+    message_divs = soup.find_all("div", class_="message")
+    
+    for div in message_divs:
+        # Extract metadata
+        timestamp = ""
+        time_elem = div.find("div", class_="pull_right") or div.find("time")
+        if time_elem:
+            timestamp = time_elem.get("title", "") or time_elem.text.strip()
 
-    messages = []
-    for msg in soup.find_all("div", class_="message"):
-        from_name = msg.find("div", class_="from_name")
-        body = msg.find("div", class_="text")
-        time = msg.find("div", class_="pull_right date details")
+        sender = "Unknown"
+        from_elem = div.find("div", class_="from_name")
+        if from_elem:
+            sender = from_elem.text.strip()
 
-        if from_name and body:
-            name = from_name.get_text(strip=True)
-            content = body.get_text(strip=True)
-            timestamp = time.get("title", "") if time else ""
-            messages.append(f"**{name}** [{timestamp}]: {content}")
+        text = None
+        text_elem = div.find("div", class_="text")
+        if text_elem:
+            text = text_elem.text.strip()
 
-    with output_path.open("w", encoding="utf-8") as f:
-        f.write("# Telegram Chat History\n\n")
-        f.write("\n".join(messages))
+        media_path = None
+        item_type = "message"
 
+        # Check for media linkages
+        photo_link = div.find("a", class_="photo_wrap")
+        if photo_link:
+            media_path = photo_link.get("href", "")
+            item_type = "photo"
 
-async def _process_audio_dir(audio_dir: Path, output_path: Path):
-    """Process all audio files into a transcript summary."""
-    logger.info(f"Processing audio from {audio_dir}")
+        voice_elem = div.find("div", class_="voice")
+        if voice_elem:
+            audio_src = voice_elem.find("source")
+            if audio_src:
+                media_path = audio_src.get("src", "")
+            item_type = "voice"
 
-    transcripts = []
-    audio_files = (
-        list(audio_dir.glob("*.ogg"))
-        + list(audio_dir.glob("*.mp3"))
-        + list(audio_dir.glob("*.wav"))
-    )
+        video_elem = div.find("div", class_="video")
+        if video_elem:
+            video_src = video_elem.find("source")
+            if video_src:
+                media_path = video_src.get("src", "")
+            item_type = "video"
 
-    tasks = [asr_transcribe(f) for f in audio_files]
-    results = await asyncio.gather(*tasks)
+        if text or media_path:
+            items.append({
+                "type": item_type,
+                "path": media_path,
+                "text": text,
+                "timestamp": timestamp,
+                "sender": sender,
+            })
 
-    for f, text in zip(audio_files, results, strict=False):
-        transcripts.append(f"### {f.name}\n\n{text}\n")
+    # Find orphan media (files not in messages.html)
+    existing_paths = {item["path"] for item in items if item.get("path")}
+    
+    media_dirs = {
+        "photos": "photo",
+        "voice_messages": "voice",
+        "video_files": "video"
+    }
+    
+    for dir_name, type_name in media_dirs.items():
+        media_dir = input_dir / dir_name
+        if media_dir.exists():
+            for f in media_dir.iterdir():
+                if f.is_file():
+                    rel_path = f"{dir_name}/{f.name}"
+                    if rel_path not in existing_paths:
+                        items.append({
+                            "type": type_name,
+                            "path": rel_path,
+                            "text": None,
+                            "timestamp": "Found in archive",
+                            "sender": "System",
+                        })
 
-    with output_path.open("w", encoding="utf-8") as f:
-        f.write("# Voice Message Transcripts\n\n")
-        f.write("\n".join(transcripts))
-
-
-async def _process_images_dir(image_dir: Path, output_path: Path):
-    """Process all images into descriptions and face info."""
-    logger.info(f"Processing images from {image_dir}")
-
-    entries = []
-    image_files = (
-        list(image_dir.glob("*.jpg"))
-        + list(image_dir.glob("*.png"))
-        + list(image_dir.glob("*.webp"))
-    )
-
-    vlm_tasks = [vlm_analyze(f) for f in image_files]
-    face_tasks = [face_recognize(f) for f in image_files]
-
-    vlm_results = await asyncio.gather(*vlm_tasks)
-    face_results = await asyncio.gather(*face_tasks)
-
-    for f, vlm_text, faces in zip(image_files, vlm_results, face_results, strict=False):
-        face_list = ", ".join([p["name"] for p in faces]) if faces else "None detected"
-        entries.append(
-            f"### {f.name}\n\n**Description:** {vlm_text}\n\n**People detected:** {face_list}\n"
-        )
-
-    with output_path.open("w", encoding="utf-8") as f:
-        f.write("# Photo Descriptions & People Identification\n\n")
-        f.write("\n".join(entries))
-
-
-async def _process_videos_dir(video_dir: Path, output_path: Path):
-    """Process all videos into summaries."""
-    logger.info(f"Processing videos from {video_dir}")
-
-    entries = []
-    video_files = list(video_dir.glob("*.mp4")) + list(video_dir.glob("*.mov"))
-
-    tasks = [video_analyze(f) for f in video_files]
-    results = await asyncio.gather(*tasks)
-
-    for f, summary in zip(video_files, results, strict=False):
-        entries.append(f"### {f.name}\n\n{summary}\n")
-
-    with output_path.open("w", encoding="utf-8") as f:
-        f.write("# Video Summaries\n\n")
-        f.write("\n".join(entries))
+    return items
 
 
 def _combine_ingested_files(files: list[Path], output_path: Path):
@@ -240,8 +239,3 @@ def _combine_ingested_files(files: list[Path], output_path: Path):
             out.write(content)
 
 
-def route_after_ingestion(state: EngineState) -> str:
-    """Route to drafter after ingestion (legacy compatibility)."""
-    if state.get("fatal_error"):
-        return "error"
-    return "drafter"

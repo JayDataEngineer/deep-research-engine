@@ -4,23 +4,20 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from .config import WorkflowConfig
+from .config import WorkflowConfig, get_phase_config
 from .graph import compile_workflow_graph, get_checkpointer, get_store
 from .nodes import (
     critic_node,
     drafter_node,
     ingestion_node,
     neo4j_builder_node,
-    route_after_critic,
-    route_after_drafter,
-    route_after_ingestion,
-    route_after_neo4j_builder,
-    route_after_synthesizer,
     synthesizer_node,
 )
 from .state import EngineState, create_initial_state
 from .storage import StorageManager
 from .utils.logging import get_loguru_logger, log_phase_complete, log_phase_start, setup_logging
+
+from langgraph.types import Command
 
 logger = get_loguru_logger("engine")
 
@@ -34,20 +31,7 @@ async def run_workflow(
     resume_from: str | None = None,
     use_stategraph: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Run a workflow with the given configuration.
-
-    Args:
-        input_data: Query string or dict with workflow input
-        config: Workflow configuration
-        session_id: Optional session ID for tracing
-        stream: If True, yield events as they happen
-        storage_backends: List of backends to enable
-        resume_from: Optional session ID to resume from checkpoint
-        use_stategraph: If True, use StateGraph; otherwise use legacy manual loop
-
-    Yields:
-        Events (if streaming) or final result
-    """
+    """Run a workflow with the given configuration."""
     # Setup logging
     setup_logging(level=config.execution.get("logging", "info"))
     logger = get_loguru_logger("engine")
@@ -79,16 +63,10 @@ async def run_workflow(
                 logger.warning(f"Failed to initialize {backend_name}: {e}")
 
     # Create initial state
-    phases_config = config.phases
-    boss_config = {}
-    if isinstance(phases_config, list):
-        for phase in phases_config:
-            if phase.get("name") == "boss":
-                boss_config = phase.get("config", {})
-                break
-    elif isinstance(phases_config, dict):
-        boss_config = phases_config.get("boss", {}).get("config", {})
-
+    boss_config = get_phase_config(config, "drafter")
+    if not boss_config:
+        boss_config = get_phase_config(config, "boss")
+    
     max_iterations = boss_config.get("workers", {}).get("max", 3)
 
     state = create_initial_state(
@@ -158,12 +136,6 @@ async def _run_stategraph(
         # Configure thread for checkpointing
         thread_config = {"configurable": {"thread_id": session_id}}
 
-        # Handle resume from checkpoint
-        if resume_from:
-            logger.info(f"Resuming workflow from checkpoint: {resume_from}")
-            # State will be loaded from checkpoint by the graph
-            # No need to pass initial state
-
         # Run graph
         if stream:
             async for event in graph.astream(
@@ -196,49 +168,50 @@ async def _run_legacy_loop(
 
     while state["current_phase"] in phases:
         phase = state["current_phase"]
-        log_phase_start(phase)
+        # log_phase_start/complete handled by node_context but we emit events here
         yield {"type": "phase_start", "phase": phase}
 
         try:
-            if phase == "ingestion":
-                state = await ingestion_node(state)
-                next_phase = route_after_ingestion(state)
-            elif phase == "drafter":
-                state = await drafter_node(state)
-                next_phase = route_after_drafter(state)
-            elif phase == "critic":
-                state = await critic_node(state)
-                next_phase = route_after_critic(state)
+            node_func = {
+                "ingestion": ingestion_node,
+                "drafter": drafter_node,
+                "critic": critic_node,
+                "neo4j_builder": neo4j_builder_node,
+                "synthesizer": synthesizer_node,
+            }.get(phase)
 
-                # Check if it was a retry loop
-                if next_phase == "drafter":
-                    log_phase_start("drafter", {"reason": "critic_revision"})
-                    yield {"type": "phase_retry", "phase": "drafter", "reason": "critic_revision"}
-            elif phase == "neo4j_builder":
-                state = await neo4j_builder_node(state)
-                next_phase = route_after_neo4j_builder(state)
-            elif phase == "synthesizer":
-                state = await synthesizer_node(state)
-                next_phase = route_after_synthesizer(state)
+            if not node_func:
+                logger.error(f"Unknown phase: {phase}")
+                break
+
+            result = await node_func(state)
+            
+            # Handle Command return from node_context
+            if isinstance(result, Command):
+                if result.update:
+                    state.update(result.update)
+                next_phase = result.goto
             else:
-                next_phase = "error"
+                # Fallback for non-wrapped nodes (should not happen with our refactor)
+                state.update(result)
+                next_phase = result.get("__goto__")
 
-            log_phase_complete(phase)
             yield {
                 "type": "phase_complete",
                 "phase": phase,
                 "duration": 0.0,
             }
 
-            if next_phase == "error":
+            if state.get("fatal_error"):
                 logger.error(f"Workflow failed at phase: {phase}")
                 yield {
                     "type": "error",
-                    "error": state.get("fatal_error", f"Failed at phase: {phase}"),
+                    "error": state["fatal_error"],
                     "phase": phase,
                 }
                 return
-            elif next_phase == "complete":
+
+            if next_phase == "complete" or next_phase is None:
                 break
 
             state["current_phase"] = next_phase
@@ -251,6 +224,14 @@ async def _run_legacy_loop(
                 "phase": phase,
             }
             return
+
+    # Workflow complete
+    yield {
+        "type": "complete",
+        "success": True,
+        "output": state.get("synthesis_output"),
+        "state": state,
+    }
 
     # Workflow complete
     yield {
