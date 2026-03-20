@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pytest_mock import MockerFixture
 
+from deep_research_engine.state import EngineState
+
 
 # =============================================================================
 # TEST CONFIGURATION
@@ -59,14 +61,14 @@ workflow:
   type: research
   max_iterations: 2
 
-nodes:
-  boss:
+phases:
+  - name: ingestion
     enabled: true
-  workers:
+  - name: drafter
     enabled: true
-  critic:
+  - name: critic
     enabled: false
-  synthesis:
+  - name: synthesizer
     enabled: true
 """
     config_file = tmp_path / "test_config.yaml"
@@ -106,7 +108,7 @@ def mock_async_llm_response() -> AsyncMock:
 
 
 @pytest.fixture
-def mock_worker_result() -> dict[str, Any]:
+def sample_worker_result() -> dict[str, Any]:
     """Create a mock worker result."""
     return {
         "worker_id": "test_worker_1",
@@ -152,8 +154,8 @@ def mock_state() -> dict[str, Any]:
         "workflow_id": "test-workflow-123",
         "workflow_name": "test_workflow",
         "workflow_type": "research",
-        "current_phase": "boss",
-        "phase_history": ["boss"],
+        "current_phase": "ingestion",
+        "phase_history": ["ingestion"],
         "input_data": {"query": "Test query"},
         "plan": ["Task 1", "Task 2"],
         "plan_metadata": {},
@@ -175,6 +177,18 @@ def mock_state() -> dict[str, Any]:
         "errors": [],
         "fatal_error": None,
     }
+@pytest.fixture
+def initial_state(mock_state: dict[str, Any]) -> EngineState:
+    """Fixture for initial engine state."""
+    return mock_state.copy()
+
+
+@pytest.fixture
+def state_with_results(initial_state: EngineState, sample_worker_result: dict[str, Any]) -> EngineState:
+    """Fixture for state with some worker results."""
+    state = initial_state.copy()
+    state["worker_results"] = [sample_worker_result.copy()]
+    return state
 
 
 # =============================================================================
@@ -275,5 +289,69 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers",
+        "unit: marks tests as unit tests",
+    )
+    config.addinivalue_line(
+        "markers",
         "requires_api: marks tests requiring API keys",
     )
+
+
+@pytest.fixture
+def sample_config_dict() -> Dict[str, Any]:
+    """Return a sample configuration dictionary."""
+    return {
+        "workflow": {"name": "test_workflow", "type": "research"},
+        "input": {"type": "query", "source": "test"},
+        "phases": [
+            {"name": "ingestion", "enabled": True},
+            {"name": "drafter", "enabled": True}
+        ],
+        "storage": {"memory": {"enabled": True}, "postgres": {"enabled": False}},
+        "llm": {"models": {"main": "test-model"}},
+        "tools": {"enabled": ["web_search"]},
+        "execution": {"max_steps": 50}
+    }
+
+
+@pytest.fixture
+def rag_config_path(tmp_path: Path) -> Path:
+    """Create a temporary RAG config file."""
+    config_content = """
+workflow:
+  name: rag_test
+  type: research
+
+input:
+  type: query
+  source: test
+
+phases:
+  - name: ingestion
+  - name: drafter
+  - name: critic
+  - name: synthesizer
+"""
+    config_file = tmp_path / "rag_test.yaml"
+    config_file.write_text(config_content)
+    return config_file
+
+
+@pytest.fixture
+def config_with_env_vars(tmp_path: Path) -> Path:
+    """Create a temporary config file with environment variables."""
+    config_content = """
+workflow:
+  name: ${WORKFLOW_NAME}
+  type: research
+
+input:
+  type: query
+  source: ${QUERY_SOURCE}
+
+phases:
+  - name: ingestion
+"""
+    config_file = tmp_path / "env_test.yaml"
+    config_file.write_text(config_content)
+    return config_file

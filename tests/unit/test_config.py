@@ -385,8 +385,8 @@ input:
   source: test
 
 phases:
-  - name: boss
-    node: BossNode
+  - name: drafter
+    node: DrafterNode
 
 llm:
   models:
