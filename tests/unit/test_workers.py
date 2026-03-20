@@ -23,7 +23,7 @@ from deep_research_engine.workers import (
     WorkerExecutionError,
     WorkerNotFoundError,
 )
-from tests.conftest import TestWorker
+from tests.conftest import StubWorker
 from deep_research_engine.workers.base import WorkerResult as WorkerResultDict
 
 
@@ -208,7 +208,7 @@ class TestBaseWorker:
     @pytest.mark.asyncio
     async def test_worker_hooks(self, initial_state: EngineState, worker_config: WorkerConfig):
         """Test worker setup and teardown hooks."""
-        worker = TestWorker(worker_config)
+        worker = StubWorker(worker_config)
         
         # Hooks should be callable
         await worker.setup(initial_state, worker_config)
@@ -221,7 +221,7 @@ class TestBaseWorker:
     @pytest.mark.asyncio
     async def test_worker_validate_input(self, initial_state: EngineState, worker_config: WorkerConfig):
         """Test worker input validation."""
-        worker = TestWorker(worker_config)
+        worker = StubWorker(worker_config)
         
         # Default implementation returns True
         is_valid = await worker.validate_input(initial_state, worker_config)
@@ -429,7 +429,7 @@ class TestConcreteWorkerImplementation:
         import copy
         state_copy = copy.deepcopy(initial_state)
         
-        worker = TestWorker(worker_config)
+        worker = StubWorker(worker_config)
         await worker.execute(initial_state, worker_config)
         
         # State should be unchanged (workers return results, don't mutate state)
@@ -469,7 +469,7 @@ class TestConcreteWorkerImplementation:
             "phase_history": ["boss", "workers"]
         }
         
-        worker = TestWorker(worker_config)
+        worker = StubWorker(worker_config)
         result = await worker.execute(minimal_state, worker_config)
         
         assert result["success"] is True
@@ -485,7 +485,7 @@ class TestConcreteWorkerImplementation:
         # Add data to context
         initial_state["context"]["test_data"] = "context_value"
         
-        class ContextWorker(TestWorker):
+        class ContextWorker(StubWorker):
             async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
                 self._start_timing()
                 context_value = state["context"].get("test_data", "default")

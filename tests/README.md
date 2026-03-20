@@ -1,32 +1,30 @@
 # Deep Research Engine - Test Suite
 
-Comprehensive test suite for the deep research engine, including unit tests, integration tests, and end-to-end tests.
+This directory contains the comprehensive test suite for the Deep Research Engine.
 
 ## Test Structure
 
 ```
 tests/
-├── __init__.py              # Package init
-├── conftest.py              # Pytest configuration and shared fixtures
-├── README.md                # This file
-│
-├── fixtures/
-│   └── __init__.py          # Shared test fixtures
-│
-├── unit/                    # Unit tests (fast, isolated)
-│   ├── __init__.py
-│   ├── test_config.py       # Config loading tests
-│   ├── test_state.py        # State types and factory tests
-│   ├── test_workers.py      # Worker ABC and registry tests
-│   └── test_storage.py      # Storage backend tests
-│
-├── integration/             # Integration tests (component interactions)
-│   ├── __init__.py
+├── __init__.py              # Test package initialization
+├── conftest.py              # Shared pytest fixtures and configuration
+├── unit/                    # Unit tests
+│   ├── test_cli.py          # CLI tests
+│   ├── test_config.py       # Configuration loading tests
+│   ├── test_engine.py       # Engine workflow tests
+│   ├── test_mocks.py        # Mock service tests
+│   ├── test_nodes.py        # Node tests
+│   ├── test_state.py        # State management tests
+│   ├── test_storage.py      # Storage backend tests
+│   ├── test_synthesis.py    # Synthesis tests
+│   └── test_workers.py      # Worker tests
+├── integration/             # Integration tests
+│   ├── test_graph_execution.py  # Graph execution tests
 │   └── test_workflow_execution.py  # Workflow execution tests
-│
-└── e2e/                     # End-to-end tests (complete workflows)
-    ├── __init__.py
-    └── test_workflows.py    # Full workflow tests
+├── e2e/                     # End-to-end tests
+│   ├── test_complete_workflows.py  # Complete workflow tests
+│   └── test_workflows.py    # Config-based workflow tests
+└── fixtures/                # Test fixtures and data
 ```
 
 ## Running Tests
@@ -42,29 +40,32 @@ uv run pytest tests/ -v
 
 # Run specific test directory
 uv run pytest tests/unit/
-uv run pytest tests/integration/
 uv run pytest tests/e2e/
+uv run pytest tests/integration/
 
 # Run specific test file
 uv run pytest tests/unit/test_config.py
 
-# Run specific test function
-uv run pytest tests/unit/test_config.py::TestLoadConfig::test_load_valid_config
+# Run specific test
+uv run pytest tests/unit/test_config.py::TestWorkflowConfig::test_minimal_config
 ```
 
-### Test Categories
+### Test Markers
 
 ```bash
 # Run only unit tests
-uv run pytest tests/unit/ -m unit
-
-# Run only integration tests
-uv run pytest tests/integration/ -m integration
+uv run pytest tests/ -m unit
 
 # Run only e2e tests
-uv run pytest tests/e2e/ -m e2e
+uv run pytest tests/ -m e2e
 
-# Run all except slow tests
+# Run only integration tests
+uv run pytest tests/ -m integration
+
+# Run only slow tests
+uv run pytest tests/ -m slow
+
+# Exclude slow tests
 uv run pytest tests/ -m "not slow"
 ```
 
@@ -72,221 +73,214 @@ uv run pytest tests/ -m "not slow"
 
 ```bash
 # Run with coverage report
-uv run pytest tests/ --cov=src/deep_research_engine --cov-report=term-missing
-
-# Generate HTML coverage report
 uv run pytest tests/ --cov=src/deep_research_engine --cov-report=html
 
-# Open coverage report
-open htmlcov/index.html
+# Run with coverage report in terminal
+uv run pytest tests/ --cov=src/deep_research_engine --cov-report=term-missing
 ```
 
 ### Parallel Execution
 
 ```bash
-# Run tests in parallel (requires pytest-xdist)
+# Run tests in parallel (faster)
 uv run pytest tests/ -n auto
-
-# Run with specific number of workers
-uv run pytest tests/ -n 4
 ```
 
-## Test Fixtures
+## Test Categories
 
-The test suite provides several shared fixtures via `conftest.py`:
+### Unit Tests (`tests/unit/`)
 
-### Config Fixtures
+Unit tests test individual components in isolation:
 
-- `sample_config_dict` - Sample configuration dictionary
-- `rag_config_path` - Temporary RAG config file path
-- `config_with_env_vars` - Config with environment variable placeholders
+- **test_cli.py**: CLI commands and output formatting
+- **test_config.py**: Configuration loading, validation, and utilities
+- **test_engine.py**: Main workflow engine
+- **test_mocks.py**: Mock services (LLM, web search, database, HTTP)
+- **test_nodes.py**: Graph nodes (ingestion, drafter, critic, synthesizer)
+- **test_state.py**: State management and type definitions
+- **test_storage.py**: Storage backends
+- **test_synthesis.py**: Synthesis worker and formats
+- **test_workers.py**: Worker base class and registry
+
+### Integration Tests (`tests/integration/`)
+
+Integration tests test component interactions:
+
+- **test_graph_execution.py**: Graph compilation and execution
+- **test_workflow_execution.py**: Complete workflow execution
+
+### End-to-End Tests (`tests/e2e/`)
+
+E2E tests test complete workflows:
+
+- **test_complete_workflows.py**: Worker results, state management, registry
+- **test_workflows.py**: Config loading and validation
+
+## Fixtures
+
+Common fixtures are defined in `conftest.py`:
 
 ### State Fixtures
-
-- `initial_state` - Fresh EngineState instance
-- `state_with_results` - State with worker results populated
+- `mock_state`: Mock engine state
+- `initial_state`: Initial engine state for tests
+- `state_with_results`: State with worker results
 
 ### Worker Fixtures
+- `sample_worker_result`: Sample worker result
+- `worker_config`: Test worker configuration
+- `test_worker`: Test worker instance
 
-- `worker_config` - Sample WorkerConfig
-- `sample_worker_result` - Sample WorkerResult
-- `TestWorker` - Test worker implementation
-- `test_worker` - TestWorker instance
+### Config Fixtures
+- `sample_config_dict`: Sample configuration dictionary
+- `tmp_config_file`: Temporary config file
+- `rag_config_path`: RAG config file path
 
-### Storage Fixtures
-
-- `storage_config` - Sample storage configuration
-- `sample_storage_data` - Sample data for storage
-- `TestStorageBackend` - Test storage implementation
-- `test_storage` - TestStorageBackend instance
-
-### Usage Example
-
-```python
-import pytest
-from deep_research_engine.config import load_config
-
-def test_with_fixtures(sample_config_dict, initial_state):
-    """Test using fixtures."""
-    # Use sample_config_dict and initial_state
-    assert sample_config_dict["workflow"]["name"] == "test_workflow"
-    assert initial_state["current_phase"] == "boss"
-```
+### Utility Fixtures
+- `sample_text`: Sample text for testing
+- `sample_json_data`: Sample JSON data
+- `mock_llm_response`: Mock LLM response
+- `mock_async_llm_response`: Mock async LLM response
 
 ## Writing Tests
 
-### Unit Test Template
+### Test Structure
 
 ```python
-"""Unit Tests for MyComponent."""
-
 import pytest
-from deep_research_engine.my_component import MyClass
+from deep_research_engine.config import WorkflowConfig
 
-class TestMyClass:
-    """Tests for MyClass."""
+class TestMyComponent:
+    """Tests for my component."""
     
     @pytest.mark.unit
-    def test_something(self):
+    def test_something(self, sample_config_dict):
         """Test description."""
-        # Arrange
-        obj = MyClass()
-        
-        # Act
-        result = obj.do_something()
-        
-        # Assert
-        assert result is not None
+        config = WorkflowConfig(**sample_config_dict)
+        assert config.workflow["name"] == "test_workflow"
 ```
 
-### Integration Test Template
+### Test Markers
+
+Use appropriate markers:
+
+- `@pytest.mark.unit`: Unit tests (fast, isolated)
+- `@pytest.mark.integration`: Integration tests (component interaction)
+- `@pytest.mark.e2e`: End-to-end tests (complete workflows)
+- `@pytest.mark.slow`: Slow tests (can be excluded with `-m "not slow"`)
+
+### Async Tests
 
 ```python
-"""Integration Tests for MyFeature."""
-
-import pytest
-from deep_research_engine.feature import run_feature
-
-class TestMyFeatureIntegration:
-    """Integration tests for feature."""
-    
-    @pytest.mark.integration
-    @pytest.mark.asyncio
-    async def test_feature_workflow(self, sample_config_dict):
-        """Test complete feature workflow."""
-        # Test integration between components
-        result = await run_feature("input", sample_config_dict)
-        assert result.success is True
+@pytest.mark.asyncio
+async def test_async_function():
+    """Test async function."""
+    result = await some_async_function()
+    assert result is not None
 ```
 
-### E2E Test Template
+## Current Test Status
 
-```python
-"""End-to-End Tests for Workflow."""
+As of March 20, 2026:
 
-import pytest
-from deep_research_engine.engine import run_workflow
+- **Total Tests**: 277
+- **Passing**: 213 (77%)
+- **Failed**: 24 (9%)
+- **Errors**: 35 (13%)
+- **Skipped**: 5 (2%)
 
-class TestWorkflowE2E:
-    """End-to-end workflow tests."""
-    
-    @pytest.mark.e2e
-    @pytest.mark.asyncio
-    async def test_complete_workflow(self):
-        """Test complete workflow from start to finish."""
-        config = load_config("configs/test.yaml")
-        
-        events = []
-        async for event in run_workflow("query", config):
-            events.append(event)
-        
-        assert events[-1]["type"] == "complete"
+### Passing Tests by Category
+
+- **Unit Tests**: 160+ passing
+- **E2E Tests**: 35+ passing
+- **Integration Tests**: 15+ passing
+
+### Known Issues
+
+1. **CLI Tests**: Some CLI output format tests fail due to output formatting differences
+2. **Engine Tests**: Some workflow tests fail due to graph compilation issues
+3. **Mock Tests**: Many mock service tests require infrastructure setup
+4. **Storage Tests**: Storage backend tests require actual storage services
+
+### Infrastructure Requirements
+
+Some tests require external services:
+
+- PostgreSQL with pgvector
+- Neo4j
+- MongoDB
+- MinIO (S3-compatible storage)
+
+These tests are marked with `@pytest.mark.integration` and can be skipped:
+
+```bash
+# Skip integration tests
+uv run pytest tests/ -m "not integration"
 ```
 
-## Test Markers
+## Debugging Tests
 
-Tests are organized using pytest markers:
+### Verbose Output
 
-- `@pytest.mark.unit` - Fast, isolated unit tests
-- `@pytest.mark.integration` - Integration tests
-- `@pytest.mark.e2e` - End-to-end tests
-- `@pytest.mark.slow` - Slow running tests
-- `@pytest.mark.asyncio` - Async tests
+```bash
+# Show detailed test output
+uv run pytest tests/ -v -s
 
-## Coverage Goals
+# Show local variables on failure
+uv run pytest tests/ -l
 
-| Component | Coverage Goal | Current |
-|-----------|--------------|---------|
-| Config | 90% | TBD |
-| State | 90% | TBD |
-| Workers | 85% | TBD |
-| Storage | 85% | TBD |
-| Engine | 80% | TBD |
-| **Overall** | **85%** | **TBD** |
+# Print output (disable capture)
+uv run pytest tests/ -s
+```
+
+### Specific Tests
+
+```bash
+# Run specific test with debug output
+uv run pytest tests/unit/test_config.py::TestWorkflowConfig::test_minimal_config -v -s
+
+# Run tests matching pattern
+uv run pytest tests/ -k "config" -v
+```
+
+### Coverage
+
+```bash
+# Find untested code
+uv run pytest tests/ --cov=src/deep_research_engine --cov-report=term-missing
+```
 
 ## Continuous Integration
 
-Tests are run automatically on:
-
-- Every pull request
-- Every merge to main
-- Daily scheduled runs (for slow tests)
-
-## Troubleshooting
-
-### Common Issues
-
-**Import errors:**
-```bash
-# Ensure you're running from project root
-cd /home/ubuntu/Documents/programs/deep-research-engine
-uv run pytest tests/
-```
-
-**Async test failures:**
-```bash
-# Ensure pytest-asyncio is installed
-uv sync --group dev
-```
-
-**Fixture not found:**
-```bash
-# Ensure conftest.py is in tests/ directory
-ls tests/conftest.py
-```
-
-### Debug Mode
+Tests are configured to run in CI with:
 
 ```bash
-# Run with print statements visible
-uv run pytest tests/ -s
-
-# Run with pdb on failures
-uv run pytest tests/ --pdb
-
-# Run specific test with logging
-uv run pytest tests/unit/test_config.py -v -s --log-cli-level=DEBUG
+# CI test command
+uv run pytest tests/ -v --tb=short --strict-markers
 ```
 
-## Performance
+## Best Practices
 
-Expected test execution times:
-
-- Unit tests: < 5 seconds total
-- Integration tests: < 30 seconds total
-- E2E tests: < 2 minutes total
-- Full suite: < 3 minutes
+1. **Use Fixtures**: Reuse common setup via fixtures
+2. **Mark Tests**: Always use appropriate markers (unit, integration, e2e)
+3. **Isolate Tests**: Tests should be independent and runnable in any order
+4. **Mock External Services**: Use mocks for external dependencies
+5. **Fast Tests**: Keep unit tests fast (<100ms each)
+6. **Descriptive Names**: Use descriptive test and method names
+7. **Test Edge Cases**: Test error conditions and edge cases
+8. **Document Tests**: Add docstrings to test methods
 
 ## Contributing
 
 When adding new features:
 
-1. Add unit tests for new components
-2. Add integration tests for interactions
-3. Add e2e tests for workflows
-4. Ensure all tests pass
-5. Maintain coverage goals
+1. Add corresponding unit tests
+2. Add integration tests for component interactions
+3. Add e2e tests for complete workflows
+4. Ensure all tests pass before submitting
+5. Maintain or improve code coverage
 
-## License
+## Questions?
 
-MIT License - See project root for details
+- See `conftest.py` for available fixtures
+- See existing tests for examples
+- Check `pyproject.toml` for pytest configuration
