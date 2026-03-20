@@ -26,14 +26,15 @@ def log_phase_start(phase_name: str, details: dict | None = None) -> None:
     """Log a phase start notification with rich formatting.
 
     Args:
-        phase_name: Name of the phase (boss, workers, critic, synthesis)
+        phase_name: Name of the phase
         details: Optional additional details to display
     """
     phase_icons = {
-        "boss": "🎯",
-        "workers": "👷",
+        "ingestion": "📥",
+        "drafter": "✍️",
         "critic": "🔍",
-        "synthesis": "📝",
+        "neo4j_builder": "🕸️",
+        "synthesizer": "📝",
     }
 
     icon = phase_icons.get(phase_name, "⚙️")

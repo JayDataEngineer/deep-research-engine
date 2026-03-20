@@ -30,7 +30,7 @@ class EngineState(TypedDict, total=False):
     workflow_type: str  # "research" | "ingestion" | "generation"
 
     # ===== Current Phase =====
-    current_phase: str  # "boss" | "workers" | "critic" | "synthesis"
+    current_phase: str  # "ingestion" | "drafter" | "critic" | "neo4j_builder" | "synthesizer"
     phase_history: list[str]  # Track phase transitions
 
     # ===== Input (Generic) =====
@@ -181,8 +181,8 @@ def create_initial_state(
         "workflow_id": run_id,
         "workflow_name": workflow_name,
         "workflow_type": workflow_type,
-        "current_phase": "boss",
-        "phase_history": ["boss"],
+        "current_phase": "ingestion",
+        "phase_history": ["ingestion"],
         "input_data": input_data,
         "plan": [],
         "plan_metadata": {},
@@ -231,7 +231,7 @@ def overwrite_reducer(left: Any, right: Any) -> Any:
 # =============================================================================
 
 # Phase names
-PhaseName = Literal["boss", "workers", "critic", "synthesis"]
+PhaseName = Literal["ingestion", "drafter", "critic", "neo4j_builder", "synthesizer"]
 
 # Workflow types
 WorkflowType = Literal["research", "ingestion", "generation"]

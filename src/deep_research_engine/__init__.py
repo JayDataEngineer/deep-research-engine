@@ -43,10 +43,11 @@ from deep_research_engine.errors import (
     WorkflowValidationError,
 )
 from deep_research_engine.nodes import (
-    boss_node,
+    ingestion_node,
+    drafter_node,
     critic_node,
-    synthesis_node,
-    workers_node,
+    neo4j_builder_node,
+    synthesizer_node,
 )
 from deep_research_engine.state import (
     CriticResult,
@@ -106,11 +107,12 @@ __all__ = [
     "WorkflowNotFoundError",
     "WorkflowValidationError",
     "__version__",
-    "boss_node",
+    "ingestion_node",
+    "drafter_node",
     "create_initial_state",
     "critic_node",
+    "neo4j_builder_node",
+    "synthesizer_node",
     "load_config",
     "run_workflow",
-    "synthesis_node",
-    "workers_node",
 ]

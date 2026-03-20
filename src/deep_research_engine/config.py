@@ -34,6 +34,58 @@ class WorkflowConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    def get_phase_config(self, phase_name: str) -> dict[str, Any]:
+        """Get configuration for a specific phase.
+
+        Handles both list and dict formats for self.phases.
+
+        Args:
+            phase_name: Name of the phase (e.g., "boss", "workers", "critic").
+
+        Returns:
+            Dictionary with phase configuration or empty dict if not found.
+        """
+        phases = self.phases
+        if isinstance(phases, list):
+            for phase in phases:
+                if isinstance(phase, dict) and phase.get("name") == phase_name:
+                    return phase.get("config", {})
+        elif isinstance(phases, dict):
+            # Try both direct name and phases nested structure
+            phase_data = phases.get(phase_name, {})
+            if isinstance(phase_data, dict) and "config" in phase_data:
+                config_val = phase_data.get("config", {})
+                return config_val if isinstance(config_val, dict) else {}
+            return phase_data if isinstance(phase_data, dict) else {}
+
+        return {}
+
+
+def get_phase_config(config: dict[str, Any] | list[dict[str, Any]] | WorkflowConfig, phase_name: str) -> dict[str, Any]:
+    """Standalone function to get configuration for a specific phase.
+
+    Supports dict, list, and WorkflowConfig object.
+    """
+    if isinstance(config, WorkflowConfig):
+        return config.get_phase_config(phase_name)
+    
+    if isinstance(config, list):
+        for phase in config:
+            if isinstance(phase, dict) and phase.get("name") == phase_name:
+                return phase.get("config", {})
+    elif isinstance(config, dict):
+        # Handle top-level "phases" key if present
+        phases = config.get("phases", config)
+        if isinstance(phases, list):
+            return get_phase_config(phases, phase_name)
+        
+        phase_data = phases.get(phase_name, {})
+        if isinstance(phase_data, dict) and "config" in phase_data:
+            return phase_data.get("config", {})
+        return phase_data if isinstance(phase_data, dict) else {}
+
+    return {}
+
 
 def expand_env_vars(value: Any) -> Any:
     """Expand environment variables in config values.
