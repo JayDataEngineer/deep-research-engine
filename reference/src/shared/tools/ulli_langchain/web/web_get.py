@@ -11,7 +11,7 @@ Reference: https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs
 
 import asyncio
 from urllib.parse import urlparse
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import Optional, Dict, Any
 
 from pydantic import Field
@@ -23,7 +23,7 @@ from langchain.messages import ToolMessage
 from .blocklist import is_url_blocklisted
 
 # Import base class
-from src.shared._base_models import BaseWebToolInput
+from ._base_models import BaseWebToolInput
 
 logger = get_logger(__name__)
 

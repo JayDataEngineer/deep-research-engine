@@ -8,7 +8,7 @@ Vision Model: Configured via LiteLLM (e.g., qwen-35-27-vision, zai-glm-4v)
 """
 
 import base64
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import os
 from typing import Optional, List, Dict, Any
 
@@ -243,7 +243,7 @@ class _VisionTools:
         """
         try:
             # Import here to avoid circular imports
-            from src.shared.litellm_factory import get_llm
+            from .litellm_factory import get_llm
             
             # Get vision LLM instance
             llm = await get_llm(

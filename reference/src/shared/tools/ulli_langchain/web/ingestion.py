@@ -11,7 +11,7 @@ Hybrid Architecture:
 """
 
 import hashlib
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import Dict, Any, Literal, Optional
 
 from langchain_core.documents import Document
@@ -40,7 +40,7 @@ def get_vector_store() -> InMemoryVectorStore:
     global _vector_store
     if _vector_store is None:
         logger.info("[INGEST] Initializing InMemoryVectorStore")
-        from src.shared.embeddings.factory import get_embeddings
+        from .embeddings.factory import get_embeddings
         _vector_store = InMemoryVectorStore(get_embeddings())
     return _vector_store
 
@@ -280,11 +280,11 @@ def clear_embeddings_cache() -> None:
     not the vector store.
 
     Example:
-        >>> from src.shared.embeddings.factory import clear_embeddings_cache
+        >>> from .embeddings.factory import clear_embeddings_cache
         >>> clear_embeddings_cache()
         >>> embeddings = get_embeddings()  # Fresh instance
     """
-    from src.shared.embeddings.factory import clear_embeddings_cache as _clear
+    from .embeddings.factory import clear_embeddings_cache as _clear
     _clear()
     logger.info("[INGEST] Embeddings factory cache cleared")
 

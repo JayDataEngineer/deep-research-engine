@@ -5,7 +5,7 @@ Unlike the complex Vercel AI SDK protocol, these events are straightforward JSON
 that are easy to debug, test, and extend.
 
 Usage:
-    from src.shared.sse_events import SSEvent
+    from .sse_events import SSEvent
     
     # In your streaming generator
     yield SSEvent.thinking("Searching database...")

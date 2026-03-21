@@ -5,7 +5,7 @@ and configuration. All other modules should import from here instead of defining
 their own constants.
 
 Usage:
-    from src.shared.litellm_config import (
+    from .litellm_config import (
         LITELLM_BASE_URL,
         LITELLM_API_KEY,
         LITELLM_TTS_URL,

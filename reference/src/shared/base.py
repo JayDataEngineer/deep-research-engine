@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from typing import AsyncIterator, Optional, List, Dict, Any, TYPE_CHECKING
 from pydantic import BaseModel, ValidationError
 
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:

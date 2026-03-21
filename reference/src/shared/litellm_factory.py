@@ -10,7 +10,7 @@ LiteLLM provides:
 - MCP tools integration for web scraping/search
 
 Usage:
-    from src.shared.litellm_factory import get_llm, get_tool_router_llm
+    from .litellm_factory import get_llm, get_tool_router_llm
 
     llm = await get_llm(model="qwen-35-27-fast", enable_thinking=True)
     response = await llm.ainvoke([{"role": "user", "content": "Hello"}])
@@ -32,14 +32,14 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from .base import BaseLLM
 from .config import LLMConfig
 from .schema import LLMChunk
-from src.shared.litellm_config import (
+from .litellm_config import (
     LITELLM_BASE_URL,
     LITELLM_API_KEY,
     MODEL_MAPPING,
     THINKING_TO_FAST,
     map_model_name,
 )
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 
 logger = get_logger(__name__)
 

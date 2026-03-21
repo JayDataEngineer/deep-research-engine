@@ -8,7 +8,7 @@ Architecture:
 """
 
 import json
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import os
 import base64
 from pathlib import Path

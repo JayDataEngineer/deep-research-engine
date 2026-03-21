@@ -4,7 +4,7 @@ This module is kept for backwards compatibility.
 All functionality is now in src.shared.tools.logic.web.custom_mcp.
 
 Usage (unchanged):
-    from src.shared.tools.ulli_langchain.web.mcp_web_client import (
+    from .tools.ulli_langchain.web.mcp_web_client import (
         MCPWebClient,
         mcp_web_search,
         mcp_web_scrape,
@@ -13,7 +13,7 @@ Usage (unchanged):
 """
 
 # Re-export everything from the canonical implementation
-from src.shared.tools.logic.web.custom_mcp import (
+from .tools.logic.web.custom_mcp import (
     MCPWebClient,
     get_mcp_client,
     close_mcp_client,

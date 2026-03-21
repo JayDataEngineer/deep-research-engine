@@ -11,7 +11,7 @@ Reference: https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import re
 from typing import Literal, Optional, Type, Dict, Any
 
@@ -21,7 +21,7 @@ from langgraph.types import Command
 from langchain.messages import ToolMessage
 
 # Import base class
-from src.shared._base_models import BaseWebSearchInput
+from ._base_models import BaseWebSearchInput
 
 logger = get_logger(__name__)
 
@@ -60,7 +60,7 @@ async def _execute_search_impl(
     This replaces SearXNG with the MCP server via Tailscale Funnel.
     """
     import json
-    from src.shared.tools.logic.web.custom_mcp import mcp_web_search
+    from .tools.logic.web.custom_mcp import mcp_web_search
 
     logger.debug(f"[WEB_SEARCH] Starting MCP search: query='{query[:50]}...', pages={pages}")
 
@@ -134,7 +134,7 @@ async def _collect_sources_from_search(
     from src.extensions.content.deep_research.storage.schema import (
         generate_source_id_short,
     )
-    from src.shared.tools.logic.web.reader import web_read
+    from .tools.logic.web.reader import web_read
     from datetime import datetime
 
     # Parse URLs from search result format: **Title**\nURL: <url>\n...

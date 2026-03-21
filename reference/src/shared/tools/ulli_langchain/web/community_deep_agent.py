@@ -11,7 +11,7 @@ The agent is designed to:
 - Return raw markdown for extraction layer
 
 Usage:
-    from src.shared.tools.ulli_langchain.web.community_deep_agent import (
+    from .tools.ulli_langchain.web.community_deep_agent import (
         community_deep_agent,
         extract_community_sentiment
     )
@@ -33,7 +33,7 @@ Reference: https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import time
 from typing import Literal, Optional, Dict, Any, List, Type
 
@@ -43,7 +43,7 @@ from langgraph.types import Command
 from langchain.messages import ToolMessage
 
 # Import base class
-from src.shared._base_models import BaseWebAgentInput
+from ._base_models import BaseWebAgentInput
 
 logger = get_logger(__name__)
 
@@ -232,7 +232,7 @@ async def _execute_community_research(
     Returns:
         Dict with raw_findings, platforms_queried, total_posts
     """
-    from src.shared.tools.logic.web.community import community_scrape
+    from .tools.logic.web.community import community_scrape
 
     start_time = time.time()
     findings = []
@@ -440,7 +440,7 @@ async def extract_community_sentiment(
     Returns:
         CommunityPostsModel with list of structured posts
     """
-    from src.shared.tools.logic.web.community import (
+    from .tools.logic.web.community import (
         extract_community_posts,
         get_community_posts_model
     )

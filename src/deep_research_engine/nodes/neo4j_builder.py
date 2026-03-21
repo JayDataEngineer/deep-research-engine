@@ -8,7 +8,7 @@ from ..utils.logging import get_loguru_logger
 from ..utils.nodes import node_context
 from ..config import get_phase_config
 from ..tools.storage import initialize_storage_tools, vector_search_datastore
-from src.shared.chat_llm import get_chat_llm
+from shared.chat_llm import get_chat_llm
 from deepagents import create_deep_agent, SubAgent
 
 logger = get_loguru_logger("nodes.neo4j_builder")

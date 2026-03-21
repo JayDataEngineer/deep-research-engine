@@ -15,7 +15,7 @@ LiteLLM provides:
 - MCP tools integration for web scraping/search
 
 Usage:
-    from src.shared.factory import get_llm, get_tool_router_llm
+    from .factory import get_llm, get_tool_router_llm
 
     # Basic usage
     llm = await get_llm(model="qwen-35-27-fast")

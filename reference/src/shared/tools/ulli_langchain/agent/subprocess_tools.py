@@ -7,7 +7,7 @@ allowing the AI to trigger these services.
 
 import asyncio
 import json
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import os
 import subprocess
 import sys

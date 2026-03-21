@@ -22,7 +22,7 @@ RAG DATASOURCES: Extension configs can specify rag_datasources for auto-ingestio
 """
 
 import os
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from pathlib import Path
 
@@ -344,7 +344,7 @@ def _create_embedding_model(config: Dict[str, Any]):
         return None
 
     # Use the centralized factory
-    from src.shared.embeddings.factory import get_embeddings_from_config
+    from .embeddings.factory import get_embeddings_from_config
     return get_embeddings_from_config(config)
 
 

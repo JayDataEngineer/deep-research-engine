@@ -5,7 +5,7 @@ Supports two methods:
 2. API via Telethon (requires credentials)
 
 Usage:
-    from src.shared.tools.logic.web.social_media.telegram import telegram_scrape
+    from .tools.logic.web.social_media.telegram import telegram_scrape
 
     results = await telegram_scrape(
         channel="durov",

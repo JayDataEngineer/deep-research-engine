@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic import EmailStr, HttpUrl, constr, confloat, conint, conlist
 
 # Import shared types, fields, and validators
-from src.shared.types import (
+from .types import (
     ContentType,
     ApiRole,
     ChatMode,
@@ -20,14 +20,14 @@ from src.shared.types import (
     AudioFormat,
     MetadataDict,
 )
-from src.shared.fields import (
+from .fields import (
     optional_temperature_field,
     max_tokens_field,
     created_at_field,
     metadata_field,
 )
-from src.shared.validators import create_url_dict_validator
-from src.shared._base_models import (
+from .validators import create_url_dict_validator
+from ._base_models import (
     SystemHealthResponse,
     MediaUploadResponse as BaseMediaUploadResponse,
 )

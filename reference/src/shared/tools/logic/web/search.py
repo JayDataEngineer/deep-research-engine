@@ -8,6 +8,6 @@ Usage:
     result = await web_search(query="AI news", num_results=5)
 """
 
-from src.shared.tools.ulli_langchain.web.web_search import web_search
+from .tools.ulli_langchain.web.web_search import web_search
 
 __all__ = ["web_search"]

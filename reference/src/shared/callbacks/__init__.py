@@ -4,7 +4,7 @@ This package provides reusable callback handlers for tracking agent execution
 metrics across all extensions. This keeps logging DRY and consistent.
 
 Usage:
-    from src.shared.callbacks import AgentTracker, ChainTracker
+    from .callbacks import AgentTracker, ChainTracker
 
     # Track LLM calls, tool calls, and tokens
     tracker = AgentTracker()

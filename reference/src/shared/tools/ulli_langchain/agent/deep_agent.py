@@ -7,7 +7,7 @@ EXPERIMENTAL: This tool is more complex and may take longer to execute.
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 
 from langchain_core.tools import tool
 
@@ -55,9 +55,9 @@ async def deep_agent(
     try:
         from deepagents import create_deep_agent
         from deepagents.backends import CompositeBackend, StateBackend, StoreBackend
-        from src.shared.factory import get_llm
+        from .factory import get_llm
         from src.config import settings
-        from src.shared.tools.ulli_langchain.web import web_search, web_get
+        from .tools.ulli_langchain.web import web_search, web_get
 
         logger.info(f"[DEEP_AGENT] Starting deep agent for query: {query[:80]}...")
         logger.info(f"[DEEP_AGENT] max_steps={max_steps}, web_map={enable_web_map}, web_crawl={enable_web_crawl}, memory={enable_memory}")
@@ -95,7 +95,7 @@ async def deep_agent(
         # Optionally add web_map and web_crawl
         if enable_web_map:
             try:
-                from src.shared.tools.ulli_langchain.web.web_map import web_map
+                from .tools.ulli_langchain.web.web_map import web_map
                 tools.append(web_map)
                 logger.info("[DEEP_AGENT] web_map tool enabled")
             except ImportError:
@@ -103,7 +103,7 @@ async def deep_agent(
 
         if enable_web_crawl:
             try:
-                from src.shared.tools.ulli_langchain.web.web_crawl import web_crawl
+                from .tools.ulli_langchain.web.web_crawl import web_crawl
                 tools.append(web_crawl)
                 logger.info("[DEEP_AGENT] web_crawl tool enabled")
             except ImportError:
