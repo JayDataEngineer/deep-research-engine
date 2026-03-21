@@ -83,6 +83,7 @@ class ChunkProcessorWorker(BaseWorker):
             classification = None
             if self.enable_classification:
                 classification = await self._classify_chunk(
+                    state=state,
                     chunk=chunk_text,
                     yaml_config=yaml_config,
                 )
@@ -106,6 +107,7 @@ class ChunkProcessorWorker(BaseWorker):
             extraction = None
             if self.enable_extraction:
                 extraction = await self._extract_core_content(
+                    state=state,
                     chunk=chunk_text,
                     classification=classification,
                     yaml_config=yaml_config,
@@ -143,17 +145,18 @@ class ChunkProcessorWorker(BaseWorker):
                 success=False,
                 output=None,
                 error=str(e),
-                error_type=type(e).__name__,
             )
 
     async def _classify_chunk(
         self,
+        state: EngineState,
         chunk: str,
         yaml_config: dict[str, Any],
     ) -> dict[str, Any]:
         """Classify a text chunk.
 
         Args:
+            state: Current engine state
             chunk: Text chunk to classify
             yaml_config: LLM configuration
 
@@ -234,6 +237,7 @@ Respond with JSON:
 
     async def _extract_core_content(
         self,
+        state: EngineState,
         chunk: str,
         classification: dict[str, Any] | None = None,
         yaml_config: dict[str, Any] | None = None,
@@ -241,6 +245,7 @@ Respond with JSON:
         """Extract core content from chunk.
 
         Args:
+            state: Current engine state
             chunk: Text chunk
             classification: Optional classification result
             yaml_config: LLM configuration
