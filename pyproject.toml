@@ -61,6 +61,8 @@ dependencies = [
     "langgraph>=1.1.2",
     "beautifulsoup4>=4.14.3",
     "lxml>=6.0.2",
+    "pymupdf>=1.27.2.2",
+    "pillow>=12.1.1",
     "whisper-ctranslate2>=0.5.7",
     "neo4j>=6.1.0",
     "openai>=1.61.0",
@@ -99,17 +101,10 @@ all-storage = [
     "botocore>=1.36.0",
 ]
 
-# Ingestion converters - install only what you need
-pdf = [
-    "pymupdf>=1.24.0",
-]
-image = [
-    "pillow>=10.0.0",
-]
-all-ingestion = [
-    "pymupdf>=1.24.0",
-    "pillow>=10.0.0",
-]
+# Ingestion converters - (Moved to main dependencies)
+pdf = []
+image = []
+all-ingestion = []
 
 ui = [
     "streamlit>=1.42.0",
