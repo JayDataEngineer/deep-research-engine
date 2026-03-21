@@ -8,6 +8,6 @@ Usage:
     content = await web_read(url="https://example.com")
 """
 
-from src.shared.tools.ulli_langchain.web.web_get import web_get as web_read
+from .tools.ulli_langchain.web.web_get import web_get as web_read
 
 __all__ = ["web_read"]

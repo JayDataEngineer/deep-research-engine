@@ -184,7 +184,7 @@ async def get_store(
     # Initialize embeddings if not provided (REQUIRED for semantic search)
     if embeddings is None:
         try:
-            from src.shared.embeddings.factory import get_embeddings
+            from .embeddings.factory import get_embeddings
             embeddings = get_embeddings()
         except Exception as e:
             raise CheckpointerError(
@@ -252,7 +252,7 @@ async def get_shared_checkpointer():
     """Convenience function for backward compatibility.
 
     This function maintains backward compatibility with existing code:
-        from src.shared.checkpointer import get_shared_checkpointer
+        from .checkpointer import get_shared_checkpointer
 
     Now uses the async factory pattern.
 

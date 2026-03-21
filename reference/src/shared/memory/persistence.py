@@ -3,7 +3,7 @@
 DEPRECATED: Use auto_vectorized_store instead.
 
 This module is kept for backwards compatibility. New code should use:
-    from src.shared.memory.auto_vectorized_store import (
+    from .memory.auto_vectorized_store import (
         save_context_dump,
         save_webpage,
         save_insight,
@@ -15,7 +15,7 @@ LangGraph Store for automatic vectorization.
 
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 
 logger = get_logger(__name__)
 

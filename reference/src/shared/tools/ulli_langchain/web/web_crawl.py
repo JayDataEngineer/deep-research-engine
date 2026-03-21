@@ -4,7 +4,7 @@ Provides website crawling and bulk scraping via MCP server.
 All web operations are handled by the remote MCP server.
 """
 
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 
 from langchain_core.tools import tool
 

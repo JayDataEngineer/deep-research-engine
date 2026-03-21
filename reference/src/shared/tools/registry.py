@@ -16,14 +16,14 @@ V1 PATTERN (LEGACY):
 - In-place state mutations (anti-pattern)
 
 Usage:
-    from src.shared.tools.registry import load_tools
+    from .tools.registry import load_tools
 
     # In your extension's initialize()
     tool_names = self.config.get("enabled_tools", [])
     tools = load_tools(tool_names)
 """
 
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import Callable, List, Dict, Any
 
 logger = get_logger(__name__)

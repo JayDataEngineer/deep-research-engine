@@ -10,7 +10,7 @@ Supports multiple embedding providers:
 - Other: Any OpenAI-compatible API
 
 Pattern:
-    from src.shared.embeddings.factory import get_embeddings
+    from .embeddings.factory import get_embeddings
 
     embeddings = get_embeddings()  # Uses default from config
     embeddings = get_embeddings(provider="openai", model="text-embedding-3-small")

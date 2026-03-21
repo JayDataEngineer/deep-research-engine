@@ -136,9 +136,9 @@ class TestNeo4jBuilderNode:
         state = initial_state.copy()
         state["context"] = {"config": {"neo4j_builder": {"enabled": True}}}
         state["worker_results"] = [{"output": "Test content", "success": True}]
-        
+
         # Mock triplet extraction to raise error
-        with patch('deep_research_engine.nodes.neo4j_builder._extract_triplets', side_effect=Exception("LLM Error")):
+        with patch('deep_research_engine.nodes.neo4j_builder._extract_triplets_agentic', side_effect=Exception("LLM Error")):
             command = await neo4j_builder_node(state)
             assert command.goto == "artifact_maker"
             assert "neo4j_error" in command.update

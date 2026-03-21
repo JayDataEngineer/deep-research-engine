@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .base import BaseLLM
     from .retry import RetryMiddleware
 
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 
 logger = get_logger(__name__)
 

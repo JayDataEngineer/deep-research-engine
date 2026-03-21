@@ -10,13 +10,13 @@ It implements the "Manifest Flow" pattern where:
 This ELIMINATES the need for "clipping" (lossy truncation).
 
 Usage:
-    from src.shared.tools.ulli_langchain.web.read_artifact import read_artifact_tool
+    from .tools.ulli_langchain.web.read_artifact import read_artifact_tool
 
     tool = read_artifact_tool()
     content = await tool.ainvoke({"artifact_path": "artifacts/worker_findings_Philosopher_0_20240203_120000.md"})
 """
 
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from pathlib import Path
 from typing import List, Optional
 

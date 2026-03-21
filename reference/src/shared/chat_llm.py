@@ -13,15 +13,15 @@ All LLM calls are routed through LiteLLM proxy for:
 - Rate limiting
 
 Usage:
-    from src.shared.chat_llm import get_chat_llm
+    from .chat_llm import get_chat_llm
 
     llm = await get_chat_llm(model="qwen-35-27-fast", enable_thinking=True)
 """
 from typing import Optional, TYPE_CHECKING
-from src.shared.factory import get_llm
+from .factory import get_llm
 
 if TYPE_CHECKING:
-    from src.shared.base import BaseLLM
+    from .base import BaseLLM
 
 
 async def get_chat_llm(

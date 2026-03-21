@@ -4,7 +4,7 @@ import asyncio
 import base64
 import io
 import json
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import os
 import random
 import urllib.parse

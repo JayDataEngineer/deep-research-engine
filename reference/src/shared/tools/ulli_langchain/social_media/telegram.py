@@ -17,7 +17,7 @@ Usage:
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import os
 from typing import Literal, Optional, Type
 from langchain_core.tools import BaseTool
@@ -119,7 +119,7 @@ Best for:
 
         try:
             # Import and call the logic layer
-            from src.shared.tools.logic.web.social_media.telegram import telegram_scrape as logic_telegram_scrape
+            from .tools.logic.web.social_media.telegram import telegram_scrape as logic_telegram_scrape
 
             result = await logic_telegram_scrape(
                 channel=channel,

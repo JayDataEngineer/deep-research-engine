@@ -27,7 +27,7 @@ Example config:
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from functools import wraps
 from typing import Type, Tuple, List, Optional, Callable, Any, TYPE_CHECKING, AsyncIterator
 from enum import Enum

@@ -21,7 +21,7 @@ import json
 import os
 from typing import Any, Dict, List, Literal, Optional
 
-from src.shared.logging_utils import get_tool_logger
+from .logging_utils import get_tool_logger
 
 logger = get_tool_logger("mcp_web")
 

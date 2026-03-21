@@ -6,7 +6,7 @@ Provides a centralized way to resolve service URLs with support for:
 3. Default fallback URL
 
 Usage:
-    from src.shared.services.registry import get_service_url, ServiceRegistry
+    from .services.registry import get_service_url, ServiceRegistry
 
     # Simple usage
     url = get_service_url("mcp_web")

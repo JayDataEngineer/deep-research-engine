@@ -15,7 +15,7 @@ Usage:
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import Optional, Type
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -106,7 +106,7 @@ Best for:
 
         try:
             # Import and call the logic layer
-            from src.shared.tools.logic.web.social_media.substack import substack_scrape as logic_substack_scrape
+            from .tools.logic.web.social_media.substack import substack_scrape as logic_substack_scrape
 
             result = await logic_substack_scrape(
                 author=author,
