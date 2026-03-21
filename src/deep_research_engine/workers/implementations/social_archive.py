@@ -7,11 +7,16 @@ This worker processes the 'big text dump' from ingestion to:
 4. Summarize the 'vibe' and inside jokes
 """
 
+import asyncio
+import json
+import re
 from datetime import datetime
 from typing import Any, List, Dict
 from ...state import EngineState, WorkerResult
 from ..base import BaseWorker, WorkerConfig, WorkerRegistry
-from loguru import logger
+from ...utils.logging import get_loguru_logger
+
+logger = get_loguru_logger("worker.social_archive")
 
 @WorkerRegistry.register("social_archive")
 class SocialArchiveWorker(BaseWorker):
@@ -38,7 +43,7 @@ class SocialArchiveWorker(BaseWorker):
             WorkerResult with social insights
         """
         self._start_timing()
-        
+
         try:
             # Get the big text dump from context
             big_dump_path = state.get("context", {}).get("big_text_dump")
@@ -53,25 +58,43 @@ class SocialArchiveWorker(BaseWorker):
             with open(big_dump_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
+            # Truncate content for now to avoid hitting context limits, or use a large context model
+            # Ideally we'd chunk this if it's truly massive.
+            max_chars = 100000  # Reasonable for gpt-4o or similar
+            if len(content) > max_chars:
+                self._log(f"Truncating social archive from {len(content)} to {max_chars} chars")
+                content = content[:max_chars]
+
             self._log(f"Digesting social archive: {len(content)} characters")
 
             # 1. Flash Subagent: Overview & Vibe
-            vibe = await self._extract_vibe(content)
-            
+            vibe_task = self._extract_vibe(state, content)
+
             # 2. Specialist: Relationship Mapper
-            relationships = []
-            if self.map_relationships:
-                relationships = await self._map_social_graph(content)
-            
+            relationships_task = (
+                self._map_social_graph(state, content)
+                if self.map_relationships
+                else asyncio.sleep(0, result=[])
+            )
+
             # 3. Specialist: Personality Profiler
-            profiles = []
-            if self.extract_profiles:
-                profiles = await self._extract_friend_profiles(content)
+            profiles_task = (
+                self._extract_friend_profiles(state, content)
+                if self.extract_profiles
+                else asyncio.sleep(0, result=[])
+            )
 
             # 4. Specialist: Memory Finder
-            memories = []
-            if self.find_memories:
-                memories = await self._find_key_memories(content)
+            memories_task = (
+                self._find_key_memories(state, content)
+                if self.find_memories
+                else asyncio.sleep(0, result=[])
+            )
+
+            # Run all in parallel
+            vibe, relationships, profiles, memories = await asyncio.gather(
+                vibe_task, relationships_task, profiles_task, memories_task
+            )
 
             output = {
                 "vibe_summary": vibe,
@@ -81,7 +104,9 @@ class SocialArchiveWorker(BaseWorker):
                 "processed_at": datetime.now().isoformat(),
             }
 
-            self._log(f"Digestion complete: Learned about {len(profiles)} friends and {len(memories)} memories.")
+            self._log(
+                f"Digestion complete: Learned about {len(profiles)} friends and {len(memories)} memories."
+            )
 
             return self._create_result(
                 success=True,
@@ -98,25 +123,64 @@ class SocialArchiveWorker(BaseWorker):
                 error=str(e),
             )
 
-    async def _extract_vibe(self, content: str) -> str:
+    async def _extract_vibe(self, state: EngineState, content: str) -> str:
         """Flash subagent to extract the overall vibe."""
-        # (Placeholder for LLM call)
-        return "A tight-knit group of friends with a strong shared history and many inside jokes."
+        llm = await self._get_llm(state)
+        prompt = (
+            "Analyze the following social archive data and describe the overall 'vibe', "
+            "common themes, and shared history of the group.\n\n"
+            f"Content:\n{content}"
+        )
+        response = await llm.ainvoke(prompt)
+        return response.content if hasattr(response, "content") else str(response)
 
-    async def _map_social_graph(self, content: str) -> List[Dict[str, Any]]:
+    async def _map_social_graph(self, state: EngineState, content: str) -> List[Dict[str, Any]]:
         """Specialist sub-sub agent to map relationships."""
-        # (Placeholder for LLM call)
-        return [{"person_a": "Will", "person_b": "Grady", "relationship": "Close friends/Collaborators"}]
+        llm = await self._get_llm(state)
+        prompt = (
+            "Identify the key people in this social archive and their relationships to each other. "
+            "Respond with a JSON list of objects, each with 'person_a', 'person_b', and 'relationship'.\n\n"
+            f"Content:\n{content}"
+        )
+        response = await llm.ainvoke(prompt)
+        content_str = response.content if hasattr(response, "content") else str(response)
+        return self._parse_json_list(content_str)
 
-    async def _extract_friend_profiles(self, content: str) -> List[Dict[str, Any]]:
+    async def _extract_friend_profiles(self, state: EngineState, content: str) -> List[Dict[str, Any]]:
         """Specialist sub-sub agent to create personality profiles."""
-        # (Placeholder for LLM call)
-        return [
-            {"name": "Will", "traits": ["Inquisitive", "Organized"], "summary": "The researcher of the group."},
-            {"name": "Grady", "traits": ["Outspoken", "Detailed"], "summary": "Provides deep context and history."}
-        ]
+        llm = await self._get_llm(state)
+        prompt = (
+            "Based on the interactions in this social archive, create personality profiles for "
+            "the main participants. Respond with a JSON list of objects, each with 'name', "
+            "'traits' (list of strings), and 'summary'.\n\n"
+            f"Content:\n{content}"
+        )
+        response = await llm.ainvoke(prompt)
+        content_str = response.content if hasattr(response, "content") else str(response)
+        return self._parse_json_list(content_str)
 
-    async def _find_key_memories(self, content: str) -> List[Dict[str, Any]]:
+    async def _find_key_memories(self, state: EngineState, content: str) -> List[Dict[str, Any]]:
         """Specialist sub-sub agent to find key moments."""
-        # (Placeholder for LLM call)
-        return [{"event": "The 13 March 2026 Export", "description": "A significant moment of data archival."}]
+        llm = await self._get_llm(state)
+        prompt = (
+            "Extract significant shared memories, events, or inside jokes from this social archive. "
+            "Respond with a JSON list of objects, each with 'event' and 'description'.\n\n"
+            f"Content:\n{content}"
+        )
+        response = await llm.ainvoke(prompt)
+        content_str = response.content if hasattr(response, "content") else str(response)
+        return self._parse_json_list(content_str)
+
+    def _parse_json_list(self, text: str) -> List[Dict[str, Any]]:
+        """Extract and parse a JSON list from text."""
+        try:
+            # Try to find JSON list in the text
+            match = re.search(r"\[\s*\{.*\}\s*\]", text, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+
+            # Try to parse the whole thing
+            return json.loads(text)
+        except Exception as e:
+            self._log(f"Failed to parse JSON list from response: {e}", level="warning")
+            return []
