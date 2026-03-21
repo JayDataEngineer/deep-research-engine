@@ -10,7 +10,7 @@ Reference: https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import Literal, Optional, Dict, Any
 
 from pydantic import BaseModel, Field
@@ -88,7 +88,7 @@ async def _execute_scrape_impl(
         Formatted markdown with scraped content
     """
     # Import and call the logic layer
-    from src.shared.tools.logic.web.community import community_scrape as logic_community_scrape
+    from .tools.logic.web.community import community_scrape as logic_community_scrape
 
     logger.info(f"[COMMUNITY_SCRAPE] Starting: platform={platform}, community={community}, board={board}")
 

@@ -6,7 +6,7 @@ Supports:
 - Author-based subscriptions
 
 Usage:
-    from src.shared.tools.logic.web.social_media.substack import substack_scrape
+    from .tools.logic.web.social_media.substack import substack_scrape
 
     results = await substack_scrape(
         author="matttaibbi",

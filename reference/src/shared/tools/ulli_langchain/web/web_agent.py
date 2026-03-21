@@ -26,7 +26,7 @@ Reference: https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import re
 import time
 from typing import Literal, Optional, Dict, Any, List, Set, Type
@@ -41,7 +41,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain.messages import ToolMessage
 
 # Import base class
-from src.shared._base_models import BaseWebAgentInput
+from ._base_models import BaseWebAgentInput
 
 logger = get_logger(__name__)
 
@@ -76,7 +76,7 @@ except ImportError:
 
 # Check if LLM is available
 try:
-    from src.shared.factory import get_llm
+    from .factory import get_llm
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
@@ -252,7 +252,7 @@ async def _web_search(query: str, num_results: int = 10) -> str:
     logger.debug(f"[WEB_AGENT] Running MCP web search: {query[:50]}...")
 
     try:
-        from src.shared.tools.logic.web.custom_mcp import mcp_web_search
+        from .tools.logic.web.custom_mcp import mcp_web_search
 
         # MCP search returns JSON list of content blocks
         result = await mcp_web_search(query, num_results=num_results)
@@ -335,7 +335,7 @@ async def _web_get(url: str) -> str:
         Uses MCP server via Tailscale Funnel.
     """
     import time
-    from src.shared.tools.logic.web.custom_mcp import mcp_web_fetch
+    from .tools.logic.web.custom_mcp import mcp_web_fetch
 
     fetch_start = time.monotonic()
 
@@ -408,7 +408,7 @@ async def _ingest_url_to_sources(
         source_data dict if ingested successfully, None otherwise
     """
     try:
-        from src.shared.tools.logic.web.reader import web_read
+        from .tools.logic.web.reader import web_read
         from datetime import datetime
 
         # Scrape content
@@ -1078,7 +1078,7 @@ async def _save_sources_to_store(
     producer_id = state.get("worker_id", "web_agent")
 
     # Use shared persistence layer for consistency
-    from src.shared.memory.persistence import save_findings_to_memories
+    from .memory.persistence import save_findings_to_memories
 
     saved_keys = await save_findings_to_memories(
         store=store,

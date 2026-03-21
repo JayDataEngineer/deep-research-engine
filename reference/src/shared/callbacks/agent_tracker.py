@@ -7,7 +7,7 @@ agent execution metrics including:
 - Token usage (when available)
 
 Usage:
-    from src.shared.callbacks import AgentTracker
+    from .callbacks import AgentTracker
 
     tracker = AgentTracker()
     agent_config = {

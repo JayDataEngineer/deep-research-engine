@@ -6,7 +6,7 @@ Provides unified audio file saving and URL generation.
 
 import asyncio
 import io
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from datetime import datetime
 from pathlib import Path
 

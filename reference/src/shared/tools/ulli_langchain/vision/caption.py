@@ -6,7 +6,7 @@ Dedicated tool for image captioning (vs general image analysis).
 
 import base64
 import httpx
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import os
 from pathlib import Path
 from typing import Optional

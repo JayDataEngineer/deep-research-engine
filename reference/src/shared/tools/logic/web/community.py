@@ -8,6 +8,6 @@ Usage:
     content = await community_scrape(platform="reddit", community="r/politics", limit=50)
 """
 
-from src.shared.tools.ulli_langchain.web.community_scrape import community_scrape
+from .tools.ulli_langchain.web.community_scrape import community_scrape
 
 __all__ = ["community_scrape"]

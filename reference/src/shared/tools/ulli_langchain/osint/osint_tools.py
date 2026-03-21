@@ -8,7 +8,7 @@ Tools for:
 - Google dork generation
 """
 
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 import os
 from typing import Optional, List
 

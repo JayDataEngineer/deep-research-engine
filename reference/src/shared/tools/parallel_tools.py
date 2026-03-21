@@ -4,7 +4,7 @@ This module wraps async tools to add semaphore-based concurrency control,
 preventing system overload when tools are called in parallel.
 
 Usage:
-    from src.shared.tools.parallel_tools import wrap_tools_with_semaphores
+    from .tools.parallel_tools import wrap_tools_with_semaphores
 
     # Wrap all tools before passing to agent
     safe_tools = wrap_tools_with_semaphores(worker_tools)
@@ -16,7 +16,7 @@ from typing import Any, Awaitable, Callable
 from langchain_core.tools import StructuredTool
 from langchain_core.runnables import Runnable
 
-from src.shared.concurrency import (
+from .concurrency import (
     get_semaphore_for_tool,
     execute_with_semaphore,
 )
@@ -131,7 +131,7 @@ def wrap_tools_with_semaphores(tools: list) -> list:
         List of tools with semaphore protection
 
     Example:
-        from src.shared.tools.parallel_tools import wrap_tools_with_semaphores
+        from .tools.parallel_tools import wrap_tools_with_semaphores
 
         # Original tools (no protection)
         worker_tools = [web_search, web_reader, community_scrape]

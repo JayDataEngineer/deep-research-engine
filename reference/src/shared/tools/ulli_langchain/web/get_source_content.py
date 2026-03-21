@@ -10,7 +10,7 @@ Reference: https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs
 """
 
 import hashlib
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel, Field

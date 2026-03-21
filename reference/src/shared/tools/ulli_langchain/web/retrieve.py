@@ -7,7 +7,7 @@ The integration with the Virtual Filesystem allows retrieval of full content
 by reading the VFS path stored in document metadata.
 """
 
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import Literal, Optional
 
 from langchain_core.documents import Document

@@ -6,7 +6,7 @@ This tool provides automated fact-checking capabilities by:
 3. Returning a structured fact-check report with citations
 
 Usage:
-    from src.shared.tools.ulli_langchain.web.fact_check import fact_check
+    from .tools.ulli_langchain.web.fact_check import fact_check
 
     result = await fact_check(
         claim="ICE shot two people in Minneapolis in January 2026",
@@ -15,7 +15,7 @@ Usage:
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import Literal, Optional
 from datetime import datetime
 
@@ -23,7 +23,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 # Import base class
-from src.shared._base_models import BaseWebSearchInput
+from ._base_models import BaseWebSearchInput
 
 logger = get_logger(__name__)
 

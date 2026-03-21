@@ -54,6 +54,7 @@ def main():
     # Common arguments for all subparsers
     for subparser in subparsers.choices.values():
         subparser.add_argument("--stream", action="store_true", default=True, help="Stream output")
+        subparser.add_argument("--no-stream", action="store_false", dest="stream", help="Disable streaming")
         subparser.add_argument("--output", "-o", help="Output file path")
         subparser.add_argument("--thread-id", help="Thread ID for checkpointing")
         subparser.add_argument(
@@ -177,7 +178,20 @@ def write_output(result: dict, path: str) -> None:
         result: Result dictionary to write
         path: Path to output file
     """
+    import json
+    
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    output_path.write_text(result.get("output", str(result)))
+    output = result.get("output", "")
+    
+    # Handle non-string outputs
+    if not isinstance(output, str):
+        if isinstance(output, (dict, list)):
+            output = json.dumps(output, indent=2)
+        elif output:
+            output = str(output)
+        else:
+            output = ""
+    
+    output_path.write_text(output)

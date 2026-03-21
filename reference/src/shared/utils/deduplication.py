@@ -8,7 +8,7 @@ Why deduplicate?
 - Reduces storage requirements
 
 Usage:
-    from src.shared.utils.deduplication import (
+    from .utils.deduplication import (
         deduplicate_exact,
         deduplicate_semantic,
         deduplicate_hybrid,

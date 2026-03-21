@@ -8,9 +8,9 @@ from typing import List, Optional, Dict, Any, Union, Literal
 from pydantic import BaseModel, Field, field_validator
 
 # Import shared types and validators
-from src.shared.types import ExtendedRole, MetadataDict, is_empty_string
-from src.shared.fields import temperature_field, max_tokens_field
-from src.shared.validators import create_url_string_validator, create_first_message_role_validator
+from .types import ExtendedRole, MetadataDict, is_empty_string
+from .fields import temperature_field, max_tokens_field
+from .validators import create_url_string_validator, create_first_message_role_validator
 
 # Import LangChain message classes for compatibility
 try:

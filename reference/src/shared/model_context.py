@@ -9,7 +9,7 @@ Fully percentage-based with auto-detection and YAML override support:
 - Allows YAML config to override percentages per role
 
 Usage:
-    from src.shared.model_context import get_model_max_tokens, get_safe_token_limit
+    from .model_context import get_model_max_tokens, get_safe_token_limit
 
     # Get max tokens for a model
     max_tokens = get_model_max_tokens("glm-4.7")  # Returns: 202750
@@ -21,7 +21,7 @@ Usage:
 from typing import Dict, Optional, Any
 import logging
 
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 
 logger = get_logger(__name__)
 

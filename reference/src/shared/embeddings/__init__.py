@@ -4,7 +4,7 @@ This module provides a factory pattern for creating embedding instances
 that support multiple providers (OpenAI, local, ZAI, HuggingFace, etc.).
 
 Example:
-    from src.shared.embeddings.factory import get_embeddings
+    from .embeddings.factory import get_embeddings
 
     embeddings = get_embeddings()  # Uses default from config
     embeddings = get_embeddings(provider="local", base_url="http://localhost:8080")

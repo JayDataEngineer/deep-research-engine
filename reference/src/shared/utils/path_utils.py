@@ -4,7 +4,7 @@ Provides unified sys.path management for the backend and extensions.
 Consolidates duplicate sys.path.insert patterns from 40+ files.
 
 Usage:
-    from src.shared.utils.path_utils import setup_python_path, setup_extension_path
+    from .utils.path_utils import setup_python_path, setup_extension_path
 
     # For backend paths
     setup_python_path("/path/to/module")

@@ -9,7 +9,7 @@ All TTS calls go through LiteLLM which routes to:
 - Other TTS models managed by the Orchestrator
 
 Usage:
-    from src.shared.litellm_tts import generate_speech, generate_speech_stream
+    from .litellm_tts import generate_speech, generate_speech_stream
 
     # Simple TTS generation
     audio_bytes = await generate_speech(
@@ -39,8 +39,8 @@ from pathlib import Path
 
 from openai import OpenAI, AsyncOpenAI
 
-from src.shared.logging_config import get_logger
-from src.shared.litellm_config import (
+from .logging_config import get_logger
+from .litellm_config import (
     LITELLM_TTS_URL,
     LITELLM_API_KEY,
     DEFAULT_TTS_MODEL,

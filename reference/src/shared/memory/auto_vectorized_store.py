@@ -17,7 +17,7 @@ Graph Builder queries: store.asearch((session_id, "memories"))
 Then extracts entities → writes to Neo4j separately.
 
 Usage:
-    from src.shared.memory.auto_vectorized_store import (
+    from .memory.auto_vectorized_store import (
         save_context_dump,
         save_webpage,
         save_insight,
@@ -40,7 +40,7 @@ from typing import Dict, Any, List, Optional
 import hashlib
 import json
 
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 
 logger = get_logger(__name__)
 

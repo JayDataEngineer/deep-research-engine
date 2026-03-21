@@ -5,7 +5,7 @@ before LLM calls. Uses summarization and truncation strategies to reduce
 context size when approaching limits.
 
 Usage:
-    from src.shared.tools.ulli_langchain.middleware import TokenLimitMiddleware
+    from .tools.ulli_langchain.middleware import TokenLimitMiddleware
 
     middleware = [
         TokenLimitMiddleware(max_tokens_ratio=0.8),  # 80% of model context
@@ -15,7 +15,7 @@ Usage:
 
 from typing import Any, Dict, List, Optional, Callable
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, ToolMessage
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 
 logger = get_logger(__name__)
 

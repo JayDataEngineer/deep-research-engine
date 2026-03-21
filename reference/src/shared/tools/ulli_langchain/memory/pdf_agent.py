@@ -17,7 +17,7 @@ Reference: https://arxiv.org/abs/2401.15884
 """
 
 import asyncio
-from src.shared.logging_config import get_logger
+from .logging_config import get_logger
 from typing import List, Dict, Any, Optional, Literal, TypedDict
 from pathlib import Path
 

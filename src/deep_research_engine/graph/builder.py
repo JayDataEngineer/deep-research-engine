@@ -50,22 +50,22 @@ def build_workflow_graph(config: WorkflowConfig) -> StateGraph:
     builder.add_edge(START, "ingestion")
 
     # Conditional routing functions
-    def route_ingestion(state: EngineState) -> Literal["drafter", "error"]:
+    def route_ingestion(state: EngineState) -> Literal["drafter", END]:
         """Route after ingestion phase."""
         if state.get("fatal_error"):
-            return "error"
+            return END
         return "drafter"
 
-    def route_drafter(state: EngineState) -> Literal["critic", "error"]:
+    def route_drafter(state: EngineState) -> Literal["critic", END]:
         """Route after drafter phase."""
         if state.get("fatal_error") or not state.get("worker_results"):
-            return "error"
+            return END
         return "critic"
 
-    def route_critic(state: EngineState) -> Literal["drafter", "neo4j_builder", "error"]:
+    def route_critic(state: EngineState) -> Literal["drafter", "neo4j_builder", END]:
         """Route after critic phase - supports retry loop."""
         if state.get("fatal_error"):
-            return "error"
+            return END
 
         # Get critic config for max retries
         config_data = state.get("context", {}).get("config", {})
@@ -81,24 +81,24 @@ def build_workflow_graph(config: WorkflowConfig) -> StateGraph:
 
         return "drafter"
 
-    def route_neo4j_builder(state: EngineState) -> Literal["artifact_maker", "error"]:
+    def route_neo4j_builder(state: EngineState) -> Literal["artifact_maker", END]:
         """Route after neo4j builder phase."""
         if state.get("fatal_error"):
-            return "error"
+            return END
         return "artifact_maker"
 
-    def route_artifact_maker(state: EngineState) -> Literal[END, "error"]:
+    def route_artifact_maker(state: EngineState) -> Literal[END]:
         """Route after artifact maker phase."""
         if state.get("fatal_error"):
-            return "error"
+            return END
         return END
 
     # Add conditional edges
-    builder.add_conditional_edges("ingestion", route_ingestion, ["drafter", "error"])
-    builder.add_conditional_edges("drafter", route_drafter, ["critic", "error"])
-    builder.add_conditional_edges("critic", route_critic, ["drafter", "neo4j_builder", "error"])
-    builder.add_conditional_edges("neo4j_builder", route_neo4j_builder, ["artifact_maker", "error"])
-    builder.add_conditional_edges("artifact_maker", route_artifact_maker, [END, "error"])
+    builder.add_conditional_edges("ingestion", route_ingestion, ["drafter", END])
+    builder.add_conditional_edges("drafter", route_drafter, ["critic", END])
+    builder.add_conditional_edges("critic", route_critic, ["drafter", "neo4j_builder", END])
+    builder.add_conditional_edges("neo4j_builder", route_neo4j_builder, ["artifact_maker", END])
+    builder.add_conditional_edges("artifact_maker", route_artifact_maker, [END])
 
     logger.info("Workflow graph built successfully")
     return builder
