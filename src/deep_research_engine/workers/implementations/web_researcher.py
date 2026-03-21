@@ -16,6 +16,7 @@ Usage:
     result = await worker.execute(state, config)
 """
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -23,6 +24,9 @@ from langgraph.types import Command
 
 from ...state import EngineState, WorkerResult
 from ..base import BaseWorker, WorkerConfig, WorkerRegistry
+from ...utils.logging import get_loguru_logger
+
+logger = get_loguru_logger("worker.web_researcher")
 
 
 @WorkerRegistry.register("web_researcher")
@@ -84,6 +88,7 @@ class WebResearcherWorker(BaseWorker):
 
             # Run Flash Explorer
             findings = await self._run_flash_explorer(
+                state=state,
                 query=query,
                 yaml_config=yaml_config,
                 session_id=session_id,
@@ -101,7 +106,6 @@ class WebResearcherWorker(BaseWorker):
                 output_type="research_findings",
                 confidence=0.85,
                 sources=sources,
-                source_count=len(sources),
             )
 
         except Exception as e:
@@ -110,11 +114,11 @@ class WebResearcherWorker(BaseWorker):
                 success=False,
                 output=None,
                 error=str(e),
-                error_type=type(e).__name__,
             )
 
     async def _run_flash_explorer(
         self,
+        state: EngineState,
         query: str,
         yaml_config: dict[str, Any],
         session_id: str,
@@ -128,6 +132,7 @@ class WebResearcherWorker(BaseWorker):
         3. Collects and combines findings
 
         Args:
+            state: Engine state
             query: Research query/avenue
             yaml_config: LLM and tool configuration
             session_id: Session ID for tracing
@@ -146,29 +151,47 @@ class WebResearcherWorker(BaseWorker):
             f"{', community_deep_agent' if has_community else ''}"
         )
 
-        # Run web deep agent
-        web_findings = await self._run_web_agent(
-            query=query,
-            yaml_config=yaml_config,
-            session_id=session_id,
+        # Prepare tasks for parallel execution
+        tasks = []
+
+        # 1. Web deep agent task
+        tasks.append(
+            self._run_web_agent(
+                state=state,
+                query=query,
+                yaml_config=yaml_config,
+                session_id=session_id,
+            )
         )
 
-        # Run PDF deep agent if documents provided
-        pdf_findings = ""
+        # 2. PDF deep agent task if documents provided
         if has_pdf and documents:
-            pdf_findings = await self._run_pdf_agent(
-                query=query,
-                documents=documents,
-                session_id=session_id,
+            tasks.append(
+                self._run_pdf_agent(
+                    state=state,
+                    query=query,
+                    documents=documents,
+                    session_id=session_id,
+                )
             )
+        else:
+            tasks.append(asyncio.sleep(0, result=""))
 
-        # Run community deep agent if sentiment query
-        community_findings = ""
+        # 3. Community deep agent task if sentiment query
         if has_community:
-            community_findings = await self._run_community_agent(
-                query=query,
-                session_id=session_id,
+            tasks.append(
+                self._run_community_agent(
+                    state=state,
+                    query=query,
+                    session_id=session_id,
+                )
             )
+        else:
+            tasks.append(asyncio.sleep(0, result=""))
+
+        # Run all deep agents in parallel
+        results = await asyncio.gather(*tasks)
+        web_findings, pdf_findings, community_findings = results
 
         # Combine findings
         combined = []
@@ -183,6 +206,7 @@ class WebResearcherWorker(BaseWorker):
 
     async def _run_web_agent(
         self,
+        state: EngineState,
         query: str,
         yaml_config: dict[str, Any],
         session_id: str,
@@ -193,6 +217,7 @@ class WebResearcherWorker(BaseWorker):
         plan → search → select → scrape → extract → critic → write_results
 
         Args:
+            state: Engine state
             query: Research query
             yaml_config: LLM configuration
             session_id: Session ID
@@ -234,6 +259,7 @@ class WebResearcherWorker(BaseWorker):
 
     async def _run_pdf_agent(
         self,
+        state: EngineState,
         query: str,
         documents: list[str],
         session_id: str,
@@ -268,6 +294,7 @@ class WebResearcherWorker(BaseWorker):
 
     async def _run_community_agent(
         self,
+        state: EngineState,
         query: str,
         session_id: str,
     ) -> str:
