@@ -51,8 +51,8 @@
    - [ ] Integration with `deepagents`
 
 2. **Ingestion Logic** (`src/deep_research_engine/nodes/ingestion.py`)
-   - [ ] Implement PDF/Image/Audio extraction to "nice text files"
-   - [ ] Integration with shared multimodal tools
+   - [x] Implement PDF/Image/Audio extraction to "nice text files"
+   - [x] Integration with shared multimodal tools
 
 3. **Critic Logic** (`src/deep_research_engine/nodes/critic.py`)
    - [ ] Implement structured evaluation
