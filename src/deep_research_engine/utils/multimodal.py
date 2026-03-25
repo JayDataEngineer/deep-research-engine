@@ -1,14 +1,13 @@
-import os
 import asyncio
 import base64
 import mimetypes
+import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
-import functools
 import httpx
-from openai import OpenAI
 from loguru import logger
+from openai import OpenAI
 
 # LiteLLM (ASR/VLM)
 LITELLM_BASE_URL = os.environ.get("LITELLM_BASE_URL", "http://localhost:4000/v1")
@@ -19,23 +18,63 @@ COMPREFACE_BASE_URL = os.environ.get("COMPREFACE_BASE_URL", "http://localhost:80
 COMPREFACE_API_KEY = os.environ.get("COMPREFACE_API_KEY", "")
 
 # Models
-ASR_MODEL = os.environ.get("ASR_MODEL", "whisper-1")
+ASR_MODEL = os.environ.get("ASR_MODEL", "vibevoice-asr")
 VLM_MODEL = os.environ.get("VLM_MODEL", "gpt-4o-mini")
 
+# VibeVoice settings
+VIBEVOICE_MIN_SPEAKERS = int(os.environ.get("VIBEVOICE_MIN_SPEAKERS", "1"))
+VIBEVOICE_MAX_SPEAKERS = int(os.environ.get("VIBEVOICE_MAX_SPEAKERS", "10"))
 
-async def asr_transcribe(audio_path: Path, language: Optional[str] = None) -> str:
-    """Transcribe audio file using LiteLLM ASR endpoint via OpenAI client."""
-    logger.info(f"Transcribing audio: {audio_path}")
+
+async def asr_transcribe(
+    audio_path: Path,
+    language: Optional[str] = None,
+    include_diarization: bool = True,
+) -> Union[str, Dict[str, Any]]:
+    """Transcribe audio file using LiteLLM ASR endpoint via OpenAI client.
+
+    Supports both Whisper and VibeVoice ASR models:
+    - Whisper: Returns simple text transcription
+    - VibeVoice ASR-7B: Returns transcription with built-in diarization and timestamps
+
+    Args:
+        audio_path: Path to audio file
+        language: Optional language hint (e.g., "en", "zh")
+        include_diarization: If True and using VibeVoice, return structured output
+            with speaker segments and timestamps. If False, return plain text.
+
+    Returns:
+        If include_diarization=True and using VibeVoice:
+            Dict with keys: text, segments, speakers, duration, diarization
+        Otherwise:
+            Plain transcription text (str)
+
+    Example VibeVoice output:
+        {
+            "text": "Speaker 0: Hello. Speaker 1: Hi there.",
+            "segments": [
+                {"speaker": "Speaker 0", "start": 0.0, "end": 2.5, "text": "Hello."},
+                {"speaker": "Speaker 1", "start": 3.0, "end": 5.0, "text": "Hi there."}
+            ],
+            "speakers": 2,
+            "duration": 120.5,
+            "diarization": "native"
+        }
+    """
+    logger.info(f"Transcribing audio: {audio_path} (diarization={include_diarization})")
 
     if not audio_path.exists():
         logger.error(f"Audio file not found: {audio_path}")
-        return ""
+        return "" if not include_diarization else {"text": "", "segments": [], "speakers": 0}
 
     try:
         client = OpenAI(
             base_url=LITELLM_BASE_URL,
             api_key=LITELLM_API_KEY,
         )
+
+        # Determine if we're using VibeVoice
+        is_vibevoice = "vibevoice" in ASR_MODEL.lower()
 
         with open(audio_path, "rb") as audio_file:
             kwargs = {
@@ -45,19 +84,90 @@ async def asr_transcribe(audio_path: Path, language: Optional[str] = None) -> st
             if language:
                 kwargs["language"] = language
 
-            # OpenAI client create is normally synchronous, but LiteLLM might be slow.
-            # We run it in a thread if needed, or just call it directly if it's fast enough.
-            # To keep it async-friendly:
-            # To keep it async-friendly:
+            # Request verbose_json for VibeVoice to get diarization
+            if is_vibevoice and include_diarization:
+                kwargs["response_format"] = "verbose_json"
+
+            # Call ASR API
             result = await asyncio.to_thread(client.audio.transcriptions.create, **kwargs)
 
-        transcription = result.text
-        logger.info(f"Transcription complete: {len(transcription)} chars")
-        return transcription
+        # Parse response based on model
+        if is_vibevoice and include_diarization:
+            # VibeVoice returns enhanced response with segments
+            return _parse_vibevoice_response(result)
+        else:
+            # Whisper or simple transcription
+            transcription = result.text
+            logger.info(f"Transcription complete: {len(transcription)} chars")
+            return transcription
 
     except Exception as e:
         logger.error(f"ASR failed for {audio_path}: {e}")
+        if include_diarization:
+            return {
+                "text": f"[Audio Transcript failed: {e}]",
+                "segments": [],
+                "speakers": 0,
+                "error": str(e)
+            }
         return f"[Audio Transcript for {audio_path.name} failed: {e}]"
+
+
+def _parse_vibevoice_response(result: Any) -> Dict[str, Any]:
+    """Parse VibeVoice ASR response into structured format with diarization.
+
+    Args:
+        result: Raw response from VibeVoice ASR API
+
+    Returns:
+        Dict with transcription, segments, speaker count, and metadata
+    """
+    # Extract full text
+    full_text = getattr(result, "text", "")
+
+    # Extract segments with speaker information
+    segments_raw = getattr(result, "segments", [])
+    segments: List[Dict[str, Any]] = []
+    speakers_set = set()
+
+    for seg in segments_raw:
+        # Handle both dict and object segments
+        if hasattr(seg, "__dict__"):
+            seg_dict = seg.__dict__
+        else:
+            seg_dict = seg
+
+        speaker = seg_dict.get("speaker", "Speaker 0")
+        speakers_set.add(speaker)
+
+        segments.append({
+            "speaker": speaker,
+            "start": float(seg_dict.get("start", 0.0)),
+            "end": float(seg_dict.get("end", 0.0)),
+            "duration": float(seg_dict.get("duration", 0.0)),
+            "text": seg_dict.get("text", ""),
+            "confidence": seg_dict.get("confidence", 1.0),
+        })
+
+    # Count unique speakers
+    num_speakers = len(speakers_set)
+    if num_speakers == 0:
+        num_speakers = 1
+
+    # Get duration
+    duration = getattr(result, "duration", 0.0)
+    if duration == 0.0 and segments:
+        duration = max(seg["end"] for seg in segments)
+
+    return {
+        "text": full_text,
+        "segments": segments,
+        "speakers": num_speakers,
+        "speaker_list": sorted(list(speakers_set)),
+        "duration": duration,
+        "diarization": "native",
+        "model": ASR_MODEL,
+    }
 
 
 async def vlm_analyze(
@@ -157,6 +267,7 @@ async def face_recognize(image_path: Path, min_similarity: float = 0.8) -> List[
                         "name": subject or "Unknown",
                         "confidence": similarity,
                         "box": face_data.get("box", {}),
+                        "embedding": face_data.get("embedding"),
                     }
                 )
 
@@ -230,13 +341,9 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
         )
 
         description = response.choices[0].message.content
-        
+
         # Optionally also try ASR on video audio
-        try:
-            # We would need to extract audio first. For now, just return description.
-            pass
-        except:
-            pass
+        # TODO: Implement audio extraction from video for ASR
 
         logger.info(f"Video analysis complete: {len(description)} chars")
         return description

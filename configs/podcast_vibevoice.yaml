@@ -1,0 +1,122 @@
+# Podcast/Meeting Transcription with VibeVoice ASR
+# Single-phase workflow for audio transcription with speaker diarization
+
+workflow:
+  name: podcast_transcription
+  type: transcription
+  version: 1.0.0
+  description: Transcribe podcasts/meetings with VibeVoice ASR diarization
+
+input:
+  type: audio
+  source: "${AUDIO_PATH}"
+
+phases:
+  # Phase 1: Ingestion (Audio Transcription with Diarization)
+  - name: ingestion
+    node: ingestion_node
+    config:
+      enabled: true
+      custom:
+        media_type: audio
+        asr_model: vibevoice-asr
+        include_diarization: true
+        language: en  # Optional: hint for ASR
+
+  # Phase 2: Drafter (Segment Processing)
+  - name: drafter
+    node: drafter_node
+    config:
+      worker_type: chunk_processor
+      parallel: true
+      max_concurrent: 3
+
+      workers:
+        - id: segment_summarizer
+          type: chunk_processor
+          custom:
+            task: summarize_speaker_segments
+            min_speakers: 1
+            max_speakers: 10
+
+        - id: topic_identifier
+          type: chunk_processor
+          custom:
+            task: identify_topics_by_speaker
+            use_diarization_context: true
+
+        - id: key_quotes_extractor
+          type: chunk_processor
+          custom:
+            task: extract_key_quotes_per_speaker
+            max_quotes_per_speaker: 5
+
+  # Phase 3: Critic (Quality Check)
+  - name: critic
+    node: critic_node
+    config:
+      max_retries: 2
+      criteria:
+        - name: transcription_completeness
+          weight: 0.4
+          threshold: 0.8
+        - name: speaker_separation_quality
+          weight: 0.3
+          threshold: 0.7
+        - name: segment_accuracy
+          weight: 0.3
+          threshold: 0.7
+
+  # Phase 4: Synthesizer (Final Output)
+  - name: synthesizer
+    node: synthesizer_node
+    config:
+      format: structured_transcript
+      custom:
+        output_sections:
+          - full_transcript_with_speakers
+          - speaker_summary
+          - timeline_with_timestamps
+          - key_quotes
+        include_metadata: true
+
+storage:
+  postgres:
+    enabled: true
+    connection: "${POSTGRES_URL-postgresql://localhost:5433/podcasts}"
+
+  mongodb:
+    enabled: true
+    connection: "${MONGO_URL-mongodb://localhost:27017/podcasts}"
+
+  minio:
+    enabled: true
+    endpoint: "${MINIO_ENDPOINT-http://localhost:9000}"
+    bucket: podcast-audio
+
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+
+tools:
+  enabled:
+    - vibevoice_asr
+    - entity_extraction
+    - summarization
+
+execution:
+  max_steps: 100
+  timeout: 1800  # 30 minutes for long podcasts
+  streaming:
+    enabled: true
+
+output:
+  destination:
+    type: file
+    path: "./output/transcripts"
+  format: markdown
+  custom:
+    include_timestamps: true
+    include_speaker_labels: true
+    segment_by_speaker: true
