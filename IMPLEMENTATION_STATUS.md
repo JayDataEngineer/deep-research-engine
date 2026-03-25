@@ -1,6 +1,6 @@
 # Deep Research Engine - Implementation Status
 
-**Status**: Architecture Simplified ✓ | Core Nodes Implemented ✓ | Infrastructure Ready ✓
+**Status**: Architecture Simplified ✓ | Core Nodes Implemented ✓ | Infrastructure Ready ✓ | VibeVoice ASR ✓
 
 ---
 
@@ -39,6 +39,13 @@
   - **Databases**: Postgres, MongoDB, Neo4j, MinIO
   - **Audio/VLM**: Shared tools for multimodal ingestion
 
+### ✓ VibeVoice ASR Integration (NEW)
+- **Worker**: `VibeVoiceASRWorker` with built-in diarization
+- **Utility**: Enhanced `asr_transcribe()` with diarization support
+- **Ingestion**: Automatic audio processing with speaker detection
+- **Configs**: `telegram_vibevoice.yaml` and `podcast_vibevoice.yaml`
+- **Docs**: Complete integration guide in `docs/vibevoice-asr.md`
+
 ---
 
 ## What's TODO
@@ -50,9 +57,10 @@
    - [ ] Implement Specialist Sub-sub agent fan-out
    - [ ] Integration with `deepagents`
 
-2. **Ingestion Logic** (`src/deep_research_engine/nodes/ingestion.py`)
-   - [ ] Implement PDF/Image/Audio extraction to "nice text files"
-   - [ ] Integration with shared multimodal tools
+2. ~~**Ingestion Logic** (`src/deep_research_engine/nodes/ingestion.py`)~~
+   - [x] Audio extraction with VibeVoice ASR diarization
+   - [x] Integration with shared multimodal tools
+   - [ ] PDF/Image extraction (still TODO)
 
 3. **Critic Logic** (`src/deep_research_engine/nodes/critic.py`)
    - [ ] Implement structured evaluation
@@ -74,6 +82,7 @@
 6. **Tests**
    - [ ] Unit tests for new nodes
    - [ ] Integration tests for the full pipeline
+   - [ ] VibeVoice ASR integration tests
 
 ---
 
