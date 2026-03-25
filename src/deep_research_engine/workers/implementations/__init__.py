@@ -8,6 +8,8 @@ Available workers:
 - chunk_processor: Classifies and extracts core content from text chunks
 - multimodal: Processes audio, images, and video with ASR/VLM/face recognition
 - scraper: Scrapes documentation websites and generates LLMs.txt
+- vibevoice_asr: Advanced ASR with built-in speaker diarization (VibeVoice ASR-7B)
+- asr_worker: ASR worker (defaults to VibeVoice with diarization)
 """
 
 from .chunk_processor import ChunkProcessorWorker
@@ -16,6 +18,7 @@ from .scraper import ScraperWorker
 from .artifact_maker import ArtifactMakerWorker
 from .web_researcher import WebResearcherWorker
 from .social_archive import SocialArchiveWorker
+from .vibevoice_asr import VibeVoiceASRWorker, ASRWorker
 
 __all__ = [
     "ChunkProcessorWorker",
@@ -24,4 +27,6 @@ __all__ = [
     "ArtifactMakerWorker",
     "WebResearcherWorker",
     "SocialArchiveWorker",
+    "VibeVoiceASRWorker",
+    "ASRWorker",
 ]
