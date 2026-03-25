@@ -33,6 +33,13 @@ class PromptRegistry:
     STRUCTURED_JSON = "structured-json"
     """Formats findings into structured JSON."""
 
+    # Identity Resolution
+    IDENTITY_RESEARCH = "identity-research"
+    """Deduces identities across multimodal data."""
+
+    IDENTITY_FORMAT = "identity-format"
+    """Formats identity research into structured mapping."""
+
     # All prompts
     ALL = [
         RESEARCH_PLANNER,
@@ -40,6 +47,8 @@ class PromptRegistry:
         RESEARCH_REPORT,
         MARKDOWN_FORMAT,
         STRUCTURED_JSON,
+        IDENTITY_RESEARCH,
+        IDENTITY_FORMAT,
     ]
 
     @classmethod

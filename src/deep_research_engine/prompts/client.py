@@ -19,7 +19,7 @@ from ..utils.logging import get_logger
 logger = get_logger("prompts.client")
 
 
-PromptClient = Union[TextPromptClient, ChatPromptClient]
+PromptClient = Union[TextPromptClient, ChatPromptClient, dict[str, Any]]
 
 
 class LangFuseError(Exception):
@@ -52,14 +52,22 @@ def get_langfuse_client() -> Langfuse:
 
 
 class PromptWrapper:
-    """Wrapper for LangFuse prompts."""
+    """Wrapper for LangFuse or Local prompts."""
 
-    def __init__(self, prompt: PromptClient):
-        self._prompt = prompt
-        self._template = prompt.prompt
-        self._config = prompt.config or {}
-        self._name = prompt.name
-        self._version = prompt.version
+    def __init__(self, prompt: PromptClient, name: str | None = None):
+        if isinstance(prompt, dict):
+            # Local prompt from templates.py
+            self._template = prompt["prompt"]
+            self._config = prompt.get("config", {})
+            self._name = name or "local-prompt"
+            self._version = "local"
+        else:
+            # LangFuse prompt
+            self._prompt = prompt
+            self._template = prompt.prompt
+            self._config = prompt.config or {}
+            self._name = prompt.name
+            self._version = prompt.version
 
     @property
     def prompt(self) -> str:
@@ -116,11 +124,12 @@ class PromptWrapper:
 
 
 class PromptManager:
-    """Manages prompts from LangFuse."""
+    """Manages prompts from LangFuse or Local fallback."""
 
     def __init__(self, client: Langfuse | None = None):
         self._client = client
         self._cache: dict[str, PromptWrapper] = {}
+        self._source = os.getenv("PROMPT_SOURCE", "langfuse").lower()
 
     @property
     def client(self) -> Langfuse:
@@ -134,15 +143,35 @@ class PromptManager:
         version: str | None = None,
         label: str = "production",
     ) -> PromptWrapper:
-        """Get prompt from LangFuse."""
+        """Get prompt from LangFuse or Local templates."""
         cache_key = f"{name}:{version or 'latest'}:{label}"
 
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        prompt = self.client.get_prompt(name=name, version=version, label=label)
-        wrapper = PromptWrapper(prompt)
-        self._cache[cache_key] = wrapper
+        if self._source == "local":
+            logger.debug(f"Loading local prompt: {name}")
+            return self._get_local_prompt(name)
+
+        try:
+            prompt = self.client.get_prompt(name=name, version=version, label=label)
+            wrapper = PromptWrapper(prompt)
+            self._cache[cache_key] = wrapper
+            return wrapper
+        except Exception as e:
+            if self._source == "langfuse":
+                logger.warning(f"LangFuse prompt '{name}' failed, falling back to local: {e}")
+            return self._get_local_prompt(name)
+
+    def _get_local_prompt(self, name: str) -> PromptWrapper:
+        """Helper to get a local prompt wrapper."""
+        from .templates import PROMPTS
+
+        if name not in PROMPTS:
+            raise LangFuseError(f"Prompt '{name}' not found in local templates or LangFuse.")
+
+        wrapper = PromptWrapper(PROMPTS[name], name=name)
+        self._cache[name] = wrapper
         return wrapper
 
 

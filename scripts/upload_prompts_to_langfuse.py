@@ -243,6 +243,45 @@ Focus on clarity, proper structure, and accurate attribution.""",
             "temperature": 0.7,
         },
     },
+
+    # ==========================================================================
+    # IDENTITY RESOLUTION - Multimodal Binding
+    # ==========================================================================
+    "identity-research": {
+        "prompt": """You are a master identity resolution researcher. Your task is to cross-reference temporal metadata from audio, visual, and text sources to deduce the real names of participants.
+
+**INPUT DATA**:
+- ACOUSTIC DIARIZATION: {{ asr_summary }}
+- VISUAL CLUSTERS: {{ visual_summary }}
+- CONTEXTUAL TEXT: {{ text_summary }}
+
+**DEDUCTION STEPS**:
+1. Identify when specific Speaker IDs are active.
+2. Cross-reference with Visual Cluster IDs active at the same time.
+3. Analyze contextual text where individuals are addressed by name (e.g., "Hi John") and see which IDs are active immediately after.
+4. Bind these IDs to the likely real name based on temporal overlap.
+
+**OUTPUT**:
+Provide a detailed report of your findings. Clearly list which Speaker IDs and Visual Cluster IDs map to which real names. Explain your reasoning for each mapping.""",
+        "config": {
+            "model": "openai:gpt-4o",
+            "temperature": 0.0,
+        },
+    },
+
+    "identity-format": {
+        "prompt": """Based on the following research report, extract the identity mappings into a structured format.
+
+**RESEARCH REPORT**:
+{{ research_report }}
+
+**REQUIRED OUTPUT**:
+A JSON mapping from Speaker IDs (e.g., "Speaker 0") or Visual Cluster IDs (e.g., "Identity_Cluster_1") to their resolved real names.""",
+        "config": {
+            "model": "openai:gpt-4o-mini",
+            "temperature": 0.0,
+        },
+    },
 }
 
 
