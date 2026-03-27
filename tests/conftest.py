@@ -14,6 +14,7 @@ from deep_research_engine.workers import (
     WorkerConfig,
     WorkerError,
 )
+from deep_research_engine.storage import StorageBackend, StorageRegistry, StorageResult
 
 # Import mock fixtures from fixtures.mocks
 from tests.fixtures.mocks import (
@@ -22,6 +23,92 @@ from tests.fixtures.mocks import (
     MockDatabase,
     MockHTTPClient,
 )
+
+# Import test fixtures from fixtures
+from tests.fixtures import (
+    TestStorageBackend,
+    TestWorker,
+)
+
+
+# =============================================================================
+# Storage Fixtures (from tests.fixtures)
+# =============================================================================
+
+
+@pytest.fixture
+def storage_config() -> Dict[str, Any]:
+    """Create a sample storage configuration."""
+    return {
+        "namespace": "test",
+        "connection": "memory://test",
+        "options": {"max_size": 100}
+    }
+
+
+@pytest.fixture
+def test_storage(storage_config: Dict[str, Any]) -> TestStorageBackend:
+    """Create a test storage backend."""
+    return TestStorageBackend(storage_config)
+
+
+@pytest.fixture
+def sample_storage_data() -> Dict[str, Any]:
+    """Create sample data for storage testing."""
+    return {
+        "id": "test-doc-1",
+        "content": "Test document content",
+        "metadata": {
+            "source": "test",
+            "created_at": "2026-03-18T00:00:00Z"
+        }
+    }
+
+
+# =============================================================================
+# Worker Fixtures (from tests.fixtures)
+# =============================================================================
+
+
+@pytest.fixture
+def worker_config() -> WorkerConfig:
+    """Create a sample worker configuration."""
+    return WorkerConfig(
+        worker_id="test_worker_1",
+        worker_type="test_worker",
+        task="test task",
+        tools=["tool1", "tool2"],
+        max_retries=3,
+        timeout=60,
+        enable_critic=True,
+        critic_threshold=0.7
+    )
+
+
+@pytest.fixture
+def sample_worker_result() -> WorkerResult:
+    """Create a sample worker result."""
+    from deep_research_engine.workers.base import WorkerResult as WorkerResultDict
+    sources = [{"url": "http://example.com", "title": "Example"}]
+    return WorkerResult(
+        worker_id="test_worker_1",
+        worker_type="test_worker",
+        task="test task",
+        success=True,
+        output={"data": "test output"},
+        output_type="generic",
+        confidence=0.85,
+        timing={"start": 0.0, "end": 1.0, "duration": 1.0},
+        sources=sources,
+        source_count=len(sources),
+        retry_count=0
+    )
+
+
+@pytest.fixture
+def test_worker(worker_config: WorkerConfig) -> TestWorker:
+    """Create a test worker instance."""
+    return TestWorker(worker_config)
 
 
 # =============================================================================
@@ -262,7 +349,7 @@ def sample_plan():
 
 
 @pytest.fixture
-def sample_state(sample_worker_results, sample_plan):
+def sample_state(sample_worker_results, sample_plan) -> EngineState:
     """Sample engine state for testing."""
     from deep_research_engine.state import create_initial_state
     
@@ -279,6 +366,20 @@ def sample_state(sample_worker_results, sample_plan):
     state["context"] = {"config": {}}
     
     return state
+
+
+@pytest.fixture
+def initial_state() -> EngineState:
+    """Create an initial engine state for testing (alias for sample_state)."""
+    from deep_research_engine.state import create_initial_state
+    
+    return create_initial_state(
+        workflow_name="test_workflow",
+        workflow_type="research",
+        input_data={"query": "Test query"},
+        session_id="test_session",
+        run_id="test_run"
+    )
 
 
 @pytest.fixture

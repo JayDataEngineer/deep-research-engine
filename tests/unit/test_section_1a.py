@@ -66,11 +66,12 @@ async def test_web_researcher_worker_execute(initial_state):
     # Mock deep agents - use AsyncMock for awaitable returns
     with patch.object(WebResearcherWorker, "_run_web_agent", new_callable=AsyncMock) as mock_web, \
          patch.object(WebResearcherWorker, "_run_pdf_agent", new_callable=AsyncMock) as mock_pdf, \
-         patch.object(WebResearcherWorker, "_run_community_agent", new_callable=AsyncMock) as mock_comm:
+         patch.object(WebResearcherWorker, "_run_community_agent", new_callable=AsyncMock) as mock_comm, \
+         patch.object(WebResearcherWorker, "_needs_community_sentiment", return_value=True):
 
         mock_web.return_value = "Web findings"
         mock_pdf.return_value = "PDF findings"
-        mock_comm.return_value = "Community findings"
+        mock_comm.return_value = "Community Sentiment: People are excited about AI"
 
         # Test with RAG enabled to trigger PDF agent
         worker.enable_rag = True
@@ -106,26 +107,31 @@ async def test_chunk_processor_worker_execute(initial_state):
     )
     worker = ChunkProcessorWorker(config)
 
-    # Mock LLM calls
-    mock_llm = AsyncMock()
+    # Mock the classification and extraction methods
+    with patch.object(ChunkProcessorWorker, "_classify_chunk", new_callable=AsyncMock) as mock_classify, \
+         patch.object(ChunkProcessorWorker, "_extract_core_content", new_callable=AsyncMock) as mock_extract:
 
-    # Create mock response objects that have a .content attribute
-    res1 = MagicMock()
-    res1.content = '{"category": "substantive", "confidence": 0.9, "reasoning": "Looks good"}'
+        mock_classify.return_value = {
+            "category": "substantive",
+            "confidence": 0.9,
+            "reasoning": "Looks good",
+            "is_filler": False
+        }
+        mock_extract.return_value = {
+            "core_content": "Extracted text",
+            "key_points": ["p1"],
+            "topics": ["t1"],
+            "entities": {},
+            "summary": "sum"
+        }
 
-    res2 = MagicMock()
-    res2.content = '{"core_content": "Extracted text", "key_points": ["p1"], "topics": ["t1"], "entities": {}, "summary": "sum"}'
-
-    # Use a side effect function to return different things on each call
-    # The worker calls chain.ainvoke, which calls llm.ainvoke
-    mock_llm.ainvoke.side_effect = [res1, res2]
-
-    with patch.object(ChunkProcessorWorker, "_get_llm", return_value=mock_llm):
         result = await worker.execute(initial_state, config)
 
         assert result["success"] is True
         assert result["output"]["classification"]["category"] == "substantive"
         assert result["output"]["extraction"]["core_content"] == "Extracted text"
+        assert mock_classify.called
+        assert mock_extract.called
 
 @pytest.mark.asyncio
 async def test_drafter_node_orchestration(initial_state):
