@@ -5,7 +5,7 @@ from typing import Any
 
 from ...state import EngineState, WorkerResult
 from ..base import BaseWorker, WorkerConfig, WorkerRegistry
-from ...utils.multimodal import asr_transcribe, vlm_analyze, face_recognize, video_analyze
+from ...shared.multimodal import asr_transcribe, vlm_analyze, face_recognize, video_analyze
 from ...utils.nlp import extract_entities
 from ...utils.logging import get_loguru_logger
 
