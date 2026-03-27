@@ -5,7 +5,15 @@ This module provides shared fixtures and configuration for all tests.
 
 import pytest
 from pathlib import Path
+from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock
+
+from deep_research_engine.state import EngineState, WorkerResult
+from deep_research_engine.workers import (
+    BaseWorker,
+    WorkerConfig,
+    WorkerError,
+)
 
 
 # =============================================================================
@@ -24,6 +32,59 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "e2e: marks tests as end-to-end tests"
     )
+    config.addinivalue_line(
+        "markers", "unit: marks tests as unit tests"
+    )
+
+
+# =============================================================================
+# Stub Classes for Testing
+# =============================================================================
+
+
+class StubWorker(BaseWorker):
+    """Stub worker for testing."""
+    
+    worker_type = "stub"
+    description = "Stub worker for testing"
+    
+    async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+        """Execute stub task."""
+        self._start_timing()
+        return self._create_result(
+            success=True,
+            output={"stub": "output"},
+            output_type="stub"
+        )
+
+
+class FailingWorker(BaseWorker):
+    """Worker that always fails."""
+    
+    worker_type = "failing"
+    description = "Failing worker for testing"
+    
+    async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+        """Always fail."""
+        self._start_timing()
+        raise WorkerError("Intentional failure")
+
+
+class SlowWorker(BaseWorker):
+    """Worker that simulates slow execution."""
+    
+    worker_type = "slow"
+    description = "Slow worker for testing"
+    
+    async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+        """Simulate slow execution."""
+        self._start_timing()
+        await asyncio.sleep(0.1)
+        return self._create_result(
+            success=True,
+            output={"slow": "output"},
+            output_type="slow"
+        )
 
 
 # =============================================================================
