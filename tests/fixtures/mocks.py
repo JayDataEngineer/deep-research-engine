@@ -315,20 +315,27 @@ class MockWebSearch:
 
 class MockDatabase:
     """Mock database for testing without real connections.
-    
+
     Supports:
     - PostgreSQL-style operations
     - Query recording
     - Result mocking
     - Transaction simulation
     """
-    
+
     def __init__(self):
         self.tables: Dict[str, List[Dict[str, Any]]] = {}
         self.query_history: List[str] = []
         self.in_transaction: bool = False
         self.transaction_queries: List[str] = []
         self.error_queries: set = set()
+        self.initialized: bool = False
+
+    def initialize(self):
+        """Initialize the mock database."""
+        self.initialized = True
+        self.tables = {}
+        self.query_history = []
         
     def create_table(self, name: str, columns: Dict[str, str]):
         """Create a mock table."""

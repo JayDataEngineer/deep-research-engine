@@ -15,6 +15,130 @@ from deep_research_engine.workers import (
     WorkerError,
 )
 
+# Import mock fixtures from fixtures.mocks
+from tests.fixtures.mocks import (
+    MockLLMProvider,
+    MockWebSearch,
+    MockDatabase,
+    MockHTTPClient,
+)
+
+
+# =============================================================================
+# Mock Fixtures (from tests.fixtures.mocks)
+# =============================================================================
+
+
+@pytest.fixture
+def mock_llm() -> MockLLMProvider:
+    """Create mock LLM provider."""
+    llm = MockLLMProvider()
+    llm.set_default_response("This is a mock LLM response for testing.")
+    return llm
+
+
+@pytest.fixture
+def mock_llm_with_delay() -> MockLLMProvider:
+    """Create mock LLM provider with simulated delay."""
+    llm = MockLLMProvider()
+    llm.set_delay(0.1)  # 100ms delay
+    llm.set_default_response("Delayed mock response")
+    return llm
+
+
+@pytest.fixture
+def mock_llm_with_errors() -> MockLLMProvider:
+    """Create mock LLM provider with error simulation."""
+    llm = MockLLMProvider()
+    llm.set_error_rate(0.3)  # 30% error rate
+    llm.set_default_response("Response (may error)")
+    return llm
+
+
+@pytest.fixture
+def mock_web_search() -> MockWebSearch:
+    """Create mock web search."""
+    search = MockWebSearch()
+    search.set_default_results([
+        {"title": "Default Result", "url": "http://example.com", "snippet": "Default snippet"}
+    ])
+    return search
+
+
+@pytest.fixture
+def mock_web_search_populated() -> MockWebSearch:
+    """Create mock web search with pre-populated results."""
+    search = MockWebSearch()
+    search.add_results("AI", [
+        {"title": "AI Breakthrough", "url": "http://ai-news.com/breakthrough", "snippet": "Major AI advancement"},
+        {"title": "Machine Learning", "url": "http://ml-journal.com/learn", "snippet": "ML fundamentals"},
+        {"title": "Neural Networks", "url": "http://deep-learning.org/nn", "snippet": "NN architecture"},
+    ])
+    search.add_results("climate", [
+        {"title": "Climate Report", "url": "http://climate.gov/report", "snippet": "Climate change data"},
+        {"title": "Climate Action", "url": "http://climate.org/action", "snippet": "Climate action plan"},
+    ])
+    return search
+
+
+@pytest.fixture
+def mock_database() -> MockDatabase:
+    """Create mock database."""
+    db = MockDatabase()
+    db.initialize()
+    return db
+
+
+@pytest.fixture
+def mock_database_populated() -> MockDatabase:
+    """Create mock database with pre-populated tables."""
+    db = MockDatabase()
+    db.initialize()
+    db.create_table("users", {"id": "INTEGER", "name": "TEXT", "email": "TEXT"})
+    db.insert("users", {"name": "Alice", "email": "alice@example.com"})
+    db.insert("users", {"name": "Bob", "email": "bob@example.com"})
+    db.insert("users", {"name": "Charlie", "email": "charlie@example.com"})
+    db.create_table("documents", {"id": "INTEGER", "title": "TEXT", "content": "TEXT"})
+    db.insert("documents", {"title": "Doc 1", "content": "Content 1"})
+    db.insert("documents", {"title": "Doc 2", "content": "Content 2"})
+    db.insert("documents", {"title": "Doc 3", "content": "Content 3"})
+    return db
+
+
+@pytest.fixture
+def mock_http_client() -> MockHTTPClient:
+    """Create mock HTTP client."""
+    client = MockHTTPClient()
+    return client
+
+
+@pytest.fixture
+def mock_http_client_api() -> MockHTTPClient:
+    """Create mock HTTP client with API responses."""
+    client = MockHTTPClient()
+    client.add_response("/api/v1/status", json_data={
+        "status": "healthy",
+        "version": "1.0.0"
+    }, headers={"Content-Type": "application/json"})
+    client.add_response("/api/v1/users", json_data={
+        "users": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+    }, headers={"Content-Type": "application/json"})
+    client.add_response("/api/v1/search", json_data={
+        "results": []
+    }, headers={"Content-Type": "application/json"})
+    return client
+
+
+@pytest.fixture
+def mock_all_services() -> Dict[str, Any]:
+    """Create all mock services together."""
+    return {
+        "llm": MockLLMProvider(),
+        "web_search": MockWebSearch(),
+        "database": MockDatabase(),
+        "http": MockHTTPClient(),
+    }
+
 
 # =============================================================================
 # Test Configuration
