@@ -12,6 +12,7 @@ from ..config import get_phase_config
 from deepagents import create_deep_agent, SubAgent
 from ..tools.storage import initialize_storage_tools, vector_search_datastore
 from ..workers.base import WorkerRegistry, WorkerConfig
+from ..agents.flash import FlashAgent, create_flash_subagents
 
 logger = get_loguru_logger("nodes.drafter")
 
