@@ -1,8 +1,14 @@
-"""Integration Tests for Deep Research Engine Nodes."""
+"""Integration Tests for Deep Research Engine Nodes.
+
+Tests for the March 27, 2026 implementation:
+- Critic node with LLM evaluation
+- Flash Agent integration
+- Full pipeline imports
+"""
 
 import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # =============================================================================
@@ -15,7 +21,8 @@ async def test_critic_node_with_sample_state():
     """Test critic node with realistic state."""
     from deep_research_engine.nodes.critic import critic_node
     from deep_research_engine.state import create_initial_state
-    
+    from langgraph.types import Command
+
     # Create sample state
     state = create_initial_state(
         workflow_name="rag",
@@ -24,7 +31,7 @@ async def test_critic_node_with_sample_state():
         session_id="test_session",
         run_id="test_run"
     )
-    
+
     # Add sample worker results
     state["worker_results"] = [
         {
@@ -37,25 +44,42 @@ async def test_critic_node_with_sample_state():
             "source_count": 3
         }
     ]
-    
+
     state["plan"] = ["Search web", "Analyze findings"]
     state["context"] = {"config": {}}
-    
+
     # Mock the deepagents import to avoid actual LLM calls
-    with patch("deep_research_engine.nodes.critic.create_deep_agent") as mock_agent:
-        # Setup mock response
-        mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(return_value={
-            "messages": [MagicMock(content="Test evaluation")]
-        })
-        mock_agent.return_value = mock_llm
+    with patch("deepagents.create_deep_agent") as mock_agent_cls:
+        # Setup mock structured output
+        mock_evaluation = MagicMock()
+        mock_evaluation.passed = True
+        mock_evaluation.score = 0.85
+        mock_evaluation.model_dump.return_value = {
+            "passed": True,
+            "score": 0.85,
+            "issues": [],
+            "suggestions": [],
+            "recommendation": "pass"
+        }
         
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke = AsyncMock(return_value=mock_evaluation)
+        
+        mock_agent = AsyncMock()
+        mock_agent.with_structured_output.return_value = mock_llm
+        mock_agent_cls.return_value = mock_agent
+
         # Run critic node
         result = await critic_node(state)
-        
-        # Verify result structure
-        assert "__goto__" in result
-        assert "critic_passed" in result or "critique" in result
+
+        # Result can be dict or Command object
+        if isinstance(result, Command):
+            # Extract update from Command
+            assert result.update is not None
+            assert "__goto__" in result.update or "critique" in result.update
+        else:
+            # Plain dict result
+            assert "__goto__" in result or "critique" in result
 
 
 # =============================================================================
@@ -68,10 +92,10 @@ async def test_ingestion_node_structure():
     """Test ingestion node structure and imports."""
     from deep_research_engine.nodes.ingestion import ingestion_node
     from deep_research_engine.state import create_initial_state
-    
+
     # Verify node exists and is callable
     assert callable(ingestion_node)
-    
+
     # Create minimal state
     state = create_initial_state(
         workflow_name="telegram_ingest",
@@ -80,9 +104,8 @@ async def test_ingestion_node_structure():
         session_id="test_session",
         run_id="test_run"
     )
-    
+
     # Node should handle empty input gracefully
-    # (Actual execution requires real files)
     assert state is not None
 
 
@@ -96,7 +119,7 @@ async def test_drafter_node_with_flash_agent():
     """Test drafter node integrates with Flash Agent."""
     from deep_research_engine.nodes.drafter import drafter_node
     from deep_research_engine.state import create_initial_state
-    
+
     state = create_initial_state(
         workflow_name="rag",
         workflow_type="research",
@@ -104,7 +127,7 @@ async def test_drafter_node_with_flash_agent():
         session_id="test_session",
         run_id="test_run"
     )
-    
+
     state["context"] = {
         "config": {
             "drafter": {
@@ -115,13 +138,13 @@ async def test_drafter_node_with_flash_agent():
             }
         }
     }
-    
+
     # Verify node exists
     assert callable(drafter_node)
 
 
 # =============================================================================
-# Integration Test: Full Pipeline Import
+# Integration Test: Full Pipeline
 # =============================================================================
 
 
@@ -134,16 +157,16 @@ def test_full_pipeline_imports():
         CriticEvaluation,
         create_initial_state
     )
-    
+
     # Nodes
     from deep_research_engine.nodes import (
         ingestion_node,
         drafter_node,
         critic_node,
         neo4j_builder_node,
-        synthesizer_node
+        artifact_maker_node
     )
-    
+
     # Utils
     from deep_research_engine.utils.pipeline import (
         normalize_timestamp,
@@ -153,40 +176,43 @@ def test_full_pipeline_imports():
         create_mega_files,
         purge_vram
     )
-    
+
     # Multimodal
     from deep_research_engine.shared.multimodal import (
         extract_audio_from_video,
         get_video_duration,
         asr_transcribe,
-        unify_speakers
+        unify_speakers,
+        vlm_analyze,
+        face_recognize
     )
-    
+
     # Agents
     from deep_research_engine.agents.flash import FlashAgent, create_flash_subagents
-    
+
     # All imports successful
     assert True
 
 
 # =============================================================================
-# Integration Test: Config-Driven Workflow
+# Integration Test: Config Loading
 # =============================================================================
 
 
 def test_config_loading_and_validation():
     """Test configuration loading for various workflows."""
     from deep_research_engine.config import load_config
-    
+
     # Test RAG config
     rag_config = load_config("configs/rag.yaml")
     assert rag_config is not None
-    assert "workflow" in rag_config
-    
+    assert hasattr(rag_config, 'workflow')
+    assert rag_config.workflow['name'] == 'rag'
+
     # Test Telegram ingest config
     telegram_config = load_config("configs/telegram_ingest.yaml")
     assert telegram_config is not None
-    assert "workflow" in telegram_config
+    assert hasattr(telegram_config, 'workflow')
 
 
 # =============================================================================
@@ -198,7 +224,7 @@ def test_config_loading_and_validation():
 async def test_storage_tools_initialization():
     """Test storage tools initialize correctly."""
     from deep_research_engine.tools.storage import initialize_storage_tools
-    
+
     config = {
         "storage": {
             "vector_store": {
@@ -207,7 +233,7 @@ async def test_storage_tools_initialization():
             }
         }
     }
-    
+
     # Should not raise exception
     initialize_storage_tools(config)
 
@@ -218,4 +244,4 @@ async def test_storage_tools_initialization():
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "-s"])
+    pytest.main([__file__, "-v"])

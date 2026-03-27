@@ -1,4 +1,12 @@
-"""Unit Tests for Deep Research Engine Core Components."""
+"""Unit Tests for Deep Research Engine Core Components.
+
+This module tests the core functionality added in the March 27, 2026 implementation:
+- Critic evaluation with structured output
+- Video audio extraction
+- FFmpeg metadata parsing
+- Flash Agent orchestration
+- State management
+"""
 
 import pytest
 from pathlib import Path
@@ -6,16 +14,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # =============================================================================
-# Test: Critic Node
+# Test: Critic Evaluation Schema
 # =============================================================================
 
 
-class TestCriticNode:
-    """Tests for the critic node evaluation logic."""
+class TestCriticEvaluation:
+    """Tests for CriticEvaluation Pydantic model."""
 
-    @pytest.mark.asyncio
-    async def test_critic_evaluation_schema(self):
-        """Test CriticEvaluation schema creation."""
+    def test_critic_evaluation_creation(self):
+        """Test creating CriticEvaluation with valid data."""
         from deep_research_engine.state import CriticEvaluation
         
         evaluation = CriticEvaluation(
@@ -35,12 +42,68 @@ class TestCriticNode:
         assert evaluation.score == 0.85
         assert len(evaluation.issues) == 1
         assert evaluation.recommendation == "pass"
+        assert evaluation.feedback_to == "artifact_maker"
 
-    @pytest.mark.asyncio
-    async def test_critic_node_import(self):
-        """Test critic node imports correctly."""
-        from deep_research_engine.nodes.critic import critic_node
-        assert critic_node is not None
+    def test_critic_evaluation_default_values(self):
+        """Test CriticEvaluation default field values."""
+        from deep_research_engine.state import CriticEvaluation
+        
+        evaluation = CriticEvaluation(
+            passed=False,
+            score=0.5,
+            completeness=0.5,
+            accuracy=0.5,
+            citation_quality=0.5,
+            coherence=0.5,
+            recommendation="revise",
+            feedback_to="drafter"
+        )
+        
+        assert evaluation.issues == []
+        assert evaluation.suggestions == []
+
+    def test_critic_evaluation_score_validation(self):
+        """Test score field validation (0-1 range)."""
+        from deep_research_engine.state import CriticEvaluation
+        from pydantic import ValidationError
+        
+        # Valid scores
+        evaluation = CriticEvaluation(
+            passed=True, score=1.0, completeness=1.0, accuracy=1.0,
+            citation_quality=1.0, coherence=1.0,
+            recommendation="pass", feedback_to="artifact_maker"
+        )
+        assert evaluation.score == 1.0
+        
+        # Invalid score should raise validation error
+        with pytest.raises(ValidationError):
+            CriticEvaluation(
+                passed=True, score=1.5, completeness=0.5, accuracy=0.5,
+                citation_quality=0.5, coherence=0.5,
+                recommendation="pass", feedback_to="artifact_maker"
+            )
+
+    def test_critic_evaluation_model_dump(self):
+        """Test serialization to dict."""
+        from deep_research_engine.state import CriticEvaluation
+        
+        evaluation = CriticEvaluation(
+            passed=True,
+            score=0.85,
+            completeness=0.9,
+            accuracy=0.8,
+            citation_quality=0.85,
+            coherence=0.85,
+            issues=["Issue 1"],
+            suggestions=["Suggestion 1"],
+            recommendation="pass",
+            feedback_to="artifact_maker"
+        )
+        
+        dump = evaluation.model_dump()
+        assert dump["passed"] is True
+        assert dump["score"] == 0.85
+        assert "Issue 1" in dump["issues"]
 
 
 # =============================================================================
@@ -51,9 +114,8 @@ class TestCriticNode:
 class TestVideoAudioExtraction:
     """Tests for video audio extraction functions."""
 
-    @pytest.mark.asyncio
-    async def test_extract_audio_from_video_import(self):
-        """Test audio extraction function imports."""
+    def test_imports(self):
+        """Test audio extraction functions import correctly."""
         from deep_research_engine.shared.multimodal import (
             extract_audio_from_video,
             get_video_duration
@@ -69,6 +131,14 @@ class TestVideoAudioExtraction:
         duration = await get_video_duration(Path("/nonexistent/video.mp4"))
         assert duration == 0.0
 
+    @pytest.mark.asyncio
+    async def test_extract_audio_from_video_nonexistent(self):
+        """Test audio extraction for nonexistent file raises error."""
+        from deep_research_engine.shared.multimodal import extract_audio_from_video
+        
+        with pytest.raises(FileNotFoundError):
+            await extract_audio_from_video(Path("/nonexistent/video.mp4"))
+
 
 # =============================================================================
 # Test: FFmpeg Metadata Parsing
@@ -78,9 +148,8 @@ class TestVideoAudioExtraction:
 class TestFFmpegMetadata:
     """Tests for FFmpeg metadata parsing."""
 
-    @pytest.mark.asyncio
-    async def test_parse_ffmpeg_metadata_import(self):
-        """Test metadata parsing function imports."""
+    def test_imports(self):
+        """Test metadata parsing functions import correctly."""
         from deep_research_engine.utils.pipeline import (
             parse_ffmpeg_metadata,
             extract_scene_frames
@@ -89,12 +158,54 @@ class TestFFmpegMetadata:
         assert extract_scene_frames is not None
 
     @pytest.mark.asyncio
-    async def test_parse_ffmpeg_metadata_nonexistent(self):
+    async def test_parse_ffmpeg_metadata_nonexistent(self, tmp_path):
         """Test parsing nonexistent metadata file."""
         from deep_research_engine.utils.pipeline import parse_ffmpeg_metadata
         
-        frames = await parse_ffmpeg_metadata(Path("/nonexistent/time.txt"))
+        frames = await parse_ffmpeg_metadata(tmp_path / "nonexistent.txt")
         assert len(frames) == 0
+
+    @pytest.mark.asyncio
+    async def test_parse_ffmpeg_metadata_new_format(self, tmp_path):
+        """Test parsing new FFmpeg metadata format."""
+        from deep_research_engine.utils.pipeline import parse_ffmpeg_metadata
+        
+        # Create test metadata file with new format
+        metadata_file = tmp_path / "time.txt"
+        metadata_file.write_text(
+            "[Parsed_metadata_1 @ 0x7f8b8c0d4e00] pts:108859 pts_time:1.20954\n"
+            "lavfi.scene_score=0.436456\n"
+            "[Parsed_metadata_1 @ 0x7f8b8c0d4e00] pts:217718 pts_time:2.41908\n"
+            "lavfi.scene_score=0.523412\n"
+        )
+        
+        frames = await parse_ffmpeg_metadata(metadata_file)
+        
+        assert len(frames) == 2
+        assert frames[0]["pts_time"] == 1.20954
+        assert frames[0]["scene_score"] == 0.436456
+        assert frames[0]["timestamp_ms"] == 1209
+        assert frames[0]["timestamp_formatted"] == "00:00:01.209"
+
+    @pytest.mark.asyncio
+    async def test_parse_ffmpeg_metadata_old_format(self, tmp_path):
+        """Test parsing old FFmpeg metadata format."""
+        from deep_research_engine.utils.pipeline import parse_ffmpeg_metadata
+        
+        # Create test metadata file with old format
+        metadata_file = tmp_path / "time.txt"
+        metadata_file.write_text(
+            "frame=    1 pts=      1 time=00:00:01.23\n"
+            "frame=    2 pts=     45 time=00:00:04.50\n"
+        )
+        
+        frames = await parse_ffmpeg_metadata(metadata_file)
+        
+        assert len(frames) == 2
+        assert frames[0]["frame_num"] == 1
+        assert frames[0]["timestamp_ms"] == 1230
+        assert frames[1]["frame_num"] == 2
+        assert frames[1]["timestamp_ms"] == 4500
 
 
 # =============================================================================
@@ -136,6 +247,7 @@ class TestStateTypes:
         assert state["workflow_type"] == "research"
         assert state["input_data"]["query"] == "test query"
         assert state["critic_passed"] is False
+        assert "context" in state
 
 
 # =============================================================================
@@ -166,7 +278,24 @@ class TestFlashAgent:
         assert agent.task == "Test research task"
         assert agent.max_iterations == 2
 
-    def test_create_flash_subagents(self):
+    def test_flash_agent_system_prompt(self):
+        """Test FlashAgent system prompt generation."""
+        from deep_research_engine.agents.flash import FlashAgent
+        
+        agent = FlashAgent(
+            name="research_specialist",
+            task="Research quantum computing"
+        )
+        
+        prompt = agent._build_system_prompt()
+        
+        assert "research" in prompt.lower()
+        assert "PLAN" in prompt
+        assert "DELEGATE" in prompt
+        assert "SYNTHESIZE" in prompt
+
+    @pytest.mark.asyncio
+    async def test_create_flash_subagents(self):
         """Test flash subagent creation."""
         from deep_research_engine.agents.flash import create_flash_subagents
         
@@ -175,8 +304,7 @@ class TestFlashAgent:
             {"type": "chunk_processor", "task": "Process PDFs", "enabled": True}
         ]
         
-        import asyncio
-        subagents = asyncio.run(create_flash_subagents(configs))
+        subagents = await create_flash_subagents(configs)
         
         assert len(subagents) == 2
         assert subagents[0]["name"] == "web_researcher_specialist"
@@ -246,37 +374,6 @@ class TestWorkerRegistry:
         """Test WorkerRegistry imports."""
         from deep_research_engine.workers.base import WorkerRegistry
         assert WorkerRegistry is not None
-
-
-# =============================================================================
-# Integration Test Helpers
-# =============================================================================
-
-
-@pytest.fixture
-def sample_worker_results():
-    """Sample worker results for testing."""
-    return [
-        {
-            "worker_id": "researcher_0",
-            "worker_type": "web_researcher",
-            "task": "Search for information",
-            "success": True,
-            "output": "Research findings...",
-            "confidence": 0.85,
-            "source_count": 5
-        }
-    ]
-
-
-@pytest.fixture
-def sample_plan():
-    """Sample research plan."""
-    return [
-        "Search web for primary sources",
-        "Analyze findings",
-        "Synthesize report"
-    ]
 
 
 # =============================================================================

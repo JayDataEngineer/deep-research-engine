@@ -1,455 +1,255 @@
-"""Shared pytest fixtures and configuration for Deep Research Engine tests."""
+"""Pytest Configuration and Shared Fixtures.
 
-from __future__ import annotations
-
-import asyncio
-import os
-from pathlib import Path
-from typing import Any, AsyncGenerator, Generator, Dict
-from unittest.mock import AsyncMock, MagicMock
+This module provides shared fixtures and configuration for all tests.
+"""
 
 import pytest
-from pytest_mock import MockerFixture
-
-from deep_research_engine.state import EngineState, WorkerResult
-from deep_research_engine.workers import BaseWorker, WorkerConfig
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 
 # =============================================================================
-# TEST CONFIGURATION
-# =============================================================================
-
-TEST_CONFIGS_DIR = Path(__file__).parent / "configs"
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-
-
-# =============================================================================
-# EVENT LOOP FIXTURES
+# Test Configuration
 # =============================================================================
 
 
-@pytest.fixture(scope="session")
-def event_loop_policy() -> asyncio.AbstractEventLoopPolicy:
-    """Return the event loop policy for async tests."""
-    return asyncio.DefaultEventLoopPolicy()
+def pytest_configure(config):
+    """Configure pytest markers."""
+    config.addinivalue_line(
+        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+    )
+    config.addinivalue_line(
+        "markers", "integration: marks tests as integration tests"
+    )
+    config.addinivalue_line(
+        "markers", "e2e: marks tests as end-to-end tests"
+    )
 
 
 # =============================================================================
-# PATH FIXTURES
+# Shared Fixtures
 # =============================================================================
 
 
 @pytest.fixture
-def test_configs_dir() -> Path:
-    """Return the path to the test configs directory."""
-    TEST_CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
-    return TEST_CONFIGS_DIR
-
-
-@pytest.fixture
-def fixtures_dir() -> Path:
-    """Return the path to the test fixtures directory."""
-    FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
-    return FIXTURES_DIR
-
-
-@pytest.fixture
-def tmp_config_file(tmp_path: Path) -> Path:
-    """Create a temporary config file."""
-    config_content = """
-workflow:
-  name: test_workflow
-  type: research
-  max_iterations: 2
-
-phases:
-  - name: ingestion
-    enabled: true
-  - name: drafter
-    enabled: true
-  - name: critic
-    enabled: false
-  - name: artifact_maker
-    enabled: true
-"""
-    config_file = tmp_path / "test_config.yaml"
-    config_file.write_text(config_content)
-    return config_file
-
-
-# =============================================================================
-# MOCK FIXTURES
-# =============================================================================
-
-
-@pytest.fixture
-def mock_llm_response() -> MagicMock:
-    """Create a mock LLM response."""
-    response = MagicMock()
-    response.content = "This is a mock LLM response."
-    response.usage_metadata = {
-        "input_tokens": 100,
-        "output_tokens": 50,
-        "total_tokens": 150,
-    }
-    return response
-
-
-@pytest.fixture
-def mock_async_llm_response() -> AsyncMock:
-    """Create a mock async LLM response."""
-    response = AsyncMock()
-    response.content = "This is a mock async LLM response."
-    response.usage_metadata = {
-        "input_tokens": 100,
-        "output_tokens": 50,
-        "total_tokens": 150,
-    }
-    return response
-
-
-@pytest.fixture
-def sample_worker_result() -> dict[str, Any]:
-    """Create a mock worker result."""
-    return {
-        "worker_id": "test_worker_1",
-        "worker_type": "test_worker",
-        "task": "Test task",
-        "success": True,
-        "output": {"data": "test output"},
-        "output_type": "generic",
-        "confidence": 0.9,
-        "timing": {
-            "start": 1000.0,
-            "end": 1001.0,
-            "duration": 1.0,
+def sample_worker_results():
+    """Sample worker results for testing."""
+    return [
+        {
+            "worker_id": "researcher_0",
+            "worker_type": "web_researcher",
+            "task": "Search for information",
+            "success": True,
+            "output": "Research findings...",
+            "confidence": 0.85,
+            "source_count": 5,
+            "timing": {
+                "start": 1234567890.0,
+                "end": 1234567895.0,
+                "duration": 5.0
+            }
         },
-        "token_usage": {
-            "prompt": 100,
-            "completion": 50,
-            "total": 150,
-        },
-        "sources": [],
-        "source_count": 0,
-    }
+        {
+            "worker_id": "researcher_1",
+            "worker_type": "chunk_processor",
+            "task": "Process PDF chunks",
+            "success": True,
+            "output": "PDF analysis results...",
+            "confidence": 0.92,
+            "source_count": 3,
+            "timing": {
+                "start": 1234567890.0,
+                "end": 1234567893.0,
+                "duration": 3.0
+            }
+        }
+    ]
 
 
 @pytest.fixture
-def mock_storage_backend() -> MagicMock:
-    """Create a mock storage backend."""
-    backend = MagicMock()
-    backend.backend_name = "mock_storage"
-    backend.initialized = True
-    backend.health_status = "healthy"
-    backend.store = AsyncMock(return_value={"success": True, "id": "test-id"})
-    backend.retrieve = AsyncMock(return_value={"data": "test data"})
-    backend.delete = AsyncMock(return_value=True)
-    backend.query = AsyncMock(return_value=[])
-    return backend
+def sample_plan():
+    """Sample research plan."""
+    return [
+        "Search web for primary sources",
+        "Analyze findings",
+        "Synthesize report"
+    ]
 
 
 @pytest.fixture
-def mock_state() -> dict[str, Any]:
-    """Create a mock engine state."""
-    return {
-        "workflow_id": "test-workflow-123",
-        "workflow_name": "test_workflow",
-        "workflow_type": "research",
-        "current_phase": "ingestion",
-        "phase_history": ["ingestion"],
-        "input_data": {"query": "Test query"},
-        "plan": ["Task 1", "Task 2"],
-        "plan_metadata": {},
-        "worker_results": [],
-        "worker_errors": [],
-        "critique": None,
-        "critique_history": [],
-        "critic_passed": False,
-        "artifact_output": None,
-        "synthesis_metadata": {},
-        "remaining_steps": 100,
-        "iteration_count": 0,
-        "max_iterations": 3,
-        "context": {},
-        "start_time": "2024-01-01T00:00:00Z",
-        "end_time": None,
-        "session_id": "test-session-123",
-        "run_id": "test-run-123",
-        "errors": [],
-        "fatal_error": None,
-    }
-@pytest.fixture
-def initial_state(mock_state: dict[str, Any]) -> EngineState:
-    """Fixture for initial engine state."""
-    return mock_state.copy()
-
-
-@pytest.fixture
-def state_with_results(initial_state: EngineState, sample_worker_result: dict[str, Any]) -> EngineState:
-    """Fixture for state with some worker results."""
-    state = initial_state.copy()
-    state["worker_results"] = [sample_worker_result.copy()]
+def sample_state(sample_worker_results, sample_plan):
+    """Sample engine state for testing."""
+    from deep_research_engine.state import create_initial_state
+    
+    state = create_initial_state(
+        workflow_name="test_workflow",
+        workflow_type="research",
+        input_data={"query": "Test query"},
+        session_id="test_session",
+        run_id="test_run"
+    )
+    
+    state["worker_results"] = sample_worker_results
+    state["plan"] = sample_plan
+    state["context"] = {"config": {}}
+    
     return state
 
 
-# =============================================================================
-# ENVIRONMENT FIXTURES
-# =============================================================================
-
-
 @pytest.fixture
-def clean_env() -> Generator[None, None, None]:
-    """Temporarily clear environment variables that might affect tests."""
-    # Store original environment
-    original_env = os.environ.copy()
-
-    # Clear relevant environment variables
-    env_vars_to_clear = [
-        "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "DEEP_RESEARCH_CONFIG",
-        "LITELLM_API_KEY",
-    ]
-    for var in env_vars_to_clear:
-        os.environ.pop(var, None)
-
-    yield
-
-    # Restore original environment
-    os.environ.clear()
-    os.environ.update(original_env)
-
-
-@pytest.fixture
-def mock_env_vars() -> Generator[None, None, None]:
-    """Set up mock environment variables for testing."""
-    original_env = os.environ.copy()
-
-    os.environ.update(
-        {
-            "OPENAI_API_KEY": "test-openai-key",
-            "ANTHROPIC_API_KEY": "test-anthropic-key",
-            "LITELLM_API_KEY": "test-litellm-key",
-        }
+def sample_critic_evaluation():
+    """Sample critic evaluation for testing."""
+    from deep_research_engine.state import CriticEvaluation
+    
+    return CriticEvaluation(
+        passed=True,
+        score=0.85,
+        completeness=0.9,
+        accuracy=0.8,
+        citation_quality=0.85,
+        coherence=0.85,
+        issues=["Minor formatting issue"],
+        suggestions=["Add more citations"],
+        recommendation="pass",
+        feedback_to="artifact_maker"
     )
 
-    yield
 
-    # Restore original environment
-    os.environ.clear()
-    os.environ.update(original_env)
-
-
-# =============================================================================
-# UTILITY FIXTURES
-# =============================================================================
+@pytest.fixture
+def mock_deep_agent():
+    """Mock deep agent for testing."""
+    mock_agent = AsyncMock()
+    mock_agent.ainvoke = AsyncMock(return_value={
+        "messages": [MagicMock(content="Mock response")]
+    })
+    return mock_agent
 
 
 @pytest.fixture
-def sample_text() -> str:
-    """Return sample text for testing."""
-    return """
-    This is a sample text for testing purposes.
-    It contains multiple lines and sentences.
-    The quick brown fox jumps over the lazy dog.
-    """
+def mock_structured_output():
+    """Mock structured output for testing."""
+    def _create_mock(evaluation_data=None):
+        if evaluation_data is None:
+            evaluation_data = {
+                "passed": True,
+                "score": 0.85,
+                "issues": [],
+                "suggestions": [],
+                "recommendation": "pass"
+            }
+        
+        mock_evaluation = MagicMock()
+        for key, value in evaluation_data.items():
+            setattr(mock_evaluation, key, value)
+        mock_evaluation.model_dump.return_value = evaluation_data
+        
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke = AsyncMock(return_value=mock_evaluation)
+        
+        return mock_llm
+    
+    return _create_mock
 
 
 @pytest.fixture
-def sample_json_data() -> dict[str, Any]:
-    """Return sample JSON data for testing."""
+def tmp_config_file(tmp_path):
+    """Create temporary config file for testing."""
+    def _create_config(content: str, name: str = "test_config.yaml"):
+        config_file = tmp_path / name
+        config_file.write_text(content)
+        return config_file
+    
+    return _create_config
+
+
+@pytest.fixture
+def sample_video_file(tmp_path):
+    """Create sample video file for testing."""
+    # Note: This creates an empty file, not a real video
+    # Real video tests would need actual video files
+    video_file = tmp_path / "test_video.mp4"
+    video_file.touch()
+    return video_file
+
+
+@pytest.fixture
+def sample_audio_file(tmp_path):
+    """Create sample audio file for testing."""
+    audio_file = tmp_path / "test_audio.wav"
+    audio_file.touch()
+    return audio_file
+
+
+@pytest.fixture
+def sample_image_file(tmp_path):
+    """Create sample image file for testing."""
+    image_file = tmp_path / "test_image.jpg"
+    image_file.touch()
+    return image_file
+
+
+@pytest.fixture
+def ffmpeg_metadata_file(tmp_path):
+    """Create FFmpeg metadata file for testing."""
+    def _create_metadata(format_type="new"):
+        metadata_file = tmp_path / "time.txt"
+        
+        if format_type == "new":
+            content = (
+                "[Parsed_metadata_1 @ 0x7f8b8c0d4e00] pts:108859 pts_time:1.20954\n"
+                "lavfi.scene_score=0.436456\n"
+                "[Parsed_metadata_1 @ 0x7f8b8c0d4e00] pts:217718 pts_time:2.41908\n"
+                "lavfi.scene_score=0.523412\n"
+            )
+        else:  # old format
+            content = (
+                "frame=    1 pts=      1 time=00:00:01.23\n"
+                "frame=    2 pts=     45 time=00:00:04.50\n"
+            )
+        
+        metadata_file.write_text(content)
+        return metadata_file
+    
+    return _create_metadata
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def create_mock_worker_result(
+    worker_type="web_researcher",
+    success=True,
+    output="Mock output",
+    confidence=0.85
+):
+    """Helper to create mock worker result."""
     return {
-        "name": "Test Data",
-        "value": 42,
-        "nested": {
-            "key1": "value1",
-            "key2": "value2",
-        },
-        "list": [1, 2, 3, 4, 5],
+        "worker_id": f"{worker_type}_0",
+        "worker_type": worker_type,
+        "task": "Mock task",
+        "success": success,
+        "output": output,
+        "confidence": confidence,
+        "source_count": 3
     }
 
 
-# =============================================================================
-# MARKERS
-# =============================================================================
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    """Configure custom pytest markers."""
-    config.addinivalue_line(
-        "markers",
-        "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    )
-    config.addinivalue_line(
-        "markers",
-        "integration: marks tests as integration tests requiring external services",
-    )
-    config.addinivalue_line(
-        "markers",
-        "e2e: marks tests as end-to-end tests",
-    )
-    config.addinivalue_line(
-        "markers",
-        "unit: marks tests as unit tests",
-    )
-    config.addinivalue_line(
-        "markers",
-        "requires_api: marks tests requiring API keys",
-    )
-
-
-@pytest.fixture
-def sample_config_dict() -> Dict[str, Any]:
-    """Return a sample configuration dictionary."""
-    return {
-        "workflow": {"name": "test_workflow", "type": "research"},
-        "input": {"type": "query", "source": "test"},
-        "phases": [
-            {"name": "ingestion", "enabled": True},
-            {"name": "drafter", "enabled": True}
-        ],
-        "storage": {"memory": {"enabled": True}, "postgres": {"enabled": False}},
-        "llm": {"models": {"main": "test-model"}},
-        "tools": {"enabled": ["web_search"]},
-        "execution": {"max_steps": 50}
-    }
-
-
-@pytest.fixture
-def rag_config_path(tmp_path: Path) -> Path:
-    """Create a temporary RAG config file."""
-    config_content = """
-workflow:
-  name: rag_test
-  type: research
-
-input:
-  type: query
-  source: test
-
-phases:
-  - name: ingestion
-  - name: drafter
-  - name: critic
-  - name: artifact_maker
-"""
-    config_file = tmp_path / "rag_test.yaml"
-    config_file.write_text(config_content)
-    return config_file
-
-
-@pytest.fixture
-def config_with_env_vars(tmp_path: Path) -> Path:
-    """Create a temporary config file with environment variables."""
-    config_content = """
-workflow:
-  name: ${WORKFLOW_NAME}
-  type: research
-
-input:
-  type: query
-  source: ${QUERY_SOURCE}
-
-phases:
-  - name: ingestion
-"""
-    config_file = tmp_path / "env_test.yaml"
-    config_file.write_text(config_content)
-    return config_file
-
-
-# =============================================================================
-# WORKER TEST FIXTURES
-# =============================================================================
-
-
-class StubWorker(BaseWorker):
-    """Mock worker implementation for unit tests."""
+def create_mock_state_with_results(worker_results):
+    """Helper to create mock state with worker results."""
+    from deep_research_engine.state import create_initial_state
     
-    worker_type = "test_worker"
-    description = "Test worker for unit tests"
-    
-    async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
-        """Execute mock worker."""
-        self._start_timing()
-        return self._create_result(
-            success=True,
-            output={"test_data": "test output"},
-            output_type="test",
-            confidence=0.9
-        )
-
-
-@pytest.fixture
-def worker_config() -> WorkerConfig:
-    """Create a test worker config."""
-    return WorkerConfig(
-        worker_id="test_worker_1",
-        worker_type="test_worker",
-        task="test task",
+    state = create_initial_state(
+        workflow_name="test",
+        workflow_type="research",
+        input_data={"query": "Test"},
+        session_id="test",
+        run_id="test"
     )
-
-
-@pytest.fixture
-def test_worker(worker_config: WorkerConfig) -> StubWorker:
-    """Create a test worker instance."""
-    return StubWorker(worker_config)
-
-
-# =============================================================================
-# CONFIG PATH FIXTURES
-# =============================================================================
-
-
-@pytest.fixture
-def rag_config_path_fixed() -> Path:
-    """Return the path to the RAG config file."""
-    return Path(__file__).parent.parent / "configs" / "rag.yaml"
-
-
-@pytest.fixture
-def pdf_summarizer_config_path() -> Path:
-    """Return the path to the PDF summarizer config file."""
-    return Path(__file__).parent.parent / "configs" / "pdf_summarizer.yaml"
-
-
-@pytest.fixture
-def skill_generator_config_path() -> Path:
-    """Return the path to the skill generator config file."""
-    return Path(__file__).parent.parent / "configs" / "skill_generator.yaml"
-
-
-@pytest.fixture
-def telegram_ingest_config_path() -> Path:
-    """Return the path to the telegram ingest config file."""
-    return Path(__file__).parent.parent / "configs" / "telegram_ingest.yaml"
-
-
-@pytest.fixture
-def all_config_paths(
-    rag_config_path_fixed: Path,
-    pdf_summarizer_config_path: Path,
-    skill_generator_config_path: Path,
-    telegram_ingest_config_path: Path,
-) -> list[Path]:
-    """Return all config file paths."""
-    return [
-        rag_config_path_fixed,
-        pdf_summarizer_config_path,
-        skill_generator_config_path,
-        telegram_ingest_config_path,
-    ]
-
-
-@pytest.fixture
-def loaded_rag_config(rag_config_path_fixed: Path) -> WorkflowConfig:
-    """Load and return the RAG config."""
-    from deep_research_engine.config import load_config
-    return load_config(str(rag_config_path_fixed))
-
-
-@pytest.fixture
-def loaded_configs(all_config_paths: list[Path]) -> list[WorkflowConfig]:
-    """Load and return all configs."""
-    from deep_research_engine.config import load_config
-    return [load_config(str(path)) for path in all_config_paths]
+    
+    state["worker_results"] = worker_results
+    state["plan"] = ["Test plan"]
+    state["context"] = {"config": {}}
+    
+    return state
