@@ -11,6 +11,48 @@ import operator
 from datetime import datetime
 from typing import Annotated, Any, Literal, TypedDict
 
+try:
+    from pydantic import BaseModel, Field
+except ImportError:
+    # Fallback if pydantic not available
+    BaseModel = object
+    Field = lambda **kwargs: None
+
+
+# =============================================================================
+# CRITIC EVALUATION SCHEMA (Pydantic for Structured Output)
+# =============================================================================
+
+
+class CriticEvaluation(BaseModel):
+    """Structured critic evaluation output.
+    
+    Used by the critic node to evaluate worker results with LLM-based assessment.
+    """
+    
+    # ===== Decision =====
+    passed: bool = Field(description="Overall pass/fail decision")
+    score: float = Field(ge=0, le=1, description="Overall quality score 0-1")
+    
+    # ===== Per-criteria scores =====
+    completeness: float = Field(ge=0, le=1, description="How complete is the output?")
+    accuracy: float = Field(ge=0, le=1, description="Factual accuracy score")
+    citation_quality: float = Field(ge=0, le=1, description="Quality of citations/sources")
+    coherence: float = Field(ge=0, le=1, description="Logical flow and organization")
+    
+    # ===== Qualitative feedback =====
+    issues: list[str] = Field(default_factory=list, description="Specific problems found")
+    suggestions: list[str] = Field(default_factory=list, description="Actionable improvements")
+    
+    # ===== Routing =====
+    recommendation: Literal["pass", "revise", "terminate"] = Field(
+        description="Routing recommendation"
+    )
+    feedback_to: Literal["drafter", "workers", "artifact_maker"] = Field(
+        description="Which node should receive feedback"
+    )
+
+
 # =============================================================================
 # CORE STATE (Minimal - under 20 fields)
 # =============================================================================

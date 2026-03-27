@@ -1,6 +1,7 @@
 """Engine State module."""
 
 from .types import (
+    CriticEvaluation,
     CriticResult,
     EngineState,
     OutputFormat,
@@ -15,6 +16,7 @@ from .types import (
 )
 
 __all__ = [
+    "CriticEvaluation",
     "CriticResult",
     "EngineState",
     "OutputFormat",
