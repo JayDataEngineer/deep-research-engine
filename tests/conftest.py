@@ -32,6 +32,173 @@ from tests.fixtures import (
 
 
 # =============================================================================
+# Config Fixtures (copied from tests.fixtures to avoid fixture call issues)
+# =============================================================================
+
+
+@pytest.fixture
+def sample_config_dict() -> Dict[str, Any]:
+    """Sample configuration dictionary for testing."""
+    return {
+        "workflow": {
+            "name": "test_workflow",
+            "type": "research",
+            "version": "1.0.0",
+            "description": "Test workflow"
+        },
+        "input": {
+            "type": "query",
+            "source": "test query"
+        },
+        "phases": [
+            {
+                "name": "boss",
+                "node": "BossNode",
+                "config": {
+                    "strategy": "complexity_based",
+                    "workers": {"min": 1, "max": 3}
+                }
+            },
+            {
+                "name": "workers",
+                "node": "WorkerNode",
+                "config": {
+                    "worker_type": "web_researcher",
+                    "parallel": True
+                }
+            }
+        ],
+        "storage": {
+            "memory": {"enabled": True},
+            "postgres": {"enabled": False}
+        },
+        "llm": {
+            "models": {
+                "main": "test-model",
+                "tool": "test-tool-model"
+            }
+        },
+        "tools": {
+            "enabled": ["web_search"]
+        },
+        "execution": {
+            "max_steps": 50,
+            "timeout": 300
+        },
+        "output": {
+            "destination": {"type": "memory"},
+            "format": "markdown"
+        }
+    }
+
+
+@pytest.fixture
+def rag_config_path(tmp_path: Path) -> Path:
+    """Create a temporary RAG config file."""
+    config_content = """
+workflow:
+  name: rag_test
+  type: research
+  version: 1.0.0
+
+input:
+  type: query
+  source: "Test RAG query"
+
+phases:
+  - name: boss
+    node: BossNode
+    config:
+      strategy: complexity_based
+
+storage:
+  memory:
+    enabled: true
+
+llm:
+  models:
+    main: test-model
+
+execution:
+  max_steps: 50
+"""
+    config_file = tmp_path / "test_rag.yaml"
+    config_file.write_text(config_content)
+    return config_file
+
+
+@pytest.fixture
+def config_with_env_vars(tmp_path: Path) -> Path:
+    """Create a config with environment variable placeholders."""
+    config_content = """
+workflow:
+  name: ${WORKFLOW_NAME-test_workflow}
+  type: research
+
+input:
+  type: query
+  source: "${QUERY_SOURCE-default query}"
+
+phases:
+  - name: boss
+    node: BossNode
+
+storage:
+  postgres:
+    connection: "${POSTGRES_URL-postgresql://localhost:5432/test}"
+"""
+    config_file = tmp_path / "test_env.yaml"
+    config_file.write_text(config_content)
+    return config_file
+
+
+@pytest.fixture
+def initial_state_from_fixture() -> EngineState:
+    """Create an initial engine state from fixture."""
+    from deep_research_engine.state import create_initial_state
+    return create_initial_state(
+        workflow_name="test_workflow",
+        workflow_type="research",
+        input_data={"query": "test query"},
+        session_id="test-session-123",
+        run_id="test-run-456",
+        max_iterations=3,
+        context={"custom_key": "custom_value"}
+    )
+
+
+@pytest.fixture
+def state_with_results_fixture(initial_state_from_fixture: EngineState) -> EngineState:
+    """Create a state with some worker results from fixture."""
+    state = initial_state_from_fixture.copy()
+    state["worker_results"] = [
+        {
+            "worker_id": "worker_1",
+            "worker_type": "web_researcher",
+            "task": "research topic A",
+            "success": True,
+            "output": {"findings": ["finding 1", "finding 2"]},
+            "confidence": 0.85
+        },
+        {
+            "worker_id": "worker_2",
+            "worker_type": "web_researcher",
+            "task": "research topic B",
+            "success": True,
+            "output": {"findings": ["finding 3"]},
+            "confidence": 0.75
+        }
+    ]
+    state["current_phase"] = "critic"
+    state["phase_history"] = ["boss", "workers", "critic"]
+    return state
+
+
+# Alias for backward compatibility
+state_with_results = state_with_results_fixture
+
+
+# =============================================================================
 # Storage Fixtures (from tests.fixtures)
 # =============================================================================
 
