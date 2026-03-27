@@ -18,7 +18,9 @@ from ..shared.multimodal import (
     batch_vlm_video_analysis,
     cluster_identities,
     create_mega_files,
+    extract_audio_from_video,
     extract_scene_frames,
+    get_video_duration,
     normalize_timestamp,
     purge_vram,
     resolve_identities,
@@ -29,7 +31,7 @@ from ..state import EngineState
 from ..utils.logging import get_loguru_logger
 
 # Note: multimodal.py in utils might still be needed for direct asr_transcribe etc.
-from ..utils.multimodal import asr_transcribe, face_recognize, video_analyze, vlm_analyze
+from ..shared.multimodal import asr_transcribe, face_recognize, video_analyze, vlm_analyze
 from ..utils.nlp import extract_entities
 from ..utils.nodes import node_context
 
@@ -104,13 +106,41 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                         embedding_to_item.append(it)
 
         # 2. Extract frames and collect embeddings from videos
+        audio_fragments_for_megafile = []  # Collect audio from videos for Mega-File processing
+        
         for it in video_items:
             video_path = input_dir / it["path"]
             if video_path.exists():
                 video_output_dir = pipeline_dir / f"frames_{video_path.stem}"
                 frames = await extract_scene_frames(video_path, video_output_dir)
-                video_frames[it["path"]] = frames # Store for Enhancement #4
-                
+                video_frames[it["path"]] = frames  # Store for VLM analysis
+
+                # Extract audio from video for ASR processing
+                try:
+                    video_duration = await get_video_duration(video_path)
+                    if video_duration > 0:
+                        audio_output = video_output_dir / f"{video_path.stem}_audio.wav"
+                        extracted_audio = await extract_audio_from_video(video_path, audio_output)
+                        
+                        # Add to audio fragments for Mega-File processing
+                        audio_fragments_for_megafile.append({
+                            "path": extracted_audio,
+                            "source": "video",
+                            "source_video": str(video_path),
+                            "duration": video_duration,
+                            "timestamp": it.get("timestamp")
+                        })
+                        logger.info(
+                            f"Audio extracted from video: {extracted_audio} "
+                            f"({video_duration:.1f}s)"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Audio extraction failed for {video_path}: {e}. "
+                        f"Continuing with VLM-only processing."
+                    )
+
+                # Process frames for face recognition
                 for frame in frames:
                     frame_path = Path(frame["path"])
                     faces = await face_recognize(frame_path)
@@ -137,13 +167,34 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             logger.info(f"Identified {len(set(labels[labels != -1]))} unique visual identities")
 
         # Phase 3: Batch Acoustic Processing (Mega-File Strategy)
-        audio_results = {} # abs_path_str -> list[seg]
-        if audio_items:
-            logger.info(f"Phase 3: Creating Mega-Files for {len(audio_items)} audio fragments")
-            audio_paths = [input_dir / it["path"] for it in audio_items]
+        audio_results = {}  # abs_path_str -> list[seg]
+        
+        # Combine audio from audio_items and video audio extracts
+        all_audio_items = audio_items.copy()
+        
+        # Add video audio fragments to the audio items list
+        for audio_frag in audio_fragments_for_megafile:
+            all_audio_items.append({
+                "path": str(audio_frag["path"]),
+                "source": audio_frag["source"],
+                "source_video": audio_frag.get("source_video"),
+                "duration": audio_frag["duration"],
+                "timestamp": audio_frag.get("timestamp")
+            })
+        
+        if all_audio_items:
+            logger.info(
+                f"Phase 3: Creating Mega-Files for {len(all_audio_items)} audio fragments "
+                f"({len(audio_items)} audio + {len(audio_fragments_for_megafile)} from video)"
+            )
+            audio_paths = []
             
+            for it in all_audio_items:
+                audio_path = Path(it["path"])
+                if audio_path.exists():
+                    audio_paths.append(audio_path)
+
             # Sort audio_paths by their timestamp in items if needed
-            
             boundary_maps = await create_mega_files(audio_paths, pipeline_dir)
             
             mega_file_results = []
