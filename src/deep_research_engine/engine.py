@@ -242,27 +242,40 @@ async def _run_legacy_loop(
     }
 
 
-def _transform_stategraph_event(event: dict) -> dict[str, Any]:
-    """Transform LangGraph events to our standard event format."""
-    # Handle different event types from LangGraph
+def _transform_stategraph_event(event) -> dict[str, Any]:
+    """Transform LangGraph events to our standard event format.
+
+    LangGraph astream with stream_mode yields tuples: (stream_type, data)
+    e.g. ("updates", {"node_name": {...}}) or ("custom", {...})
+    """
+    # LangGraph yields tuples when using multiple stream_modes
+    if isinstance(event, tuple):
+        stream_type, data = event
+        if stream_type == "updates" and isinstance(data, dict):
+            for node_name, updates in data.items():
+                phase = updates.get("current_phase", node_name) if isinstance(updates, dict) else node_name
+                return {
+                    "type": "phase_update",
+                    "phase": phase,
+                    "node": node_name,
+                    "updates": updates or {},
+                }
+        return {"type": stream_type, "data": data}
+
+    # Handle dict events
     if isinstance(event, dict):
-        # Stream mode: updates
         if "node" in event:
             node_name = event["node"]
             if "updates" in event:
                 updates = event["updates"]
                 phase = updates.get("current_phase", node_name)
-
-                # Emit phase start/complete based on phase transitions
                 return {
                     "type": "phase_update",
                     "phase": phase,
                     "node": node_name,
                     "updates": updates,
                 }
-        # Custom events (e.g., from nodes)
         elif "type" in event:
             return event
 
-    # Fallback: pass through unknown event structure
-    return event
+    return {"type": "unknown", "data": event}

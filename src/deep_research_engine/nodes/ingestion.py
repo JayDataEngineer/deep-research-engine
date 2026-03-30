@@ -54,7 +54,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
     # Get input path
     input_data = state.get("input_data", {})
-    input_path = input_data.get("path") or input_data.get("source") or phase_config.get("source")
+    input_path = input_data.get("path") or input_data.get("export_path") or input_data.get("source") or phase_config.get("source")
 
     if not input_path:
         logger.info("No input path for ingestion. Skipping.")
@@ -279,10 +279,15 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             if video_frames:
                 logger.info(f"Running batch VLM analysis for {len(video_frames)} videos")
                 for video_rel_path, frames in video_frames.items():
-                    desc = await batch_vlm_video_analysis(frames)
-                    video_descriptions[video_rel_path] = desc
+                    try:
+                        desc = await batch_vlm_video_analysis(frames)
+                        video_descriptions[video_rel_path] = desc
+                    except RuntimeError:
+                        logger.warning("VLM unavailable - skipping all video analysis")
+                        break
 
         processed_messages: list[str] = []
+        vlm_available = True  # Will be set False on first permanent VLM failure
 
         for item in items:
             msg_text = item.get("text") or ""
@@ -330,11 +335,16 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                         resolved_faces = [resolved_identity_map.get(f, f) for f in faces]
                         faces_str = ", ".join(set(resolved_faces))
                         content_parts.append(f"[People in Photo: {faces_str}]")
-                    
-                    # Fallback to single-item VLM for description
-                    desc = await vlm_analyze(media_path)
-                    content_parts.append(f"[Photo Description: {desc}]")
-                    
+
+                    # VLM description (skip if model doesn't support images)
+                    if vlm_available:
+                        try:
+                            desc = await vlm_analyze(media_path)
+                            content_parts.append(f"[Photo Description: {desc}]")
+                        except RuntimeError:
+                            vlm_available = False
+                            logger.warning("VLM unavailable - skipping photo descriptions")
+
                 elif item_type == "video":
                     # Use identified faces from identity_map
                     if media_path_rel in identity_map:
@@ -342,14 +352,19 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                         resolved_faces = [resolved_identity_map.get(f, f) for f in faces]
                         faces_str = ", ".join(set(resolved_faces))
                         content_parts.append(f"[People in Video: {faces_str}]")
-                        
-                    # Use batch video analysis (Enhancement #4)
+
+                    # Use batch video analysis if available
                     if media_path_rel in video_descriptions:
                         video_desc = video_descriptions[media_path_rel]
+                    elif vlm_available:
+                        try:
+                            video_desc = await video_analyze(media_path)
+                        except RuntimeError:
+                            vlm_available = False
+                            video_desc = "[Video analysis unavailable - VLM does not support images]"
                     else:
-                        # Fallback to single-item analysis if batching skipped it
-                        video_desc = await video_analyze(media_path)
-                    
+                        video_desc = "[Video analysis unavailable - VLM does not support images]"
+
                     content_parts.append(f"[Video Summary: {video_desc}]")
 
             item_combined = " ".join(content_parts)
@@ -553,6 +568,9 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
         if media_dir.exists():
             for f in media_dir.iterdir():
                 if f.is_file():
+                    # Skip thumbnail images (companions to video files)
+                    if "_thumb." in f.name:
+                        continue
                     rel_path = f"{dir_name}/{f.name}"
                     if rel_path not in existing_paths:
                         items.append({

@@ -199,6 +199,12 @@ async def vlm_analyze(
         return description
 
     except Exception as e:
+        error_msg = str(e)
+        # Detect permanent VLM failures and bail immediately
+        if "image input is not supported" in error_msg or "mmproj" in error_msg:
+            raise RuntimeError(f"VLM model does not support image input: {VLM_MODEL}") from e
+        if "Connection error" in error_msg:
+            raise RuntimeError(f"VLM connection failed - endpoint unreachable") from e
         logger.error(f"VLM failed: {e}")
         return f"[Image analysis failed: {e}]"
 
@@ -322,6 +328,12 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
         logger.warning("opencv-python not installed, video analysis limited")
         return "[Video analysis requires opencv-python]"
     except Exception as e:
+        error_msg = str(e)
+        # Detect permanent failures and raise to caller
+        if "image input is not supported" in error_msg or "mmproj" in error_msg:
+            raise RuntimeError(f"VLM model does not support image input: {VLM_MODEL}") from e
+        if "Connection error" in error_msg:
+            raise RuntimeError("VLM connection failed - endpoint unreachable") from e
         logger.error(f"Video analysis failed: {e}")
         return f"[Video analysis failed: {e}]"
 
@@ -361,8 +373,16 @@ def normalize_timestamp(timestamp: Union[float, str]) -> str:
             else:
                 utc_dt = dt.astimezone(pytz.utc)
         except ValueError:
-            logger.warning(f"Could not parse timestamp: {timestamp}")
-            return str(timestamp)
+            # Try Telegram HTML format: "13.03.2026 08:59:37 UTC-05:00"
+            try:
+                cleaned = timestamp.strip()
+                # Remove "UTC" prefix from timezone offset
+                cleaned = re.sub(r'UTC([+-])', r'\1', cleaned)
+                dt = datetime.strptime(cleaned, "%d.%m.%Y %H:%M:%S %z")
+                utc_dt = dt.astimezone(pytz.utc)
+            except (ValueError, AttributeError):
+                logger.warning(f"Could not parse timestamp: {timestamp}")
+                return str(timestamp)
 
     localized_dt = TARGET_TZ.normalize(utc_dt.astimezone(TARGET_TZ))
     return localized_dt.isoformat()
@@ -457,34 +477,44 @@ async def batch_vlm_video_analysis(
     all_descriptions = []
     
     # Simple batching logic
+    vlm_unavailable = False
     for i in range(0, len(sorted_frames), batch_size):
+        if vlm_unavailable:
+            all_descriptions.append("[VLM unavailable - image analysis skipped]")
+            continue
+
         batch = sorted_frames[i : i + batch_size]
         logger.info(f"Analyzing VLM batch {i//batch_size + 1} ({len(batch)} frames)")
-        
+
         try:
             llm = await get_chat_llm(temperature=0.0)
-            
+
             content = [{"type": "text", "text": prompt}]
-            
+
             for frame in batch:
                 frame_path = Path(frame["path"])
                 if not frame_path.exists():
                     continue
-                    
+
                 with open(frame_path, "rb") as f:
                     base64_image = base64.b64encode(f.read()).decode("utf-8")
-                
+
                 # Assume PNG as per extract_scene_frames
                 content.append({
                     "type": "image_url",
                     "image_url": {"url": f"data:image/png;base64,{base64_image}"}
                 })
-            
+
             response = await llm.ainvoke([{"role": "user", "content": content}])
             all_descriptions.append(response.content)
-            
+
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Batch VLM analysis failed for batch starting at {i}: {e}")
+            # Detect permanent failure - stop trying remaining batches
+            if "image input is not supported" in error_msg or "mmproj" in error_msg:
+                logger.warning("VLM model does not support images - skipping all remaining batches")
+                vlm_unavailable = True
             all_descriptions.append(f"[Batch analysis failed: {e}]")
 
     if len(all_descriptions) == 1:
@@ -765,12 +795,12 @@ async def resolve_identities(
         research_prompt = research_prompt_template.compile(
             asr_summary=asr_summary, visual_summary=visual_summary, text_summary=text_summary
         )
-        research_agent = create_deep_agent(
-            model=research_prompt_template.config.get("model", "openai:gpt-4o"),
-            system_prompt="You are a master identity resolution researcher.",
-        )
-        research_result = await research_agent.ainvoke({"messages": [("user", research_prompt)]})
-        research_report = research_result["messages"][-1].content
+        research_llm = await get_chat_llm(temperature=0.0)
+        research_result = await research_llm.ainvoke([
+            {"role": "system", "content": "You are a master identity resolution researcher."},
+            {"role": "user", "content": research_prompt},
+        ])
+        research_report = research_result.content
 
         format_model = format_prompt_template.config.get("model", "qwen-35-27-fast")
         llm = await get_chat_llm(model=format_model, temperature=0.0)

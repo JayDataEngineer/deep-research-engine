@@ -106,7 +106,10 @@ def main():
         session_id = args.thread_id
         resume_from = None
     elif args.command == "ingest":
-        input_data = {"export_path": args.export_path}
+        export_path = Path(args.export_path)
+        if not export_path.is_absolute():
+            export_path = Path.cwd() / export_path
+        input_data = {"export_path": str(export_path.resolve())}
         session_id = args.thread_id
         resume_from = None
     elif args.command == "scrape":
