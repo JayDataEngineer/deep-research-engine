@@ -101,8 +101,8 @@ storage:
 
 llm:
   models:
-    main: qwen-35-27
-    tool: qwen-35-27-fast
+    main: qwen-35-35b-a3b-vision
+    tool: qwen-35-35b-a3b-vision-fast
     embedding: jina-v5-embed
 
 tools:

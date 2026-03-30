@@ -13,6 +13,7 @@ from deepagents import create_deep_agent, SubAgent
 from ..tools.storage import initialize_storage_tools, vector_search_datastore
 from ..workers.base import WorkerRegistry, WorkerConfig
 from ..agents.flash import FlashAgent, create_flash_subagents
+from ..shared import get_langchain_llm
 
 logger = get_loguru_logger("nodes.drafter")
 
@@ -64,7 +65,7 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                         f"Your goal is: {w_cfg.get('task')}. "
                         f"Be thorough but concise."
                     ),
-                    "model": w_cfg.get("model", "openai:gpt-4o-mini"),
+                    "model": w_cfg.get("model"),
                     "tools": worker_class.required_tools
                 })
             except Exception as e:
@@ -74,7 +75,7 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                     "name": w_type,
                     "description": f"Specialist worker for {w_type}. Task: {w_cfg.get('task')}",
                     "system_prompt": f"You are a specialist in {w_type}. Your goal is: {w_cfg.get('task')}. Be thorough but concise.",
-                    "model": "openai:gpt-4o-mini"
+                    "model": None
                 })
 
     # Add default social archive specialist if applicable
@@ -98,10 +99,16 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
         f"Current Goal: {state.get('input_data', {}).get('query', 'Perform comprehensive research and analysis.')}\n"
     )
     
-    # LiteLLM models should be prefixed with provider if not using default
-    # e.g., "openai/gpt-4o", "anthropic/claude-3-5-sonnet"
-    king_model = phase_config.get("model", "openai:gpt-4o")
-    
+    # Get model from config or use local LiteLLM
+    king_model_name = phase_config.get("model", None)
+
+    if king_model_name:
+        # Use model string directly (deepagents format)
+        king_model = king_model_name
+    else:
+        # Use shared DRY method for LiteLLM-backed ChatOpenAI
+        king_model = get_langchain_llm(config_data=config_data)
+
     king = create_deep_agent(
         model=king_model,
         system_prompt=king_prompt,

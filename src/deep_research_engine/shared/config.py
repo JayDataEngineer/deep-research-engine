@@ -13,12 +13,12 @@ import os
 # Core LiteLLM Configuration
 # =============================================================================
 
-LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", "http://litellm.local/v1")
-LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", "sk-litellm-master")
+LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", "http://litellm.local:18880/v1")
+LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", "sk-litellm-e2e-test-master-key")
 
 # Default models
-DEFAULT_MODEL = os.getenv("MAIN_MODEL", "qwen-35-27")
-TOOL_MODEL = os.getenv("TOOL_MODEL", "qwen-35-27-fast")
+DEFAULT_MODEL = os.getenv("MAIN_MODEL", "qwen-35-35b-a3b-vision")
+TOOL_MODEL = os.getenv("TOOL_MODEL", "qwen-35-35b-a3b-vision-fast")
 
 
 # =============================================================================
@@ -44,6 +44,7 @@ MODEL_MAPPING: dict[str, str] = {
 THINKING_TO_FAST: dict[str, str] = {
     "qwen-35-27": "qwen-35-27-fast",
     "qwen-35-27-vision": "qwen-35-27-vision-fast",
+    "qwen-35-35b-a3b-vision": "qwen-35-35b-a3b-vision-fast",
 }
 
 

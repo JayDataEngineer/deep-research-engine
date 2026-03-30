@@ -19,7 +19,7 @@ class IdentityMapping(BaseModel):
 
 
 # LLM utilities
-from .chat_llm import ChatLLM, get_chat_llm
+from .chat_llm import ChatLLM, get_chat_llm, get_langchain_llm
 
 # Configuration
 from .config import (
@@ -35,6 +35,7 @@ __all__ = [
     "IdentityMapping",
     # LLM
     "get_chat_llm",
+    "get_langchain_llm",
     "ChatLLM",
     # Config
     "LITELLM_BASE_URL",

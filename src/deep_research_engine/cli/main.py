@@ -84,8 +84,9 @@ def main():
     # Load config
     config_path = Path(args.config)
     if not config_path.is_absolute():
-        # Look in configs directory
-        configs_dir = Path(__file__).parent.parent.parent / "configs"
+        # Look in project root configs directory
+        project_root = Path(__file__).parent.parent.parent.parent
+        configs_dir = project_root / "configs"
         config_path = configs_dir / args.config
 
     config = load_config(str(config_path))

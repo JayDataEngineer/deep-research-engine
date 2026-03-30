@@ -8,7 +8,7 @@ from ..utils.logging import get_loguru_logger
 from ..utils.nodes import node_context
 from ..config import get_phase_config
 from ..tools.storage import initialize_storage_tools, vector_search_datastore
-from shared.chat_llm import get_chat_llm
+from ..shared import get_langchain_llm
 from deepagents import create_deep_agent, SubAgent
 
 logger = get_loguru_logger("nodes.neo4j_builder")
@@ -73,8 +73,8 @@ async def neo4j_builder_node(state: EngineState) -> dict[str, Any]:
 
 async def _extract_triplets_agentic(text: str, config: Dict[str, Any]) -> List[Dict[str, str]]:
     """Extract triplets using a Deep Agent with a Reviewer subagent."""
-    model_name = config.get("llm", {}).get("models", {}).get("fast", "openai:gpt-4o-mini")
-    
+    llm = get_langchain_llm(enable_thinking=False, temperature=0.3, config_data=config)
+
     # 1. Define Subagents
     subagents: List[SubAgent] = [
         {
@@ -88,7 +88,7 @@ async def _extract_triplets_agentic(text: str, config: Dict[str, Any]) -> List[D
                 "3. Relationship Check: Only use these Types: [WORKS_AT, FOUNDED, DEVELOPED, PARTS_OF, ASSOCIATED_WITH, LOCATED_IN].\n"
                 "Suggest corrections in a structured format."
             ),
-            "model": model_name
+            "model": llm
         }
     ]
 
@@ -110,7 +110,7 @@ async def _extract_triplets_agentic(text: str, config: Dict[str, Any]) -> List[D
 
     # 3. Create and Invoke Deep Agent
     agent = create_deep_agent(
-        model=model_name,
+        model=llm,
         system_prompt=system_prompt,
         subagents=subagents,
         tools=[vector_search_datastore],

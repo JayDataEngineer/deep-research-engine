@@ -44,7 +44,7 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
             worker = worker_class(worker_config)
             worker_result = await worker.execute(state, worker_config)
 
-            if worker_result.success:
+            if worker_result.get("success"):
                 logger.info("Artifact maker worker completed successfully.")
 
                 # Check for either key to be safe

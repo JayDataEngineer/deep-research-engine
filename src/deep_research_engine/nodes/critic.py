@@ -8,6 +8,7 @@ from ..state import EngineState, CriticEvaluation
 from ..utils.logging import get_loguru_logger
 from ..utils.nodes import node_context
 from ..config import get_phase_config
+from ..shared import get_langchain_llm
 
 logger = get_loguru_logger("nodes.critic")
 
@@ -41,12 +42,19 @@ def build_critic_prompt(
     plan_text = "\n".join([f"- {task}" for task in plan]) if plan else "No plan provided"
     
     # Get custom criteria from config
-    criteria = config.get("criteria", {
+    raw_criteria = config.get("criteria", {
         "completeness": "All planned tasks are addressed",
         "accuracy": "Claims are factually correct and verifiable",
         "citation_quality": "Sources are credible and properly cited",
         "coherence": "Output is well-organized and logically structured"
     })
+
+    # Handle list format from YAML (e.g., [{name: completeness, weight: 0.4}, ...])
+    if isinstance(raw_criteria, list):
+        criteria = {c.get("name", f"criterion_{i}"): f"Weight: {c.get('weight', 0.5)}, Threshold: {c.get('threshold', 0.7)}"
+                     for i, c in enumerate(raw_criteria) if isinstance(c, dict)}
+    else:
+        criteria = raw_criteria
     
     criteria_text = "\n".join([
         f"- **{k}**: {v}" for k, v in criteria.items()
@@ -136,24 +144,13 @@ async def critic_node(state: EngineState) -> dict[str, Any]:
     # 3. Build evaluation prompt
     eval_prompt = build_critic_prompt(worker_results, plan, phase_config)
     
-    # 4. Invoke critic agent with structured output
+    # 4. Invoke critic with structured output
     try:
-        from deepagents import create_deep_agent
-        
-        critic_agent = create_deep_agent(
-            model=phase_config.get("model", "openai:gpt-4o"),
-            system_prompt=(
-                "You are a rigorous academic critic. Your job is to evaluate "
-                "research output quality across multiple dimensions. Be harsh but fair. "
-                "Provide specific, actionable feedback."
-            ),
-        )
-        
-        # Use structured output for consistent evaluation
-        structured_llm = critic_agent.with_structured_output(CriticEvaluation)
-        
+        llm = get_langchain_llm(enable_thinking=False, temperature=0.3, config_data=config_data)
+
+        structured_llm = llm.with_structured_output(CriticEvaluation)
         result = await structured_llm.ainvoke([{"role": "user", "content": eval_prompt}])
-        
+
         # 5. Parse evaluation
         if isinstance(result, CriticEvaluation):
             evaluation = result
@@ -164,11 +161,7 @@ async def critic_node(state: EngineState) -> dict[str, Any]:
         else:
             logger.warning("Structured output parsing failed, using fallback")
             evaluation = parse_fallback_evaluation(result)
-            
-    except ImportError as e:
-        logger.error(f"deepagents import failed: {e}")
-        evaluation = parse_fallback_evaluation(None)
-        
+
     except Exception as e:
         logger.error(f"Critic evaluation failed: {e}")
         evaluation = parse_fallback_evaluation(None)

@@ -163,17 +163,11 @@ class ArtifactMakerWorker(BaseWorker):
 
         for attempt in range(1, self.max_retries + 1):
             try:
-                from deepagents import create_deep_agent
-
-                agent = create_deep_agent(
-                    model=model_config["model"], tools=[], system_prompt=current_prompt
+                agent_output = await llm.ainvoke(
+                    [{"role": "system", "content": current_prompt},
+                     {"role": "user", "content": current_prompt}]
                 )
-
-                result = await agent.ainvoke(
-                    {"messages": [{"role": "user", "content": current_prompt}]}
-                )
-
-                agent_output = str(result.get("messages", [])[-1].content) if result else ""
+                agent_output = agent_output.content
 
                 # Extract structured output
                 formatted_result = await self._extract_structured_output(
@@ -302,40 +296,19 @@ class ArtifactMakerWorker(BaseWorker):
 
     async def _create_llm(self, model_config: dict[str, Any]) -> Any:
         """Create LLM from model configuration."""
-        # Use engine's LLM configuration
-        model_name = model_config.get("name", "qwen-35-27")
+        from ...shared import get_chat_llm
+
+        model_name = model_config.get("name", "qwen-35-35b-a3b-vision-fast")
         enable_thinking = model_config.get("enable_thinking", False)
 
-        # Import from backend
-        try:
-            from src.shared.chat_llm import get_chat_llm
-
-            return await get_chat_llm(model=model_name, enable_thinking=enable_thinking)
-        except ImportError:
-            # Fallback to langchain
-            from langchain_openai import ChatOpenAI
-
-            return ChatOpenAI(
-                model=model_name,
-                temperature=0.7,
-            )
+        return await get_chat_llm(model=model_name, enable_thinking=enable_thinking)
 
     async def _extract_structured_output(
         self, llm: Any, agent_output: str, pydantic_model: type[BaseModel]
     ) -> BaseModel:
-        """Extract structured output from LLM response."""
-        from src.extensions.content.deep_research.graph.helpers.deep_agent_helpers import (
-            extract_structured_output,
-        )
-
-        yaml_config = {"model": {"name": "glm-4.7", "enable_thinking": False}}
-
-        return await extract_structured_output(
-            llm=llm,
-            agent_output=agent_output,
-            pydantic_model=pydantic_model,
-            yaml_config=yaml_config,
-        )
+        """Extract structured output from LLM response using structured output."""
+        structured_llm = llm.with_structured_output(pydantic_model)
+        return await structured_llm.ainvoke([{"role": "user", "content": agent_output}])
 
     def _format_validation_errors(self, error: ValidationError) -> str:
         """Extract readable error details from Pydantic ValidationError."""

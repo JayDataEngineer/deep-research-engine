@@ -150,13 +150,11 @@ class TestCriticNode:
             "recommendation": "pass"
         }
         
-        mock_llm = AsyncMock()
+        mock_llm = MagicMock()
+        mock_llm.with_structured_output.return_value = mock_llm
         mock_llm.ainvoke = AsyncMock(return_value=mock_evaluation)
-        
-        mock_agent = AsyncMock()
-        mock_agent.with_structured_output.return_value = mock_llm
 
-        with patch("deepagents.create_deep_agent", return_value=mock_agent):
+        with patch("deep_research_engine.nodes.critic.get_langchain_llm", return_value=mock_llm):
             command = await critic_node(state)
 
         assert command.update.get("critic_passed") is True or command.update.get("critique", {}).get("passed") is True
@@ -239,7 +237,7 @@ class TestArtifactMakerNode:
         class FailingArtifactMakerWorker:
             def __init__(self, config=None): pass
             async def execute(self, state, config):
-                return MagicMock(success=False, error="Artifact generation failed")
+                return {"success": False, "error": "Artifact generation failed"}
 
         WorkerRegistry.register("artifact_maker")(FailingArtifactMakerWorker)
 

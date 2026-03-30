@@ -198,4 +198,63 @@ async def get_chat_llm(
     )
 
 
+def _resolve_model(model: str | None, config_data: dict | None = None) -> str:
+    """Resolve model name from config or fallback to default.
+
+    Args:
+        model: Explicit model name, or None to use config/default
+        config_data: Optional workflow config dict with llm.models section
+
+    Returns:
+        LiteLLM-compatible model name
+    """
+    if model:
+        return map_model_name(model)
+
+    if config_data:
+        config_models = config_data.get("llm", {}).get("models", {})
+        configured = config_models.get("main", DEFAULT_MODEL)
+        return map_model_name(configured)
+
+    return map_model_name(DEFAULT_MODEL)
+
+
+def get_langchain_llm(
+    model: str | None = None,
+    temperature: float = 0.7,
+    enable_thinking: bool = True,
+    config_data: dict | None = None,
+    streaming: bool = True,
+) -> ChatOpenAI:
+    """Get a raw LangChain ChatOpenAI instance.
+
+    Use this when you need the actual ChatOpenAI (e.g., for deepagents,
+    with_structured_output, bind_tools). For general chat, prefer get_chat_llm().
+
+    Args:
+        model: Model name. Falls back to config_data.llm.models.main, then DEFAULT_MODEL.
+        temperature: Temperature for generation
+        enable_thinking: Enable chain-of-thought reasoning (maps to fast model if False)
+        config_data: Optional workflow config dict to resolve model from
+        streaming: Whether to enable streaming
+
+    Returns:
+        ChatOpenAI instance pointing to LiteLLM
+    """
+    resolved = _resolve_model(model, config_data)
+
+    # Handle thinking mode
+    if not enable_thinking:
+        from .config import THINKING_TO_FAST
+        resolved = THINKING_TO_FAST.get(resolved, resolved)
+
+    return ChatOpenAI(
+        model=resolved,
+        api_key=LITELLM_API_KEY,
+        base_url=LITELLM_BASE_URL,
+        temperature=temperature,
+        streaming=streaming,
+    )
+
+
 __all__ = ["ChatLLM", "get_chat_llm"]
