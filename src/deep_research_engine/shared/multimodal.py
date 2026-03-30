@@ -6,10 +6,9 @@ Centralizes logic for:
 3. Acoustic Mega-Files (Concatenation + Un-stitching)
 4. GPU VRAM Management
 5. Biometric Identity Resolution
-6. Model Loading through LiteLLM/Research Orchestration
-7. ASR Transcription (Whisper/VibeVoice)
-8. VLM Image Analysis
-9. Face Recognition (CompreFace)
+6. ASR Transcription (VibeVoice via InfraClient)
+7. VLM Image Analysis (via InfraClient)
+8. Face Recognition (CompreFace)
 """
 
 import asyncio
@@ -28,28 +27,35 @@ import numpy as np
 import pytz
 import torch
 from loguru import logger
-from openai import OpenAI
 from sklearn.cluster import DBSCAN
-
-# LiteLLM (ASR/VLM)
-LITELLM_BASE_URL = os.environ.get("LITELLM_BASE_URL", "http://localhost:4000/v1")
-LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY", "fake-key")
 
 # Face Recognition (CompreFace)
 COMPREFACE_BASE_URL = os.environ.get("COMPREFACE_BASE_URL", "http://localhost:8080")
 COMPREFACE_API_KEY = os.environ.get("COMPREFACE_API_KEY", "")
 
-# Models
-ASR_MODEL = os.environ.get("ASR_MODEL", "vibevoice-asr")
-VLM_MODEL = os.environ.get("VLM_MODEL", "gpt-4o-mini")
-
-# VibeVoice settings
-VIBEVOICE_MIN_SPEAKERS = int(os.environ.get("VIBEVOICE_MIN_SPEAKERS", "1"))
-VIBEVOICE_MAX_SPEAKERS = int(os.environ.get("VIBEVOICE_MAX_SPEAKERS", "10"))
-
 from ..prompts import PromptRegistry, get_prompt
 from . import IdentityMapping
-from .chat_llm import get_chat_llm
+from .infra_client import InfraClient, InfraError, InfraUnreachable
+
+
+# ---------------------------------------------------------------------------
+# InfraClient singleton
+# ---------------------------------------------------------------------------
+
+_infra: InfraClient | None = None
+
+
+def _get_infra() -> InfraClient:
+    """Lazy singleton for InfraClient."""
+    global _infra
+    if _infra is None:
+        _infra = InfraClient()
+    return _infra
+
+
+def _extract_chat_text(response: dict) -> str:
+    """Extract text content from InfraClient chat response dict."""
+    return response["choices"][0]["message"]["content"]
 
 
 # =============================================================================
@@ -62,9 +68,9 @@ async def asr_transcribe(
     language: Optional[str] = None,
     include_diarization: bool = True,
 ) -> Union[str, Dict[str, Any]]:
-    """Transcribe audio file using LiteLLM ASR endpoint via OpenAI client.
+    """Transcribe audio file using VibeVoice ASR via InfraClient.
 
-    Supports both Whisper and VibeVoice ASR models.
+    Auto-loads the ASR model and handles GPU management.
     """
     logger.info(f"Transcribing audio: {audio_path} (diarization={include_diarization})")
 
@@ -73,63 +79,54 @@ async def asr_transcribe(
         return "" if not include_diarization else {"text": "", "segments": [], "speakers": 0}
 
     try:
-        client = OpenAI(
-            base_url=LITELLM_BASE_URL,
-            api_key=LITELLM_API_KEY,
+        result = await asyncio.to_thread(
+            _get_infra().transcribe,
+            audio=audio_path,
+            diarize=include_diarization,
+            language=language,
+            response_format="verbose_json" if include_diarization else "json",
         )
 
-        is_vibevoice = "vibevoice" in ASR_MODEL.lower()
-
-        with open(audio_path, "rb") as audio_file:
-            kwargs = {
-                "model": ASR_MODEL,
-                "file": audio_file,
-            }
-            if language:
-                kwargs["language"] = language
-
-            if is_vibevoice and include_diarization:
-                kwargs["response_format"] = "verbose_json"
-
-            result = await asyncio.to_thread(client.audio.transcriptions.create, **kwargs)
-
-        if is_vibevoice and include_diarization:
+        if include_diarization:
             return _parse_vibevoice_response(result)
-        else:
-            transcription = result.text
-            logger.info(f"Transcription complete: {len(transcription)} chars")
-            return transcription
 
+        text = result.get("text", "")
+        logger.info(f"Transcription complete: {len(text)} chars")
+        return text
+
+    except InfraError as e:
+        logger.error(f"ASR failed for {audio_path}: {e}")
+        if include_diarization:
+            return {"text": f"[ASR failed: {e}]", "segments": [], "speakers": 0, "error": str(e)}
+        return f"[ASR failed for {audio_path.name}: {e}]"
     except Exception as e:
         logger.error(f"ASR failed for {audio_path}: {e}")
         if include_diarization:
-            return {"text": f"[Audio Transcript failed: {e}]", "segments": [], "speakers": 0, "error": str(e)}
-        return f"[Audio Transcript for {audio_path.name} failed: {e}]"
+            return {"text": f"[ASR failed: {e}]", "segments": [], "speakers": 0, "error": str(e)}
+        return f"[ASR failed for {audio_path.name}: {e}]"
 
 
-def _parse_vibevoice_response(result: Any) -> Dict[str, Any]:
-    """Parse VibeVoice ASR response into structured format with diarization."""
-    full_text = getattr(result, "text", "")
-    segments_raw = getattr(result, "segments", [])
+def _parse_vibevoice_response(result: dict) -> Dict[str, Any]:
+    """Parse VibeVoice ASR response dict into structured format with diarization."""
+    full_text = result.get("text", "")
+    segments_raw = result.get("segments", [])
     segments: List[Dict[str, Any]] = []
     speakers_set = set()
 
     for seg in segments_raw:
-        seg_dict = seg.__dict__ if hasattr(seg, "__dict__") else seg
-        speaker = seg_dict.get("speaker", "Speaker 0")
+        speaker = seg.get("speaker", "Speaker 0")
         speakers_set.add(speaker)
-
         segments.append({
             "speaker": speaker,
-            "start": float(seg_dict.get("start", 0.0)),
-            "end": float(seg_dict.get("end", 0.0)),
-            "duration": float(seg_dict.get("duration", 0.0)),
-            "text": seg_dict.get("text", ""),
-            "confidence": seg_dict.get("confidence", 1.0),
+            "start": float(seg.get("start", 0.0)),
+            "end": float(seg.get("end", 0.0)),
+            "duration": float(seg.get("duration", 0.0)),
+            "text": seg.get("text", ""),
+            "confidence": seg.get("confidence", 1.0),
         })
 
     num_speakers = len(speakers_set) or 1
-    duration = getattr(result, "duration", 0.0)
+    duration = result.get("duration", 0.0)
     if duration == 0.0 and segments:
         duration = max(seg["end"] for seg in segments)
 
@@ -140,7 +137,7 @@ def _parse_vibevoice_response(result: Any) -> Dict[str, Any]:
         "speaker_list": sorted(list(speakers_set)),
         "duration": duration,
         "diarization": "native",
-        "model": ASR_MODEL,
+        "model": result.get("model", "vibevoice-asr"),
     }
 
 
@@ -153,18 +150,13 @@ async def vlm_analyze(
     image_paths: List[Path] | Path,
     prompt: str = "Describe this image in detail.",
 ) -> str:
-    """Analyze one or more images using LiteLLM VLM endpoint."""
+    """Analyze one or more images using VLM via InfraClient."""
     if isinstance(image_paths, Path):
         image_paths = [image_paths]
 
     logger.info(f"Analyzing {len(image_paths)} images with prompt: {prompt[:50]}...")
 
     try:
-        client = OpenAI(
-            base_url=LITELLM_BASE_URL,
-            api_key=LITELLM_API_KEY,
-        )
-
         content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
 
         for path in image_paths:
@@ -188,23 +180,27 @@ async def vlm_analyze(
             return "[No valid images found for analysis]"
 
         response = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=VLM_MODEL,
+            _get_infra().chat,
             messages=[{"role": "user", "content": content}],
             max_tokens=1000,
         )
 
-        description = response.choices[0].message.content
+        description = _extract_chat_text(response)
         logger.info(f"VLM analysis complete: {len(description)} chars")
         return description
 
+    except InfraUnreachable as e:
+        raise RuntimeError("VLM connection failed - endpoint unreachable") from e
+    except InfraError as e:
+        error_msg = str(e)
+        if "image input is not supported" in error_msg or "mmproj" in error_msg:
+            raise RuntimeError(f"VLM model does not support image input") from e
+        logger.error(f"VLM failed: {e}")
+        return f"[Image analysis failed: {e}]"
     except Exception as e:
         error_msg = str(e)
-        # Detect permanent VLM failures and bail immediately
         if "image input is not supported" in error_msg or "mmproj" in error_msg:
-            raise RuntimeError(f"VLM model does not support image input: {VLM_MODEL}") from e
-        if "Connection error" in error_msg:
-            raise RuntimeError(f"VLM connection failed - endpoint unreachable") from e
+            raise RuntimeError(f"VLM model does not support image input") from e
         logger.error(f"VLM failed: {e}")
         return f"[Image analysis failed: {e}]"
 
@@ -266,7 +262,7 @@ async def face_recognize(image_path: Path, min_similarity: float = 0.8) -> List[
 
 
 async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
-    """Analyze video by extracting frames and using VLM."""
+    """Analyze video by extracting frames and using VLM via InfraClient."""
     logger.info(f"Analyzing video: {video_path}")
 
     try:
@@ -299,11 +295,6 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
         if not frames:
             return "[No frames extracted from video]"
 
-        client = OpenAI(
-            base_url=LITELLM_BASE_URL,
-            api_key=LITELLM_API_KEY,
-        )
-
         content: list[dict[str, Any]] = [
             {"type": "text", "text": "Analyze these video frames and describe what's happening."}
         ]
@@ -314,26 +305,29 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
             })
 
         response = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=VLM_MODEL,
+            _get_infra().chat,
             messages=[{"role": "user", "content": content}],
             max_tokens=1000,
         )
 
-        description = response.choices[0].message.content
+        description = _extract_chat_text(response)
         logger.info(f"Video analysis complete: {len(description)} chars")
         return description
 
     except ImportError:
         logger.warning("opencv-python not installed, video analysis limited")
         return "[Video analysis requires opencv-python]"
-    except Exception as e:
+    except InfraUnreachable as e:
+        raise RuntimeError("VLM connection failed - endpoint unreachable") from e
+    except InfraError as e:
         error_msg = str(e)
-        # Detect permanent failures and raise to caller
         if "image input is not supported" in error_msg or "mmproj" in error_msg:
-            raise RuntimeError(f"VLM model does not support image input: {VLM_MODEL}") from e
-        if "Connection error" in error_msg:
-            raise RuntimeError("VLM connection failed - endpoint unreachable") from e
+            raise RuntimeError("VLM model does not support image input") from e
+        logger.error(f"Video analysis failed: {e}")
+        return f"[Video analysis failed: {e}]"
+    except RuntimeError:
+        raise
+    except Exception as e:
         logger.error(f"Video analysis failed: {e}")
         return f"[Video analysis failed: {e}]"
 
@@ -487,8 +481,6 @@ async def batch_vlm_video_analysis(
         logger.info(f"Analyzing VLM batch {i//batch_size + 1} ({len(batch)} frames)")
 
         try:
-            llm = await get_chat_llm(temperature=0.0)
-
             content = [{"type": "text", "text": prompt}]
 
             for frame in batch:
@@ -499,36 +491,49 @@ async def batch_vlm_video_analysis(
                 with open(frame_path, "rb") as f:
                     base64_image = base64.b64encode(f.read()).decode("utf-8")
 
-                # Assume PNG as per extract_scene_frames
                 content.append({
                     "type": "image_url",
                     "image_url": {"url": f"data:image/png;base64,{base64_image}"}
                 })
 
-            response = await llm.ainvoke([{"role": "user", "content": content}])
-            all_descriptions.append(response.content)
+            response = await asyncio.to_thread(
+                _get_infra().chat,
+                messages=[{"role": "user", "content": content}],
+                temperature=0.0,
+                max_tokens=2000,
+            )
+            all_descriptions.append(_extract_chat_text(response))
 
-        except Exception as e:
+        except InfraUnreachable as e:
+            logger.warning("Infra unreachable - skipping all remaining batches")
+            vlm_unavailable = True
+            all_descriptions.append(f"[Batch analysis failed: {e}]")
+        except InfraError as e:
             error_msg = str(e)
             logger.error(f"Batch VLM analysis failed for batch starting at {i}: {e}")
-            # Detect permanent failure - stop trying remaining batches
             if "image input is not supported" in error_msg or "mmproj" in error_msg:
                 logger.warning("VLM model does not support images - skipping all remaining batches")
                 vlm_unavailable = True
             all_descriptions.append(f"[Batch analysis failed: {e}]")
+        except Exception as e:
+            logger.error(f"Batch VLM analysis failed for batch starting at {i}: {e}")
+            all_descriptions.append(f"[Batch analysis failed: {e}]")
 
     if len(all_descriptions) == 1:
         return all_descriptions[0]
-    
+
     # If multiple batches, synthesize into a final narrative
     if len(all_descriptions) > 1:
         logger.info("Synthesizing multi-batch video narrative...")
-        synthesis_llm = await get_chat_llm(temperature=0.3)
         synth_prompt = "Combine the following sequential segment descriptions into a single, cohesive narrative for the entire video:\n\n" + \
                        "\n\n---\n\n".join(all_descriptions)
-        
-        response = await synthesis_llm.ainvoke([{"role": "user", "content": synth_prompt}])
-        return response.content
+
+        response = await asyncio.to_thread(
+            _get_infra().chat,
+            messages=[{"role": "user", "content": synth_prompt}],
+            temperature=0.3,
+        )
+        return _extract_chat_text(response)
 
     return "[VLM analysis returned no results]"
 
@@ -795,26 +800,37 @@ async def resolve_identities(
         research_prompt = research_prompt_template.compile(
             asr_summary=asr_summary, visual_summary=visual_summary, text_summary=text_summary
         )
-        research_llm = await get_chat_llm(temperature=0.0)
-        research_result = await research_llm.ainvoke([
-            {"role": "system", "content": "You are a master identity resolution researcher."},
-            {"role": "user", "content": research_prompt},
-        ])
-        research_report = research_result.content
 
-        format_model = format_prompt_template.config.get("model", "qwen-35-27-fast")
-        llm = await get_chat_llm(model=format_model, temperature=0.0)
-        structured_llm = llm.with_structured_output(IdentityMapping)
-        mapping_result = await structured_llm.ainvoke(
-            [
-                {
-                    "role": "user",
-                    "content": format_prompt_template.compile(research_report=research_report),
-                }
-            ]
+        # Pass 1: Research
+        research_response = await asyncio.to_thread(
+            _get_infra().chat,
+            messages=[
+                {"role": "system", "content": "You are a master identity resolution researcher."},
+                {"role": "user", "content": research_prompt},
+            ],
+            temperature=0.0,
         )
+        research_report = _extract_chat_text(research_response)
 
-        return mapping_result.mapping if isinstance(mapping_result, IdentityMapping) else {}
+        # Pass 2: Format as structured JSON
+        format_prompt = format_prompt_template.compile(research_report=research_report)
+        format_response = await asyncio.to_thread(
+            _get_infra().chat,
+            messages=[{"role": "user", "content": format_prompt}],
+            temperature=0.0,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "IdentityMapping",
+                    "schema": IdentityMapping.model_json_schema(),
+                    "strict": True,
+                }
+            },
+        )
+        content = _extract_chat_text(format_response)
+        mapping_result = IdentityMapping.model_validate_json(content)
+        return mapping_result.mapping
+
     except Exception as e:
         logger.error(f"Identity resolution failed: {e}")
         return {}
