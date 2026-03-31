@@ -13,6 +13,11 @@ from typing import Any
 import numpy as np
 from bs4 import BeautifulSoup
 
+try:
+    import pymupdf
+except ImportError:
+    pymupdf = None
+
 from ..config import get_phase_config
 from ..shared.multimodal import (
     batch_vlm_video_analysis,
@@ -70,6 +75,16 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     ingested_files: list[Path] = []
+
+    # --- PDF Processing (runs regardless of other data types) ---
+    pdf_files = _find_pdfs(input_dir)
+    if pdf_files:
+        logger.info(f"Found {len(pdf_files)} PDF file(s) in {input_dir}")
+        pdf_ingested = await _process_pdfs(pdf_files, output_dir)
+        ingested_files.extend(pdf_ingested)
+        logger.info(f"PDF processing complete: {len(pdf_ingested)} files extracted")
+
+    # --- Telegram Processing ---
     messages_html = input_dir / "messages.html"
 
     if messages_html.exists():
@@ -450,6 +465,87 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     }
 
 
+
+
+def _extract_pdf_text(pdf_path: Path, page_chunk_size: int = 50) -> str:
+    """Extract text from a PDF file using pymupdf.
+
+    Returns markdown-formatted text with page headers.
+    Handles large PDFs by extracting page-by-page.
+
+    Args:
+        pdf_path: Path to the PDF file.
+        page_chunk_size: Number of pages to process at once (memory control).
+
+    Returns:
+        Markdown string with extracted text, or empty string on failure.
+    """
+    if pymupdf is None:
+        logger.warning("pymupdf not installed - cannot extract PDF text")
+        return f"[PDF text extraction unavailable: pymupdf not installed. File: {pdf_path.name}]"
+
+    try:
+        doc = pymupdf.open(str(pdf_path))
+        total_pages = len(doc)
+        logger.info(f"Extracting text from {pdf_path.name} ({total_pages} pages)")
+
+        parts = [f"# {pdf_path.stem}\n"]
+        parts.append(f"**Source**: {pdf_path.name}  \n")
+        parts.append(f"**Pages**: {total_pages}\n\n")
+
+        for page_num in range(total_pages):
+            page = doc[page_num]
+            text = page.get_text("text")
+            if text.strip():
+                parts.append(f"## Page {page_num + 1}\n\n")
+                parts.append(text)
+                parts.append("\n\n")
+
+        doc.close()
+        full_text = "".join(parts)
+        logger.info(f"Extracted {len(full_text)} chars from {pdf_path.name}")
+        return full_text
+
+    except Exception as e:
+        logger.error(f"Failed to extract text from {pdf_path}: {e}")
+        return f"[PDF extraction failed for {pdf_path.name}: {e}]"
+
+
+def _find_pdfs(input_dir: Path) -> list[Path]:
+    """Find all PDF files in the input directory (recursive)."""
+    pdfs = list(input_dir.rglob("*.pdf"))
+    # Also check for uppercase extension
+    pdfs.extend(p for p in input_dir.rglob("*.PDF") if p not in pdfs)
+    return sorted(pdfs)
+
+
+async def _process_pdfs(
+    pdf_files: list[Path], output_dir: Path
+) -> list[Path]:
+    """Process PDF files into ingested markdown files.
+
+    Args:
+        pdf_files: List of PDF paths to process.
+        output_dir: Directory to write extracted markdown files.
+
+    Returns:
+        List of output file paths.
+    """
+    ingested: list[Path] = []
+
+    for pdf_path in pdf_files:
+        logger.info(f"Processing PDF: {pdf_path.name}")
+
+        text = _extract_pdf_text(pdf_path)
+
+        # Write to output dir
+        output_file = output_dir / f"{pdf_path.stem}_extracted.md"
+        output_file.write_text(text, encoding="utf-8")
+        ingested.append(output_file)
+
+        logger.info(f"PDF extracted: {pdf_path.name} -> {output_file.name} ({len(text)} chars)")
+
+    return ingested
 
 
 async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:

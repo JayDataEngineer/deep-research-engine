@@ -5,6 +5,7 @@ Tests for ingestion, drafter, critic, neo4j_builder, and artifact_maker nodes.
 
 import pytest
 import asyncio
+from pathlib import Path
 from typing import Dict, Any
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -16,6 +17,7 @@ from deep_research_engine.nodes import (
     neo4j_builder_node,
     artifact_maker_node,
 )
+from deep_research_engine.nodes.ingestion import _extract_pdf_text, _find_pdfs
 from deep_research_engine.workers import WorkerConfig, WorkerRegistry
 
 # Patch locations
@@ -62,6 +64,70 @@ class TestIngestionNode:
         assert "ingested_items" in command.update
         # History should include ingestion
         assert "ingestion" in command.update["phase_history"]
+
+
+# =============================================================================
+# PDF EXTRACTION TESTS
+# =============================================================================
+
+class TestPdfExtraction:
+    """Tests for PDF text extraction in the ingestion pipeline."""
+
+    @pytest.mark.unit
+    def test_find_pdfs_finds_pdf_files(self, tmp_path):
+        """Test that _find_pdfs discovers PDF files recursively."""
+        # Create test PDFs
+        (tmp_path / "doc1.pdf").write_bytes(b"fake pdf")
+        (tmp_path / "doc2.PDF").write_bytes(b"fake pdf")
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        (subdir / "nested.pdf").write_bytes(b"fake pdf")
+        (tmp_path / "not_a_pdf.txt").write_text("text file")
+
+        pdfs = _find_pdfs(tmp_path)
+
+        assert len(pdfs) == 3
+        names = {p.name for p in pdfs}
+        assert "doc1.pdf" in names
+        assert "nested.pdf" in names
+
+    @pytest.mark.unit
+    def test_find_pdfs_empty_dir(self, tmp_path):
+        """Test _find_pdfs returns empty list when no PDFs exist."""
+        pdfs = _find_pdfs(tmp_path)
+        assert pdfs == []
+
+    @pytest.mark.unit
+    def test_extract_pdf_text_real_pdf(self, tmp_path):
+        """Test extraction from a real PDF created with pymupdf."""
+        try:
+            import pymupdf
+        except ImportError:
+            pytest.skip("pymupdf not installed")
+
+        # Create a real PDF
+        doc = pymupdf.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "Hello from PDF extraction test.\nSecond line of text.")
+        pdf_path = tmp_path / "test.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        text = _extract_pdf_text(pdf_path)
+
+        assert "test" in text  # filename stem in header
+        assert "Hello from PDF extraction test" in text
+        assert "Page 1" in text
+
+    @pytest.mark.unit
+    def test_extract_pdf_text_no_pymupdf(self, tmp_path, monkeypatch):
+        """Test graceful degradation when pymupdf is not installed."""
+        import deep_research_engine.nodes.ingestion as ingest_mod
+        monkeypatch.setattr(ingest_mod, "pymupdf", None)
+
+        text = _extract_pdf_text(tmp_path / "nonexistent.pdf")
+
+        assert "pymupdf not installed" in text
 
 
 # =============================================================================
