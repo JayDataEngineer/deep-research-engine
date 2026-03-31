@@ -36,6 +36,7 @@ COMPREFACE_API_KEY = os.environ.get("COMPREFACE_API_KEY", "")
 from ..prompts import PromptRegistry, get_prompt
 from . import IdentityMapping
 from .infra_client import InfraClient, InfraError, InfraUnreachable
+from .config import VISION_MODEL, DEFAULT_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -78,32 +79,40 @@ async def asr_transcribe(
         logger.error(f"Audio file not found: {audio_path}")
         return "" if not include_diarization else {"text": "", "segments": [], "speakers": 0}
 
-    try:
-        result = await asyncio.to_thread(
-            _get_infra().transcribe,
-            audio=audio_path,
-            diarize=include_diarization,
-            language=language,
-            response_format="verbose_json" if include_diarization else "json",
-        )
+    infra = _get_infra()
 
-        if include_diarization:
-            return _parse_vibevoice_response(result)
+    # Try models in order: best quality first, fallback to lighter models
+    models_to_try = ["vibevoice-asr", "qwen", "whisper-cpu"]
 
-        text = result.get("text", "")
-        logger.info(f"Transcription complete: {len(text)} chars")
-        return text
+    for model in models_to_try:
+        try:
+            logger.info(f"Attempting ASR with model: {model}")
+            result = await asyncio.to_thread(
+                infra.transcribe,
+                audio=audio_path,
+                model=model,
+                diarize=include_diarization,
+                language=language,
+            )
 
-    except InfraError as e:
-        logger.error(f"ASR failed for {audio_path}: {e}")
-        if include_diarization:
-            return {"text": f"[ASR failed: {e}]", "segments": [], "speakers": 0, "error": str(e)}
-        return f"[ASR failed for {audio_path.name}: {e}]"
-    except Exception as e:
-        logger.error(f"ASR failed for {audio_path}: {e}")
-        if include_diarization:
-            return {"text": f"[ASR failed: {e}]", "segments": [], "speakers": 0, "error": str(e)}
-        return f"[ASR failed for {audio_path.name}: {e}]"
+            if include_diarization:
+                return _parse_vibevoice_response(result)
+
+            text = result.get("text", "")
+            logger.info(f"Transcription complete with {model}: {len(text)} chars")
+            return text
+
+        except InfraError as e:
+            logger.warning(f"ASR model {model} failed: {e}")
+            if model == models_to_try[-1]:
+                if include_diarization:
+                    return {"text": f"[ASR failed: {e}]", "segments": [], "speakers": 0, "error": str(e)}
+                return f"[ASR failed for {audio_path.name}: {e}]"
+            continue
+
+    if include_diarization:
+        return {"text": "", "segments": [], "speakers": 0}
+    return ""
 
 
 def _parse_vibevoice_response(result: dict) -> Dict[str, Any]:
@@ -182,6 +191,7 @@ async def vlm_analyze(
         response = await asyncio.to_thread(
             _get_infra().chat,
             messages=[{"role": "user", "content": content}],
+            model=VISION_MODEL,
             max_tokens=1000,
         )
 
@@ -307,6 +317,7 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
         response = await asyncio.to_thread(
             _get_infra().chat,
             messages=[{"role": "user", "content": content}],
+            model=VISION_MODEL,
             max_tokens=1000,
         )
 
@@ -499,6 +510,7 @@ async def batch_vlm_video_analysis(
             response = await asyncio.to_thread(
                 _get_infra().chat,
                 messages=[{"role": "user", "content": content}],
+                model=VISION_MODEL,
                 temperature=0.0,
                 max_tokens=2000,
             )
@@ -531,6 +543,7 @@ async def batch_vlm_video_analysis(
         response = await asyncio.to_thread(
             _get_infra().chat,
             messages=[{"role": "user", "content": synth_prompt}],
+            model=DEFAULT_MODEL,
             temperature=0.3,
         )
         return _extract_chat_text(response)
@@ -808,6 +821,7 @@ async def resolve_identities(
                 {"role": "system", "content": "You are a master identity resolution researcher."},
                 {"role": "user", "content": research_prompt},
             ],
+            model=DEFAULT_MODEL,
             temperature=0.0,
         )
         research_report = _extract_chat_text(research_response)
@@ -817,6 +831,7 @@ async def resolve_identities(
         format_response = await asyncio.to_thread(
             _get_infra().chat,
             messages=[{"role": "user", "content": format_prompt}],
+            model=DEFAULT_MODEL,
             temperature=0.0,
             response_format={
                 "type": "json_schema",

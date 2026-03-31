@@ -119,10 +119,31 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
 
     # 4. Invoke the King
     logger.info(f"Invoking King Drafter with {len(subagents)} subagents...")
-    
-    # We use a detailed user message to start the process
+
+    # Build user message from ingestion output or original query
     user_query = state.get('input_data', {}).get('query', 'Start the research process.')
-    result = await king.ainvoke({"messages": [("user", f"Execute the research plan for: {user_query}")]})
+
+    # Check for ingestion output (big_text_dump from telegram/pipeline)
+    big_dump_path = state.get("context", {}).get("big_text_dump")
+    if big_dump_path:
+        from pathlib import Path
+        dump_file = Path(big_dump_path)
+        if dump_file.exists():
+            dump_content = dump_file.read_text()
+            logger.info(f"Loaded ingestion output: {len(dump_content)} chars from {dump_file.name}")
+            user_message = (
+                f"Execute the research plan for: {user_query}\n\n"
+                f"## INGESTION DATA (from pipeline)\n\n"
+                f"{dump_content[:80000]}\n\n"
+                f"Use the above data to produce your analysis."
+            )
+        else:
+            logger.warning(f"Ingestion dump file not found: {big_dump_path}")
+            user_message = f"Execute the research plan for: {user_query}"
+    else:
+        user_message = f"Execute the research plan for: {user_query}"
+
+    result = await king.ainvoke({"messages": [("user", user_message)]})
     
     # Extract the final response from the King
     final_message = result["messages"][-1].content

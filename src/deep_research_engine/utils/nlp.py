@@ -1,60 +1,94 @@
 """NLP utilities for entity extraction and text processing."""
 
-import os
+import asyncio
+import json
+import re
 from typing import Any, Dict, List
+
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
-# LiteLLM
-LITELLM_BASE_URL = os.environ.get("LITELLM_BASE_URL", "http://localhost:4000/v1")
-LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY", "fake-key")
-LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+from ..shared.infra_client import InfraClient, InfraError
+from ..shared.config import DEFAULT_MODEL
+
+
+EXTRACTION_PROMPT = """Extract all named entities from the following text.
+
+Return a JSON object with exactly these fields:
+- "people": list of person names mentioned
+- "topics": list of topics, subjects, or themes
+- "locations": list of locations mentioned
+- "dates": list of dates or time references
+
+Text:
+{content}
+
+Respond with ONLY the JSON object, no other text."""
 
 
 class ExtractionResult(BaseModel):
-    """Result of entity extraction."""
-    people: List[str] = Field(
-        default_factory=list,
-        description="Names of people mentioned or detected"
-    )
+    people: List[str] = Field(default_factory=list, description="Names of people mentioned or detected")
     topics: List[str] = Field(
         default_factory=list,
-        description="Topics, subjects, or themes identified"
+        description="Topics, subjects, or themes identified",
     )
     locations: List[str] = Field(
         default_factory=list,
-        description="Locations mentioned"
+        description="Locations mentioned",
     )
     dates: List[str] = Field(
         default_factory=list,
-        description="Dates or time references"
+        description="Dates or time references",
     )
 
 
-EXTRACTION_PROMPT = """Extract entities from the following content.
+# InfraClient singleton
+_infra: InfraClient | None = None
 
-Content:
-{content}
 
-Extract:
-1. People: Names of individuals mentioned (first names, full names, nicknames)
-2. Topics: Main subjects, themes, or topics discussed
-3. Locations: Places mentioned (cities, countries, venues)
-4. Dates: Time references (dates, days, months, years)
+def _get_infra() -> InfraClient:
+    global _infra
+    if _infra is None:
+        _infra = InfraClient()
+    return _infra
 
-Be thorough but only include clearly identifiable entities."""
+
+def _parse_json_response(text: str) -> Dict[str, Any]:
+    """Try to extract JSON from LLM response text."""
+    # Direct parse
+    try:
+        result = json.loads(text)
+        validated = ExtractionResult(**result)
+        return validated.model_dump()
+    except (json.JSONDecodeError, Exception):
+        pass
+
+    # Try extracting from markdown code blocks
+    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if json_match:
+        try:
+            result = json.loads(json_match.group(1))
+            validated = ExtractionResult(**result)
+            return validated.model_dump()
+        except (json.JSONDecodeError, Exception):
+            pass
+
+    # Try finding first { ... } block
+    brace_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
+    if brace_match:
+        try:
+            result = json.loads(brace_match.group(0))
+            validated = ExtractionResult(**result)
+            return validated.model_dump()
+        except (json.JSONDecodeError, Exception):
+            pass
+
+    logger.warning("Could not parse entity extraction response as JSON")
+    return {"people": [], "topics": [], "locations": [], "dates": []}
 
 
 async def extract_entities(content: str) -> Dict[str, Any]:
-    """Extract people, topics, locations, and dates from content.
-
-    Args:
-        content: Text content to analyze (message, transcription, or description)
-
-    Returns:
-        Dictionary with people, topics, locations, and dates lists
-    """
+    """Extract named entities from text content using LLM via InfraClient."""
     if not content or len(content.strip()) < 10:
         return {
             "people": [],
@@ -63,26 +97,20 @@ async def extract_entities(content: str) -> Dict[str, Any]:
             "dates": [],
         }
 
-    logger.debug(f"Extracting entities from {len(content)} chars")
-
     try:
-        llm = ChatOpenAI(
-            model=LLM_MODEL,
-            base_url=LITELLM_BASE_URL,
-            api_key=LITELLM_API_KEY,
+        logger.debug(f"Extracting entities from {len(content)} chars")
+
+        prompt = EXTRACTION_PROMPT.format(content=content[:8000])
+        response = await asyncio.to_thread(
+            _get_infra().chat,
+            messages=[{"role": "user", "content": prompt}],
+            model=DEFAULT_MODEL,
             temperature=0.1,
         )
 
-        structured_llm = llm.with_structured_output(ExtractionResult)
-
-        prompt = EXTRACTION_PROMPT.format(content=content)
-        result = await structured_llm.ainvoke(prompt)
-
-        logger.info(
-            f"Extraction complete: {len(result.people)} people, {len(result.topics)} topics"
-        )
-
-        return result.model_dump()
+        # Extract text from response
+        text = response["choices"][0]["message"]["content"]
+        return _parse_json_response(text)
 
     except Exception as e:
         logger.error(f"Entity extraction failed: {e}")

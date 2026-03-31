@@ -13,12 +13,18 @@ import os
 # Core LiteLLM Configuration
 # =============================================================================
 
-LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", "http://litellm.local:18880/v1")
-LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", "sk-litellm-e2e-test-master-key")
+# Primary: Model Orchestrator (direct, manages GPU lifecycle)
+ORCHESTRATOR_BASE_URL = os.getenv("ORCHESTRATOR_BASE_URL", "http://localhost:18880/v1")
+ORCHESTRATOR_API_KEY = os.getenv("ORCHESTRATOR_API_KEY", "not-needed")
+
+# Fallback: LiteLLM proxy (for cloud models, Langfuse tracing)
+LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", ORCHESTRATOR_BASE_URL)
+LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", ORCHESTRATOR_API_KEY)
 
 # Default models
-DEFAULT_MODEL = os.getenv("MAIN_MODEL", "qwen-35-35b-a3b-vision")
-TOOL_MODEL = os.getenv("TOOL_MODEL", "qwen-35-35b-a3b-vision-fast")
+DEFAULT_MODEL = os.getenv("MAIN_MODEL", "qwen-cloud")
+TOOL_MODEL = os.getenv("TOOL_MODEL", "qwen-cloud")
+VISION_MODEL = os.getenv("VISION_MODEL", "qwen-cloud-vision")
 
 
 # =============================================================================
@@ -88,7 +94,10 @@ __all__ = [
     "LITELLM_API_KEY",
     "LITELLM_BASE_URL",
     "MODEL_MAPPING",
+    "ORCHESTRATOR_BASE_URL",
+    "ORCHESTRATOR_API_KEY",
     "THINKING_TO_FAST",
     "TOOL_MODEL",
+    "VISION_MODEL",
     "map_model_name",
 ]

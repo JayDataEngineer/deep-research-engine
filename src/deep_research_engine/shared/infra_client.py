@@ -55,6 +55,10 @@ _REQUEST_TIMEOUT = 600  # max seconds for inference calls
 # Valid slot types and their models (from orchestrator config)
 SLOT_TYPES = ("llm", "asr", "tts", "image-gen")
 
+# LiteLLM cloud routing (cloud models route through litellm.local, not orchestrator)
+_LITELLM_HOST = "litellm.local"
+_LITELLM_KEY = os.environ.get("LITELLM_PROXY_KEY", "sk-litellm-e2e-test-master-key")
+
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
@@ -109,7 +113,7 @@ class InfraClient:
 
         # If going through Traefik on localhost, set Host header on every request
         if "localhost" in self._base or "127.0.0.1" in self._base:
-            self._session.headers.update({"Host": "orchestrator.local"})
+            self._session.headers.update({"Host": "api.orchestrator.local"})
 
         logger.info("InfraClient connected to %s", self._base)
 
@@ -140,7 +144,7 @@ class InfraClient:
             try:
                 resp = requests.get(
                     f"http://localhost:{port}/health",
-                    headers={"Host": "orchestrator.local"},
+                    headers={"Host": "api.orchestrator.local"},
                     timeout=_DISCOVER_TIMEOUT,
                 )
                 if resp.ok:
@@ -313,19 +317,30 @@ class InfraClient:
         Returns:
             OpenAI-format chat completion response.
         """
-        # Load model if it's a GPU model (skip for CPU/fallback models)
-        if model and not model.endswith("-cpu"):
+        # Load model if it's a GPU model (skip for CPU/cloud models)
+        is_cloud = model and "-cloud" in model
+        if model and not model.endswith("-cpu") and not is_cloud:
             self._ensure_service("llm", model)
 
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
         payload = {"model": model, "messages": messages, "stream": stream, **kwargs}
-        resp = self._post(
-            "/v1/chat/completions",
-            json=payload,
-            timeout=_REQUEST_TIMEOUT,
-        )
+
+        # Cloud models route through LiteLLM proxy, local models through orchestrator
+        if is_cloud:
+            resp = self._session.post(
+                f"{self._base}/v1/chat/completions",
+                json=payload,
+                timeout=_REQUEST_TIMEOUT,
+                headers={"Host": _LITELLM_HOST, "Authorization": f"Bearer {_LITELLM_KEY}"},
+            )
+        else:
+            resp = self._post(
+                "/v1/chat/completions",
+                json=payload,
+                timeout=_REQUEST_TIMEOUT,
+            )
         self._raise_for_status(resp, "chat")
         return resp.json()
 

@@ -8,7 +8,6 @@ All calls are routed through LiteLLM proxy for:
 
 Usage:
     from deep_research_engine.shared import get_chat_llm
-
     llm = await get_chat_llm(model="qwen-35-27", enable_thinking=True)
     response = await llm.ainvoke([{"role": "user", "content": "Hello"}])
 
@@ -89,40 +88,16 @@ class ChatLLM:
         )
 
     async def ainvoke(self, messages: list[dict], **kwargs):
-        """Invoke chat completion (non-streaming).
-
-        Args:
-            messages: Chat messages in dict format
-            **kwargs: Additional arguments
-
-        Returns:
-            LangChain AIMessage
-        """
+        """Invoke chat completion (non-streaming)."""
         return await self._llm.ainvoke(messages, **kwargs)
 
     async def astream(self, messages: list[dict], **kwargs):
-        """Stream chat completion.
-
-        Args:
-            messages: Chat messages in dict format
-            **kwargs: Additional arguments
-
-        Yields:
-            LangChain AIMessageChunk
-        """
+        """Stream chat completion."""
         async for chunk in self._llm.astream(messages, **kwargs):
             yield chunk
 
     def bind_tools(self, tools: list, **kwargs):
-        """Bind tools to this LLM.
-
-        Args:
-            tools: List of LangChain BaseTool objects or tool schemas
-            **kwargs: Additional arguments (e.g., tool_choice)
-
-        Returns:
-            Runnable with tools bound
-        """
+        """Bind tools to this LLM."""
         return self._llm.bind_tools(tools, **kwargs)
 
     def with_structured_output(self, pydantic_model, **kwargs):
@@ -130,12 +105,6 @@ class ChatLLM:
 
         Uses `method="json_schema"` and `strict=True` to force
         llama.cpp (via LiteLLM) to use GBNF grammar constraints.
-
-        Args:
-            pydantic_model: Pydantic model defining the output schema
-
-        Returns:
-            Runnable that returns structured Pydantic model instances
         """
         return self._llm.with_structured_output(
             pydantic_model, method="json_schema", strict=True, **kwargs
@@ -177,7 +146,7 @@ async def get_chat_llm(
         llm = await get_chat_llm(
             model="zai-glm-4-7",
             session_id="chat-123",
-            tags=["identity-resolution"]
+            tags=["identity-resolution"],
         )
 
         # With thinking disabled (faster)
@@ -199,23 +168,12 @@ async def get_chat_llm(
 
 
 def _resolve_model(model: str | None, config_data: dict | None = None) -> str:
-    """Resolve model name from config or fallback to default.
-
-    Args:
-        model: Explicit model name, or None to use config/default
-        config_data: Optional workflow config dict with llm.models section
-
-    Returns:
-        LiteLLM-compatible model name
-    """
     if model:
         return map_model_name(model)
-
     if config_data:
         config_models = config_data.get("llm", {}).get("models", {})
         configured = config_models.get("main", DEFAULT_MODEL)
         return map_model_name(configured)
-
     return map_model_name(DEFAULT_MODEL)
 
 
@@ -228,18 +186,11 @@ def get_langchain_llm(
 ) -> ChatOpenAI:
     """Get a raw LangChain ChatOpenAI instance.
 
+    Routes through the model orchestrator by default (manages GPU lifecycle).
+    Falls back to LiteLLM if ORCHESTRATOR_BASE_URL is overridden.
+
     Use this when you need the actual ChatOpenAI (e.g., for deepagents,
     with_structured_output, bind_tools). For general chat, prefer get_chat_llm().
-
-    Args:
-        model: Model name. Falls back to config_data.llm.models.main, then DEFAULT_MODEL.
-        temperature: Temperature for generation
-        enable_thinking: Enable chain-of-thought reasoning (maps to fast model if False)
-        config_data: Optional workflow config dict to resolve model from
-        streaming: Whether to enable streaming
-
-    Returns:
-        ChatOpenAI instance pointing to LiteLLM
     """
     resolved = _resolve_model(model, config_data)
 
@@ -248,12 +199,20 @@ def get_langchain_llm(
         from .config import THINKING_TO_FAST
         resolved = THINKING_TO_FAST.get(resolved, resolved)
 
+    # Determine base URL and headers for the orchestrator
+    base_url = LITELLM_BASE_URL
+    default_headers = {}
+    if "localhost" in base_url or "127.0.0.1" in base_url:
+        # Route through Traefik to model-orchestrator
+        default_headers["Host"] = "api.orchestrator.local"
+
     return ChatOpenAI(
         model=resolved,
         api_key=LITELLM_API_KEY,
-        base_url=LITELLM_BASE_URL,
+        base_url=base_url,
         temperature=temperature,
         streaming=streaming,
+        default_headers=default_headers or None,
     )
 
 
