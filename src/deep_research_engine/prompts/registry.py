@@ -40,6 +40,10 @@ class PromptRegistry:
     IDENTITY_FORMAT = "identity-format"
     """Formats identity research into structured mapping."""
 
+    # Content Clustering
+    CONTENT_CLUSTER = "content-cluster"
+    """Groups content items into thematic clusters."""
+
     # All prompts
     ALL = [
         RESEARCH_PLANNER,
@@ -49,6 +53,7 @@ class PromptRegistry:
         STRUCTURED_JSON,
         IDENTITY_RESEARCH,
         IDENTITY_FORMAT,
+        CONTENT_CLUSTER,
     ]
 
     @classmethod

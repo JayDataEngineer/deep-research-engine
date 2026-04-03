@@ -40,6 +40,7 @@ from ..shared.multimodal import (
     vlm_analyze,
 )
 from ..state import EngineState
+from ..storage.backends.neo4j import Neo4jStorage
 from ..utils.logging import get_loguru_logger
 from ..utils.nlp import extract_entities
 from ..utils.nodes import node_context
@@ -318,7 +319,9 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             ][:100]
 
             resolved_identity_map = await resolve_identities(
-                asr_all_segments, visual_events, text_context
+                asr_all_segments, visual_events, text_context,
+                neo4j_storage=await _try_init_neo4j(config_data),
+                namespace=config_data.get("storage", {}).get("neo4j", {}).get("namespace", "default"),
             )
 
             # Batch VLM Video Analysis (Enhancement #4)
@@ -799,3 +802,21 @@ def _combine_ingested_files(files: list[Path], output_path: Path):
             content = f.read_text(encoding="utf-8")
             out.write(f"\n\n--- {f.name} ---\n\n")
             out.write(content)
+
+
+async def _try_init_neo4j(config_data: dict[str, Any]) -> Neo4jStorage | None:
+    """Try to create and initialize Neo4jStorage from config.
+
+    Returns None if Neo4j is disabled or initialization fails.
+    Caller is responsible for calling .cleanup() when done.
+    """
+    neo4j_config = config_data.get("storage", {}).get("neo4j", {})
+    if not neo4j_config.get("enabled"):
+        return None
+    try:
+        storage = Neo4jStorage(neo4j_config)
+        await storage.initialize()
+        return storage
+    except Exception as e:
+        logger.warning(f"Neo4j init failed for identity resolution (non-fatal): {e}")
+        return None

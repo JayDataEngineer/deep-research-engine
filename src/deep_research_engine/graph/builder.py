@@ -3,7 +3,9 @@
 Constructs the workflow graph with proper routing between phases:
     START → ingestion → drafter → critic ⇄ drafter (retry)
                               ↓
-                        neo4j_builder → artifact_maker → END
+                  content_clusterer ←── NEW
+                         ↓
+                  neo4j_builder → artifact_maker → END
 """
 
 from typing import Any, Literal
@@ -32,17 +34,19 @@ def build_workflow_graph(config: WorkflowConfig) -> StateGraph:
 
     # Import nodes (lazy to avoid circular imports)
     from ..nodes import (
+        artifact_maker_node,
+        content_clusterer_node,
         critic_node,
         drafter_node,
         ingestion_node,
         neo4j_builder_node,
-        artifact_maker_node,
     )
 
     # Add nodes
     builder.add_node("ingestion", ingestion_node)
     builder.add_node("drafter", drafter_node)
     builder.add_node("critic", critic_node)
+    builder.add_node("content_clusterer", content_clusterer_node)
     builder.add_node("neo4j_builder", neo4j_builder_node)
     builder.add_node("artifact_maker", artifact_maker_node)
 
@@ -62,7 +66,7 @@ def build_workflow_graph(config: WorkflowConfig) -> StateGraph:
             return END
         return "critic"
 
-    def route_critic(state: EngineState) -> Literal["drafter", "neo4j_builder", END]:
+    def route_critic(state: EngineState) -> Literal["drafter", "content_clusterer", END]:
         """Route after critic phase - supports retry loop."""
         if state.get("fatal_error"):
             return END
@@ -77,9 +81,15 @@ def build_workflow_graph(config: WorkflowConfig) -> StateGraph:
 
         # Check if passed or max retries reached
         if state.get("critic_passed", False) or iteration >= max_retries:
-            return "neo4j_builder"
+            return "content_clusterer"
 
         return "drafter"
+
+    def route_content_clusterer(state: EngineState) -> Literal["neo4j_builder", END]:
+        """Route after content clusterer phase."""
+        if state.get("fatal_error"):
+            return END
+        return "neo4j_builder"
 
     def route_neo4j_builder(state: EngineState) -> Literal["artifact_maker", END]:
         """Route after neo4j builder phase."""
@@ -96,7 +106,8 @@ def build_workflow_graph(config: WorkflowConfig) -> StateGraph:
     # Add conditional edges
     builder.add_conditional_edges("ingestion", route_ingestion, ["drafter", END])
     builder.add_conditional_edges("drafter", route_drafter, ["critic", END])
-    builder.add_conditional_edges("critic", route_critic, ["drafter", "neo4j_builder", END])
+    builder.add_conditional_edges("critic", route_critic, ["drafter", "content_clusterer", END])
+    builder.add_conditional_edges("content_clusterer", route_content_clusterer, ["neo4j_builder", END])
     builder.add_conditional_edges("neo4j_builder", route_neo4j_builder, ["artifact_maker", END])
     builder.add_conditional_edges("artifact_maker", route_artifact_maker, [END])
 

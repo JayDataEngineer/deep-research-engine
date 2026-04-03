@@ -4,20 +4,21 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+from langgraph.types import Command
+
 from .config import WorkflowConfig, get_phase_config
 from .graph import compile_workflow_graph, get_checkpointer, get_store
 from .nodes import (
+    artifact_maker_node,
+    content_clusterer_node,
     critic_node,
     drafter_node,
     ingestion_node,
     neo4j_builder_node,
-    artifact_maker_node,
 )
 from .state import EngineState, create_initial_state
 from .storage import StorageManager
-from .utils.logging import get_loguru_logger, log_phase_complete, log_phase_start, setup_logging
-
-from langgraph.types import Command
+from .utils.logging import get_loguru_logger, setup_logging
 
 logger = get_loguru_logger("engine")
 
@@ -166,7 +167,7 @@ async def _run_legacy_loop(
     logger = get_loguru_logger("engine.legacy")
 
     # Execute phases sequentially
-    phases = ["ingestion", "drafter", "critic", "neo4j_builder", "artifact_maker"]
+    phases = ["ingestion", "drafter", "critic", "content_clusterer", "neo4j_builder", "artifact_maker"]
 
     # Initial state phase
     state["current_phase"] = "ingestion"
@@ -181,6 +182,7 @@ async def _run_legacy_loop(
                 "ingestion": ingestion_node,
                 "drafter": drafter_node,
                 "critic": critic_node,
+                "content_clusterer": content_clusterer_node,
                 "neo4j_builder": neo4j_builder_node,
                 "artifact_maker": artifact_maker_node,
             }.get(phase)

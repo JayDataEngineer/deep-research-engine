@@ -76,6 +76,12 @@ phases:
         include_speaker_relationships: true
         include_temporal_edges: true
 
+  # Phase 4.5: Content Clustering (Thematic Grouping)
+  - name: content_clusterer
+    node: content_clusterer_node
+    config:
+      enabled: true
+
   # Phase 5: Synthesizer (Final Report)
   - name: synthesizer
     node: synthesizer_node

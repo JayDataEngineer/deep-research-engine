@@ -14,15 +14,15 @@ Centralizes logic for:
 import asyncio
 import base64
 import gc
-import httpx
 import mimetypes
 import os
 import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
+import httpx
 import numpy as np
 import pytz
 import torch
@@ -35,9 +35,8 @@ COMPREFACE_API_KEY = os.environ.get("COMPREFACE_API_KEY", "")
 
 from ..prompts import PromptRegistry, get_prompt
 from . import IdentityMapping
+from .config import DEFAULT_MODEL, VISION_MODEL
 from .infra_client import InfraClient, InfraError, InfraUnreachable
-from .config import VISION_MODEL, DEFAULT_MODEL
-
 
 # ---------------------------------------------------------------------------
 # InfraClient singleton
@@ -66,9 +65,9 @@ def _extract_chat_text(response: dict) -> str:
 
 async def asr_transcribe(
     audio_path: Path,
-    language: Optional[str] = None,
+    language: str | None = None,
     include_diarization: bool = True,
-) -> Union[str, Dict[str, Any]]:
+) -> Union[str, dict[str, Any]]:
     """Transcribe audio file using VibeVoice ASR via InfraClient.
 
     Auto-loads the ASR model and handles GPU management.
@@ -81,8 +80,8 @@ async def asr_transcribe(
 
     infra = _get_infra()
 
-    # Try models in order: best quality first, fallback to lighter models
-    models_to_try = ["vibevoice-asr", "qwen", "whisper-cpu"]
+    # VibeVoice ASR only - provides native diarization
+    models_to_try = ["vibevoice-asr"]
 
     for model in models_to_try:
         try:
@@ -115,11 +114,11 @@ async def asr_transcribe(
     return ""
 
 
-def _parse_vibevoice_response(result: dict) -> Dict[str, Any]:
+def _parse_vibevoice_response(result: dict) -> dict[str, Any]:
     """Parse VibeVoice ASR response dict into structured format with diarization."""
     full_text = result.get("text", "")
     segments_raw = result.get("segments", [])
-    segments: List[Dict[str, Any]] = []
+    segments: list[dict[str, Any]] = []
     speakers_set = set()
 
     for seg in segments_raw:
@@ -156,7 +155,7 @@ def _parse_vibevoice_response(result: dict) -> Dict[str, Any]:
 
 
 async def vlm_analyze(
-    image_paths: List[Path] | Path,
+    image_paths: list[Path] | Path,
     prompt: str = "Describe this image in detail.",
 ) -> str:
     """Analyze one or more images using VLM via InfraClient."""
@@ -204,13 +203,13 @@ async def vlm_analyze(
     except InfraError as e:
         error_msg = str(e)
         if "image input is not supported" in error_msg or "mmproj" in error_msg:
-            raise RuntimeError(f"VLM model does not support image input") from e
+            raise RuntimeError("VLM model does not support image input") from e
         logger.error(f"VLM failed: {e}")
         return f"[Image analysis failed: {e}]"
     except Exception as e:
         error_msg = str(e)
         if "image input is not supported" in error_msg or "mmproj" in error_msg:
-            raise RuntimeError(f"VLM model does not support image input") from e
+            raise RuntimeError("VLM model does not support image input") from e
         logger.error(f"VLM failed: {e}")
         return f"[Image analysis failed: {e}]"
 
@@ -220,7 +219,7 @@ async def vlm_analyze(
 # =============================================================================
 
 
-async def face_recognize(image_path: Path, min_similarity: float = 0.8) -> List[Dict[str, Any]]:
+async def face_recognize(image_path: Path, min_similarity: float = 0.8) -> list[dict[str, Any]]:
     """Recognize faces in image using CompreFace API."""
     if not COMPREFACE_API_KEY:
         logger.debug("CompreFace API key not set, skipping face recognition")
@@ -793,8 +792,15 @@ async def resolve_identities(
     asr_segments: list[dict[str, Any]],
     visual_events: list[dict[str, Any]],
     text_messages: list[dict[str, Any]],
+    neo4j_storage: Any | None = None,
+    namespace: str = "default",
 ) -> dict[str, str]:
-    """Use a two-pass Research-then-Format approach to resolve identities."""
+    """Use a two-pass Research-then-Format approach to resolve identities.
+
+    When neo4j_storage is provided and initialized, queries existing Person
+    nodes from the graph so the LLM can match new Speaker/Visual IDs to
+    already-known names.
+    """
     logger.info("Resolving identities using Research-then-Format pattern...")
     try:
         research_prompt_template = await get_prompt(PromptRegistry.IDENTITY_RESEARCH)
@@ -810,9 +816,41 @@ async def resolve_identities(
             [f"[{t['timestamp']}] {t['sender']}: {t['text']}" for t in text_messages[:50]]
         )
 
-        research_prompt = research_prompt_template.compile(
-            asr_summary=asr_summary, visual_summary=visual_summary, text_summary=text_summary
-        )
+        # Query existing identities from Neo4j if available
+        existing_persons_text = ""
+        if neo4j_storage and getattr(neo4j_storage, "initialized", False):
+            try:
+                rows = await neo4j_storage.execute_cypher(
+                    "MATCH (p:Person {namespace: $namespace}) "
+                    "OPTIONAL MATCH (p)-[r]->(m) "
+                    "RETURN p.name as name, type(r) as rel_type, m.name as related_to "
+                    "LIMIT 50",
+                    {"namespace": namespace},
+                )
+                if rows:
+                    person_lines = []
+                    for row in rows:
+                        line = f"- {row['name']}"
+                        if row.get("rel_type") and row.get("related_to"):
+                            line += f" --[{row['rel_type']}]--> {row['related_to']}"
+                        person_lines.append(line)
+                    existing_persons_text = (
+                        "KNOWN IDENTITIES (already in the graph — match new IDs to these names where possible):\n"
+                        + "\n".join(person_lines)
+                    )
+                    logger.info(f"Injected {len(rows)} existing persons from Neo4j into identity research")
+            except Exception as e:
+                logger.warning(f"Failed to query existing persons from Neo4j: {e}")
+
+        compile_kwargs: dict[str, str] = {
+            "asr_summary": asr_summary,
+            "visual_summary": visual_summary,
+            "text_summary": text_summary,
+        }
+        if existing_persons_text:
+            compile_kwargs["existing_persons"] = existing_persons_text
+
+        research_prompt = research_prompt_template.compile(**compile_kwargs)
 
         # Pass 1: Research
         research_response = await asyncio.to_thread(
@@ -858,7 +896,7 @@ async def resolve_identities(
 
 async def extract_audio_from_video(
     video_path: Path,
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
     sample_rate: int = 16000,
     channels: int = 1
 ) -> Path:
@@ -925,7 +963,7 @@ async def extract_audio_from_video(
     
     # Verify output
     if not output_path.exists():
-        raise RuntimeError(f"Audio extraction failed: output file not created")
+        raise RuntimeError("Audio extraction failed: output file not created")
     
     file_size_kb = output_path.stat().st_size / 1024
     logger.info(f"Audio extracted: {output_path} ({file_size_kb:.1f} KB)")

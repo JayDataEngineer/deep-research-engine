@@ -59,6 +59,14 @@ async def neo4j_builder_node(state: EngineState) -> dict[str, Any]:
             stats["nodes"] += s_result.get("nodes", 0)
             stats["rels"] += s_result.get("rels", 0)
 
+        # 3.5. Write Topic nodes from content clusters (if available)
+        content_clusters = state.get("context", {}).get("content_clusters", [])
+        if content_clusters:
+            logger.info(f"Writing {len(content_clusters)} content clusters as Topic nodes...")
+            c_result = await _write_content_clusters(storage, content_clusters, namespace)
+            stats["nodes"] += c_result.get("nodes", 0)
+            stats["rels"] += c_result.get("rels", 0)
+
         # 4. Extract semantic triplets via LLM (dynamic schema)
         artifact_output = ""
         for result in state.get("worker_results", []):
@@ -379,6 +387,98 @@ async def _write_triplets(
                 "rel_type": predicate,
             }
         )
+
+    result = await storage.bulk_write(nodes, relationships, namespace)
+    meta = result.metadata or {}
+    return {"nodes": meta.get("nodes_written", 0), "rels": meta.get("rels_written", 0)}
+
+
+async def _write_content_clusters(
+    storage: Neo4jStorage,
+    clusters: list[dict[str, Any]],
+    namespace: str,
+) -> dict[str, int]:
+    """Write Topic nodes from content clusters and link to key entities.
+
+    For each cluster:
+    - Creates a Topic node with name + summary
+    - Creates BELONGS_TO relationships from key_entities (Person nodes) to Topic
+    - Creates RELATED_TOPIC relationships between co-occurring topics
+    """
+    nodes: list[dict[str, Any]] = []
+    relationships: list[dict[str, Any]] = []
+
+    for cluster in clusters:
+        name = cluster.get("name", "").strip()
+        if not name:
+            continue
+
+        summary = cluster.get("summary", "")
+        labels = cluster.get("suggested_labels", [])
+        key_entities = cluster.get("key_entities", [])
+
+        # Topic node
+        nodes.append(
+            {
+                "labels": ["Topic"],
+                "properties": {
+                    "name": name,
+                    "summary": summary,
+                    "suggested_labels": ", ".join(labels) if isinstance(labels, list) else str(labels),
+                },
+                "merge_on": ["name"],
+            }
+        )
+
+        # BELONGS_TO from key entities to Topic
+        for entity_name in key_entities:
+            entity_name = str(entity_name).strip()
+            if not entity_name:
+                continue
+            # Ensure the entity Person node exists
+            nodes.append(
+                {
+                    "labels": ["Person"],
+                    "properties": {"name": entity_name},
+                    "merge_on": ["name"],
+                }
+            )
+            relationships.append(
+                {
+                    "source_labels": ["Person"],
+                    "source_match": {"name": entity_name},
+                    "target_labels": ["Topic"],
+                    "target_match": {"name": name},
+                    "rel_type": "BELONGS_TO",
+                }
+            )
+
+    # RELATED_TOPIC between co-occurring topics (share entities)
+    entity_to_topics: dict[str, list[str]] = {}
+    for cluster in clusters:
+        for entity in cluster.get("key_entities", []):
+            entity = str(entity).strip()
+            entity_to_topics.setdefault(entity, []).append(cluster.get("name", ""))
+
+    seen_pairs: set[frozenset[str]] = set()
+    for topics in entity_to_topics.values():
+        for i, t1 in enumerate(topics):
+            for t2 in topics[i + 1 :]:
+                pair = frozenset({t1, t2})
+                if pair not in seen_pairs and t1 != t2:
+                    seen_pairs.add(pair)
+                    relationships.append(
+                        {
+                            "source_labels": ["Topic"],
+                            "source_match": {"name": t1},
+                            "target_labels": ["Topic"],
+                            "target_match": {"name": t2},
+                            "rel_type": "RELATED_TOPIC",
+                        }
+                    )
+
+    if not nodes and not relationships:
+        return {"nodes": 0, "rels": 0}
 
     result = await storage.bulk_write(nodes, relationships, namespace)
     meta = result.metadata or {}
