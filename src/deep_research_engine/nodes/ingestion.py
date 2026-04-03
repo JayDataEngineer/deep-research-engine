@@ -27,7 +27,6 @@ from ..shared.multimodal import (
     extract_scene_frames,
     get_video_duration,
     normalize_timestamp,
-    purge_vram,
     resolve_identities,
     unify_speakers,
     unstitch_transcript,
@@ -37,6 +36,8 @@ from ..utils.logging import get_loguru_logger
 
 # Note: multimodal.py in utils might still be needed for direct asr_transcribe etc.
 from ..shared.multimodal import asr_transcribe, face_recognize, video_analyze, vlm_analyze
+from ..shared.multimodal import _get_infra
+from ..shared.config import VISION_MODEL, DEFAULT_MODEL
 from ..utils.nlp import extract_entities
 from ..utils.nodes import node_context
 
@@ -104,7 +105,13 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         pipeline_dir.mkdir(parents=True, exist_ok=True)
 
         # Phase 2: Batch Visual Processing
-        logger.info(f"Phase 2: Processing {len(photo_items)} photos and {len(video_items)} videos")
+        # Explicitly load LLM model once for all VLM/face operations
+        has_visual_work = photo_items or video_items
+        if has_visual_work:
+            logger.info(f"Phase 2: Loading LLM model ({VISION_MODEL}) for visual processing...")
+            infra = _get_infra()
+            infra.load("llm", VISION_MODEL, wait=True)
+            logger.info(f"LLM loaded. Processing {len(photo_items)} photos and {len(video_items)} videos")
         
         all_embeddings = []
         embedding_to_item = [] # Track which item each embedding belongs to
@@ -202,10 +209,19 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 f"Phase 3: Creating Mega-Files for {len(all_audio_items)} audio fragments "
                 f"({len(audio_items)} audio + {len(audio_fragments_for_megafile)} from video)"
             )
+
+            # Phase 3.5: Load vibevoice-asr (load() auto-unloads LLM first + waits for VRAM)
+            logger.info("Loading vibevoice-asr for Phase 4 (will auto-unload LLM)...")
+            infra = _get_infra()
+            infra.load("asr", "vibevoice-asr", wait=True)
+            logger.info("vibevoice-asr loaded and ready")
             audio_paths = []
-            
+
             for it in all_audio_items:
                 audio_path = Path(it["path"])
+                if not audio_path.is_absolute():
+                    # Voice items have relative paths like "voice_messages/foo.ogg"
+                    audio_path = input_dir / audio_path
                 if audio_path.exists():
                     audio_paths.append(audio_path)
 
@@ -218,7 +234,6 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 mega_file_path = Path(boundary_map["mega_file_path"])
                 
                 # Phase 4: Long-Form ASR
-                purge_vram() # Ensure GPU is ready for ASR
                 logger.info(f"Phase 4: Running VibeVoice ASR on {mega_file_path.name} (Batch {i+1}/{len(boundary_maps)})")
                 
                 asr_output = await asr_transcribe(
@@ -260,6 +275,10 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         resolved_identity_map = {}
         video_descriptions = {} # rel_path -> description
         if identity_map or audio_results or video_frames:
+            # Re-load LLM for identity resolution + VLM analysis
+            logger.info("Phase 6: Loading LLM for identity resolution (will auto-unload ASR)...")
+            infra = _get_infra()
+            infra.load("llm", DEFAULT_MODEL, wait=True)
             logger.info("Phase 6: Performing final identity resolution and batch VLM analysis...")
             
             # Prepare metadata for LLM resolution
@@ -559,6 +578,10 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
             data = json.load(f)
             messages = data.get("messages", [])
             for msg in messages:
+                # Noise filter: skip service messages (pin, group create, etc.)
+                if msg.get("type") == "service":
+                    continue
+
                 # Basic JSON mapping
                 timestamp = normalize_timestamp(msg.get("date", ""))
                 sender = msg.get("from", "Unknown")
@@ -568,7 +591,8 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
 
                 media_path = msg.get("file", "") or msg.get("photo", "")
                 item_type = msg.get("type", "message")
-                
+                forwarded = bool(msg.get("forwarded_from"))
+
                 # Refine type
                 if msg.get("media_type") == "voice_message":
                     item_type = "voice"
@@ -576,16 +600,23 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
                     item_type = "video"
                 elif msg.get("photo"):
                     item_type = "photo"
+                elif msg.get("sticker_emoji"):
+                    # Sticker-only with no text = noise
+                    if not text:
+                        continue
 
-                if text or media_path:
-                    items.append({
-                        "type": item_type,
-                        "path": media_path,
-                        "text": text,
-                        "timestamp": timestamp,
-                        "sender": sender,
-                        "msg_id": msg.get("id")
-                    })
+                # Noise filter: skip items with no content at all
+                if not text and not media_path:
+                    continue
+
+                items.append({
+                    "type": item_type,
+                    "path": media_path,
+                    "text": text,
+                    "timestamp": timestamp,
+                    "sender": sender,
+                    "forwarded": forwarded,
+                })
         return items
 
     # Fallback to HTML
@@ -599,12 +630,16 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
     message_divs = soup.find_all("div", class_="message")
 
     for div in message_divs:
+        # Skip service messages (date headers, group events, pin notifications)
+        if "service" in (div.get("class") or []):
+            continue
+
         # Extract metadata
         timestamp_raw = ""
         time_elem = div.find("div", class_="pull_right") or div.find("time")
         if time_elem:
             timestamp_raw = time_elem.get("title", "") or time_elem.text.strip()
-        
+
         # Phase 1: Temporal Normalization
         timestamp = normalize_timestamp(timestamp_raw)
 
@@ -620,35 +655,58 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
 
         media_path = None
         item_type = "message"
+        forwarded = False
 
-        # Check for media linkages
+        # Detect forwarded context
+        fwd_body = div.find("div", class_="forwarded")
+        if fwd_body:
+            forwarded = True
+
+        # Check for media linkages (multiple class patterns for forwarded items)
         photo_link = div.find("a", class_="photo_wrap")
         if photo_link:
             media_path = photo_link.get("href", "")
             item_type = "photo"
 
-        voice_elem = div.find("div", class_="voice")
+        # Voice: check both direct voice div and forwarded media_voice_message
+        voice_elem = div.find("div", class_="voice") or div.find(
+            "div", class_="media_voice_message"
+        )
         if voice_elem:
             audio_src = voice_elem.find("source")
             if audio_src:
                 media_path = audio_src.get("src", "")
             item_type = "voice"
 
-        video_elem = div.find("div", class_="video")
+        # Video: check both direct video div and forwarded video_file_wrap
+        video_elem = div.find("div", class_="video") or div.find(
+            "div", class_="video_file_wrap"
+        )
         if video_elem:
             video_src = video_elem.find("source")
             if video_src:
                 media_path = video_src.get("src", "")
             item_type = "video"
 
-        if text or media_path:
-            items.append({
-                "type": item_type,
-                "path": media_path,
-                "text": text,
-                "timestamp": timestamp,
-                "sender": sender,
-            })
+        # Noise filter: skip items with no meaningful content
+        # - No text, no media, no sender = empty shell (forwarded body with no attachment)
+        # - Sticker-only messages (img with sticker class, no text/audio/video)
+        is_sticker = bool(
+            div.find("img", class_="sticker") or div.find("div", class_="sticker")
+        )
+        if is_sticker and not text:
+            continue
+        if not text and not media_path:
+            continue
+
+        items.append({
+            "type": item_type,
+            "path": media_path,
+            "text": text,
+            "timestamp": timestamp,
+            "sender": sender,
+            "forwarded": forwarded,
+        })
 
     # Find orphan media (files not in messages.html)
     existing_paths = {item["path"] for item in items if item.get("path")}
@@ -664,7 +722,7 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
         if media_dir.exists():
             for f in media_dir.iterdir():
                 if f.is_file():
-                    # Skip thumbnail images (companions to video files)
+                    # Skip thumbnails and small companion images
                     if "_thumb." in f.name:
                         continue
                     rel_path = f"{dir_name}/{f.name}"
@@ -674,7 +732,8 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
                             "path": rel_path,
                             "text": None,
                             "timestamp": "Found in archive",
-                            "sender": "System",
+                            "sender": "Unknown",
+                            "forwarded": False,
                         })
 
     return items

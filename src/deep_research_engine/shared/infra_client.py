@@ -105,6 +105,7 @@ class InfraClient:
     def __init__(self, url: Optional[str] = None, timeout: int = 30):
         self._timeout = timeout
         self._session = requests.Session()
+        self._loaded_models: Dict[str, str] = {}  # slot -> model key cache
 
         if url:
             self._base = url.rstrip("/")
@@ -217,22 +218,30 @@ class InfraClient:
         if slot not in SLOT_TYPES:
             raise ValueError(f"Invalid slot '{slot}'. Must be one of {SLOT_TYPES}")
 
-        # Check if already loaded
+        # Fast path: check in-memory cache (no network call)
+        if self._loaded_models.get(slot) == model:
+            logger.debug("Model %s already loaded in slot %s (cached)", model, slot)
+            return {"status": "already_loaded", "slot": slot, "model": model}
+
+        # Check if already loaded via status API
         current = self._get_slot_info(slot)
         if current and current.get("current_model", {}).get("key") == model:
             if not current.get("loading", False):
                 logger.info("Model %s already loaded in slot %s", model, slot)
+                self._loaded_models[slot] = model
                 return {"status": "already_loaded", "slot": slot, "model": model}
 
         # Free GPU by unloading everything
         logger.info("Unloading all models to free GPU for %s/%s", slot, model)
+        self._loaded_models.clear()
         unload_resp = self._post("/unload/all", timeout=60)
         if not unload_resp.ok:
             logger.warning("Unload all returned %s", unload_resp.status_code)
 
+        # Wait for VRAM to actually be freed (container stop is async)
+        self._wait_vram_freed(model)
+
         # Load the requested model
-        # Use a long timeout — loading a 22GB model can take minutes.
-        # If the POST itself times out, fall through to health polling.
         logger.info("Loading %s into slot %s", model, slot)
         try:
             resp = self._post(f"/load/{slot}/{model}", timeout=_LOAD_TIMEOUT)
@@ -245,19 +254,47 @@ class InfraClient:
         if wait:
             self._wait_healthy(slot, model)
 
+        self._loaded_models[slot] = model
         return result
 
     def unload(self, slot: str) -> Dict[str, Any]:
         """Unload a model from a slot."""
+        self._loaded_models.pop(slot, None)
         resp = self._post(f"/unload/{slot}", timeout=60)
         self._raise_for_status(resp, f"unload {slot}")
         return resp.json()
 
     def unload_all(self) -> Dict[str, Any]:
         """Unload all models from all slots."""
+        self._loaded_models.clear()
         resp = self._post("/unload/all", timeout=60)
         self._raise_for_status(resp, "unload all")
         return resp.json()
+
+    def _wait_vram_freed(self, loading_model: str, timeout: int = 90):
+        """Poll until VRAM is mostly freed after an unload.
+
+        Container stop is async - the unload API returns immediately
+        but the container may still hold GPU memory. This waits until
+        enough VRAM is available for the next model.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                # Use /status which includes total_mb
+                status = self.status()
+                vram = status.get("vram", {})
+                free_mb = vram.get("free_mb", 0)
+                total_mb = vram.get("total_mb", 1)  # default 1 to avoid div-by-zero
+                # Consider VRAM freed when >85% is available
+                if free_mb > total_mb * 0.85:
+                    logger.info("VRAM freed: %dMB/%dMB available", free_mb, total_mb)
+                    return
+            except Exception:
+                pass
+            logger.debug("Waiting for VRAM to be freed...")
+            time.sleep(3)
+        logger.warning("VRAM not fully freed after %ds, proceeding anyway", timeout)
 
     def _get_slot_info(self, slot: str) -> Optional[Dict[str, Any]]:
         """Get current slot state from /status."""
@@ -317,32 +354,48 @@ class InfraClient:
         Returns:
             OpenAI-format chat completion response.
         """
-        # Load model if it's a GPU model (skip for CPU/cloud models)
         is_cloud = model and "-cloud" in model
-        if model and not model.endswith("-cpu") and not is_cloud:
-            self._ensure_service("llm", model)
-
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
         payload = {"model": model, "messages": messages, "stream": stream, **kwargs}
 
-        # Cloud models route through LiteLLM proxy, local models through orchestrator
-        if is_cloud:
-            resp = self._session.post(
-                f"{self._base}/v1/chat/completions",
-                json=payload,
-                timeout=_REQUEST_TIMEOUT,
-                headers={"Host": _LITELLM_HOST, "Authorization": f"Bearer {_LITELLM_KEY}"},
-            )
-        else:
-            resp = self._post(
-                "/v1/chat/completions",
-                json=payload,
-                timeout=_REQUEST_TIMEOUT,
-            )
+        for attempt in range(2):
+            # Load model if it's a GPU model (skip for CPU/cloud models)
+            if model and not model.endswith("-cpu") and not is_cloud:
+                self._ensure_service("llm", model)
+
+            # Cloud models route through LiteLLM proxy, local models through orchestrator
+            if is_cloud:
+                resp = self._session.post(
+                    f"{self._base}/v1/chat/completions",
+                    json=payload,
+                    timeout=_REQUEST_TIMEOUT,
+                    headers={"Host": _LITELLM_HOST, "Authorization": f"Bearer {_LITELLM_KEY}"},
+                )
+            else:
+                resp = self._post(
+                    "/v1/chat/completions",
+                    json=payload,
+                    timeout=_REQUEST_TIMEOUT,
+                )
+
+            if resp.ok:
+                return resp.json()
+
+            # On 404/503, invalidate cache and retry once (orchestrator may have restarted)
+            if resp.status_code in (404, 503) and attempt == 0 and not is_cloud:
+                logger.warning(
+                    "chat got HTTP %d - invalidating model cache and retrying",
+                    resp.status_code,
+                )
+                self._loaded_models.clear()
+                continue
+
+            self._raise_for_status(resp, "chat")
+
+        # Should not reach here, but just in case
         self._raise_for_status(resp, "chat")
-        return resp.json()
 
     # ------------------------------------------------------------------
     # High-level API: Transcription (ASR)
@@ -375,10 +428,13 @@ class InfraClient:
         Returns:
             Dict with 'text', 'segments' (if verbose), 'speakers', etc.
         """
-        self._ensure_service("asr", model)
+        # Map orchestrator model key to VibeVoice API model name
+        api_model = model
+        if model == "vibevoice-asr":
+            api_model = "vibevoice-asr-7b"
 
         data: Dict[str, Any] = {
-            "model": model,
+            "model": api_model,
             "diarize": str(diarize).lower(),
             "response_format": response_format,
         }
@@ -388,26 +444,43 @@ class InfraClient:
             data["num_speakers"] = str(num_speakers)
         data.update({k: str(v) for k, v in kwargs.items()})
 
-        if isinstance(audio, (str, Path)):
-            with open(audio, "rb") as f:
+        for attempt in range(2):
+            self._ensure_service("asr", model)
+
+            if isinstance(audio, (str, Path)):
+                with open(audio, "rb") as f:
+                    resp = self._post(
+                        "/v1/audio/transcriptions",
+                        files={"file": f},
+                        data=data,
+                        timeout=_REQUEST_TIMEOUT,
+                    )
+            elif isinstance(audio, bytes):
                 resp = self._post(
                     "/v1/audio/transcriptions",
-                    files={"file": f},
+                    files={"file": ("audio.wav", io.BytesIO(audio))},
                     data=data,
                     timeout=_REQUEST_TIMEOUT,
                 )
-        elif isinstance(audio, bytes):
-            resp = self._post(
-                "/v1/audio/transcriptions",
-                files={"file": ("audio.wav", io.BytesIO(audio))},
-                data=data,
-                timeout=_REQUEST_TIMEOUT,
-            )
-        else:
-            raise TypeError(f"audio must be str, Path, or bytes, got {type(audio)}")
+            else:
+                raise TypeError(f"audio must be str, Path, or bytes, got {type(audio)}")
 
+            if resp.ok:
+                return resp.json()
+
+            # On 404/503, invalidate cache and retry once
+            if resp.status_code in (404, 503) and attempt == 0:
+                logger.warning(
+                    "transcribe got HTTP %d - invalidating model cache and retrying",
+                    resp.status_code,
+                )
+                self._loaded_models.clear()
+                continue
+
+            self._raise_for_status(resp, "transcribe")
+
+        # Should not reach here
         self._raise_for_status(resp, "transcribe")
-        return resp.json()
 
     # ------------------------------------------------------------------
     # High-level API: Text-to-Speech

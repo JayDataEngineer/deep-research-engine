@@ -172,7 +172,7 @@ def _resolve_model(model: str | None, config_data: dict | None = None) -> str:
         return map_model_name(model)
     if config_data:
         config_models = config_data.get("llm", {}).get("models", {})
-        configured = config_models.get("main", DEFAULT_MODEL)
+        configured = config_models.get("main") or DEFAULT_MODEL
         return map_model_name(configured)
     return map_model_name(DEFAULT_MODEL)
 

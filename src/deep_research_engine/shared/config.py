@@ -22,9 +22,9 @@ LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", ORCHESTRATOR_BASE_URL)
 LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", ORCHESTRATOR_API_KEY)
 
 # Default models
-DEFAULT_MODEL = os.getenv("MAIN_MODEL", "qwen-cloud")
-TOOL_MODEL = os.getenv("TOOL_MODEL", "qwen-cloud")
-VISION_MODEL = os.getenv("VISION_MODEL", "qwen-cloud-vision")
+DEFAULT_MODEL = os.getenv("MAIN_MODEL", "qwen35-35b-a3b-vision")
+TOOL_MODEL = os.getenv("TOOL_MODEL", "qwen35-35b-a3b-vision")
+VISION_MODEL = os.getenv("VISION_MODEL", "qwen35-35b-a3b-vision")
 
 
 # =============================================================================
@@ -59,7 +59,7 @@ THINKING_TO_FAST: dict[str, str] = {
 # =============================================================================
 
 
-def map_model_name(model: str, enable_thinking: bool = True) -> str:
+def map_model_name(model: str | None, enable_thinking: bool = True) -> str:
     """Map old model names to LiteLLM names.
 
     Args:
@@ -69,6 +69,9 @@ def map_model_name(model: str, enable_thinking: bool = True) -> str:
     Returns:
         LiteLLM-compatible model name
     """
+    if not model:
+        return DEFAULT_MODEL
+
     mapped = model  # Default: use as-is
 
     # Check exact match first

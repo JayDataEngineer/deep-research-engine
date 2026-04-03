@@ -67,7 +67,11 @@ async def run_workflow(
     if not boss_config:
         boss_config = get_phase_config(config, "boss")
     
-    max_iterations = boss_config.get("workers", {}).get("max", 3)
+    workers_cfg = boss_config.get("workers", {})
+    if isinstance(workers_cfg, list):
+        max_iterations = boss_config.get("max_concurrent", 3)
+    else:
+        max_iterations = workers_cfg.get("max", 3)
 
     state = create_initial_state(
         workflow_name=config.workflow["name"],
@@ -94,7 +98,8 @@ async def run_workflow(
                 yield event
 
     except Exception as e:
-        logger.error(f"Workflow failed: {e}")
+        import traceback
+        logger.error(f"Workflow failed: {e}\n{traceback.format_exc()}")
         yield {
             "type": "error",
             "error": str(e),
@@ -224,14 +229,6 @@ async def _run_legacy_loop(
                 "phase": phase,
             }
             return
-
-    # Workflow complete
-    yield {
-        "type": "complete",
-        "success": True,
-        "output": state.get("artifact_output"),
-        "state": state,
-    }
 
     # Workflow complete
     yield {
