@@ -19,30 +19,32 @@ except ImportError:
     pymupdf = None
 
 from ..config import get_phase_config
+from ..shared.config import DEFAULT_MODEL, VISION_MODEL
+
+# Note: multimodal.py in utils might still be needed for direct asr_transcribe etc.
 from ..shared.multimodal import (
+    _get_infra,
+    asr_transcribe,
     batch_vlm_video_analysis,
     cluster_identities,
     create_mega_files,
     extract_audio_from_video,
     extract_scene_frames,
+    face_recognize,
     get_video_duration,
     normalize_timestamp,
     resolve_identities,
     unify_speakers,
     unstitch_transcript,
+    video_analyze,
+    vlm_analyze,
 )
 from ..state import EngineState
 from ..utils.logging import get_loguru_logger
-
-# Note: multimodal.py in utils might still be needed for direct asr_transcribe etc.
-from ..shared.multimodal import asr_transcribe, face_recognize, video_analyze, vlm_analyze
-from ..shared.multimodal import _get_infra
-from ..shared.config import VISION_MODEL, DEFAULT_MODEL
 from ..utils.nlp import extract_entities
 from ..utils.nodes import node_context
 
 logger = get_loguru_logger("nodes.ingestion")
-
 
 
 @node_context("ingestion")
@@ -60,7 +62,12 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
     # Get input path
     input_data = state.get("input_data", {})
-    input_path = input_data.get("path") or input_data.get("export_path") or input_data.get("source") or phase_config.get("source")
+    input_path = (
+        input_data.get("path")
+        or input_data.get("export_path")
+        or input_data.get("source")
+        or phase_config.get("source")
+    )
 
     if not input_path:
         logger.info("No input path for ingestion. Skipping.")
@@ -99,7 +106,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         audio_items = [it for it in items if it["type"] == "voice" and it.get("path")]
         video_items = [it for it in items if it["type"] == "video" and it.get("path")]
         photo_items = [it for it in items if it["type"] == "photo" and it.get("path")]
-        
+
         # Output directory for pipeline artifacts
         pipeline_dir = output_dir / "pipeline"
         pipeline_dir.mkdir(parents=True, exist_ok=True)
@@ -111,11 +118,13 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             logger.info(f"Phase 2: Loading LLM model ({VISION_MODEL}) for visual processing...")
             infra = _get_infra()
             infra.load("llm", VISION_MODEL, wait=True)
-            logger.info(f"LLM loaded. Processing {len(photo_items)} photos and {len(video_items)} videos")
-        
+            logger.info(
+                f"LLM loaded. Processing {len(photo_items)} photos and {len(video_items)} videos"
+            )
+
         all_embeddings = []
-        embedding_to_item = [] # Track which item each embedding belongs to
-        video_frames = {} # rel_path -> list of frames
+        embedding_to_item = []  # Track which item each embedding belongs to
+        video_frames = {}  # rel_path -> list of frames
 
         # 1. Collect embeddings from photos
         for it in photo_items:
@@ -129,7 +138,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
         # 2. Extract frames and collect embeddings from videos
         audio_fragments_for_megafile = []  # Collect audio from videos for Mega-File processing
-        
+
         for it in video_items:
             video_path = input_dir / it["path"]
             if video_path.exists():
@@ -143,18 +152,19 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     if video_duration > 0:
                         audio_output = video_output_dir / f"{video_path.stem}_audio.wav"
                         extracted_audio = await extract_audio_from_video(video_path, audio_output)
-                        
+
                         # Add to audio fragments for Mega-File processing
-                        audio_fragments_for_megafile.append({
-                            "path": extracted_audio,
-                            "source": "video",
-                            "source_video": str(video_path),
-                            "duration": video_duration,
-                            "timestamp": it.get("timestamp")
-                        })
+                        audio_fragments_for_megafile.append(
+                            {
+                                "path": extracted_audio,
+                                "source": "video",
+                                "source_video": str(video_path),
+                                "duration": video_duration,
+                                "timestamp": it.get("timestamp"),
+                            }
+                        )
                         logger.info(
-                            f"Audio extracted from video: {extracted_audio} "
-                            f"({video_duration:.1f}s)"
+                            f"Audio extracted from video: {extracted_audio} ({video_duration:.1f}s)"
                         )
                 except Exception as e:
                     logger.warning(
@@ -172,38 +182,40 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                             embedding_to_item.append({**it, "frame_path": str(frame_path)})
 
         # 3. Cluster Identities
-        identity_map = {} # item_path -> cluster_id
+        identity_map = {}  # item_path -> cluster_id
         if all_embeddings:
             logger.info(f"Clustering {len(all_embeddings)} face embeddings...")
             embeddings_np = np.array(all_embeddings)
             labels = cluster_identities(embeddings_np)
-            
+
             for i, label in enumerate(labels):
-                if label != -1: # Ignore noise
+                if label != -1:  # Ignore noise
                     item = embedding_to_item[i]
                     path = item["path"]
                     if path not in identity_map:
                         identity_map[path] = []
                     identity_map[path].append(f"Identity_Cluster_{label}")
-            
+
             logger.info(f"Identified {len(set(labels[labels != -1]))} unique visual identities")
 
         # Phase 3: Batch Acoustic Processing (Mega-File Strategy)
         audio_results = {}  # abs_path_str -> list[seg]
-        
+
         # Combine audio from audio_items and video audio extracts
         all_audio_items = audio_items.copy()
-        
+
         # Add video audio fragments to the audio items list
         for audio_frag in audio_fragments_for_megafile:
-            all_audio_items.append({
-                "path": str(audio_frag["path"]),
-                "source": audio_frag["source"],
-                "source_video": audio_frag.get("source_video"),
-                "duration": audio_frag["duration"],
-                "timestamp": audio_frag.get("timestamp")
-            })
-        
+            all_audio_items.append(
+                {
+                    "path": str(audio_frag["path"]),
+                    "source": audio_frag["source"],
+                    "source_video": audio_frag.get("source_video"),
+                    "duration": audio_frag["duration"],
+                    "timestamp": audio_frag.get("timestamp"),
+                }
+            )
+
         if all_audio_items:
             logger.info(
                 f"Phase 3: Creating Mega-Files for {len(all_audio_items)} audio fragments "
@@ -227,40 +239,39 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
             # Sort audio_paths by their timestamp in items if needed
             boundary_maps = await create_mega_files(audio_paths, pipeline_dir)
-            
+
             mega_file_results = []
-            
+
             for i, boundary_map in enumerate(boundary_maps):
                 mega_file_path = Path(boundary_map["mega_file_path"])
-                
+
                 # Phase 4: Long-Form ASR
-                logger.info(f"Phase 4: Running VibeVoice ASR on {mega_file_path.name} (Batch {i+1}/{len(boundary_maps)})")
-                
-                asr_output = await asr_transcribe(
-                    mega_file_path, 
-                    include_diarization=True
+                logger.info(
+                    f"Phase 4: Running VibeVoice ASR on {mega_file_path.name} (Batch {i + 1}/{len(boundary_maps)})"
                 )
-                
+
+                asr_output = await asr_transcribe(mega_file_path, include_diarization=True)
+
                 if isinstance(asr_output, dict):
                     # Save for speaker unification
                     mega_file_results.append((mega_file_path, asr_output))
-                    
+
                     # Un-stitch transcripts (locally within this mega-file)
                     batch_audio_results = unstitch_transcript(asr_output, boundary_map)
-                    
+
                     # Update local speaker IDs to include batch prefix
                     for segments in batch_audio_results.values():
                         for seg in segments:
                             seg["mf_speaker_id"] = f"mf{i}:{seg['speaker']}"
-                        
+
                     audio_results.update(batch_audio_results)
-                    logger.info(f"Successfully unstitched ASR for batch {i+1}")
+                    logger.info(f"Successfully unstitched ASR for batch {i + 1}")
 
             # Phase 5: Cross-Mega-File Acoustic Clustering
             if len(mega_file_results) > 1:
                 logger.info("Phase 5: Reconciling speaker identities across mega-files...")
                 global_speaker_map = await unify_speakers(mega_file_results, pipeline_dir)
-                
+
                 # Apply global IDs to all unstitched segments
                 for segments in audio_results.values():
                     for seg in segments:
@@ -273,40 +284,41 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
         # Phase 6: Multimodal Synthesis & Identity Resolution
         resolved_identity_map = {}
-        video_descriptions = {} # rel_path -> description
+        video_descriptions = {}  # rel_path -> description
         if identity_map or audio_results or video_frames:
             # Re-load LLM for identity resolution + VLM analysis
             logger.info("Phase 6: Loading LLM for identity resolution (will auto-unload ASR)...")
             infra = _get_infra()
             infra.load("llm", DEFAULT_MODEL, wait=True)
             logger.info("Phase 6: Performing final identity resolution and batch VLM analysis...")
-            
+
             # Prepare metadata for LLM resolution
             asr_all_segments = []
             for _, asr_output in mega_file_results:
                 asr_all_segments.extend(asr_output.get("segments", []))
-            
+
             visual_events = []
             for path, clusters in identity_map.items():
-                visual_events.extend([
-                    {
-                        "timestamp": "unknown", # Correlate with item timestamp
-                        "cluster": cluster,
-                        "path": path
-                    }
-                    for cluster in clusters
-                ])
-            
+                visual_events.extend(
+                    [
+                        {
+                            "timestamp": "unknown",  # Correlate with item timestamp
+                            "cluster": cluster,
+                            "path": path,
+                        }
+                        for cluster in clusters
+                    ]
+                )
+
             # Use top 100 items as context for resolution
             text_context = [
                 {"timestamp": it["timestamp"], "sender": it["sender"], "text": it.get("text", "")}
-                for it in items if it.get("text")
+                for it in items
+                if it.get("text")
             ][:100]
-            
+
             resolved_identity_map = await resolve_identities(
-                asr_all_segments,
-                visual_events,
-                text_context
+                asr_all_segments, visual_events, text_context
             )
 
             # Batch VLM Video Analysis (Enhancement #4)
@@ -322,6 +334,8 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
         processed_messages: list[str] = []
         vlm_available = True  # Will be set False on first permanent VLM failure
+        entity_extractions: list[dict[str, Any]] = []  # Collected NER results
+        structured_media_items: list[dict[str, Any]] = []  # Items with structured data
 
         for item in items:
             msg_text = item.get("text") or ""
@@ -336,11 +350,11 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
             if media_path_rel:
                 media_path = input_dir / media_path_rel
-                
+
                 if item_type == "voice" and str(media_path) in audio_results:
                     # Use unstitched transcript from Phase 3/4
                     segments = audio_results[str(media_path)]
-                    
+
                     # Apply resolved names
                     for seg in segments:
                         raw_spk = seg["speaker"]
@@ -348,20 +362,20 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                             seg["resolved_name"] = resolved_identity_map[raw_spk]
                         elif seg.get("mf_speaker_id") in resolved_identity_map:
                             seg["resolved_name"] = resolved_identity_map[seg["mf_speaker_id"]]
-                    
+
                     transcript_parts = []
                     for seg in segments:
                         name = seg.get("resolved_name", seg["speaker"])
                         transcript_parts.append(f"{name}: {seg['text']}")
-                    
+
                     transcript = " ".join(transcript_parts)
                     content_parts.append(f"[Voice Message Transcript: {transcript}]")
-                    
+
                     # Track unique speakers in this specific snippet
                     unique_speakers = {seg.get("resolved_name", seg["speaker"]) for seg in segments}
                     if len(unique_speakers) > 1:
                         content_parts.append(f"[Speakers in snippet: {', '.join(unique_speakers)}]")
-                        
+
                 elif item_type == "photo":
                     # Use identified faces from identity_map
                     if media_path_rel in identity_map:
@@ -395,7 +409,9 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                             video_desc = await video_analyze(media_path)
                         except RuntimeError:
                             vlm_available = False
-                            video_desc = "[Video analysis unavailable - VLM does not support images]"
+                            video_desc = (
+                                "[Video analysis unavailable - VLM does not support images]"
+                            )
                     else:
                         video_desc = "[Video analysis unavailable - VLM does not support images]"
 
@@ -407,6 +423,45 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 entities = await extract_entities(item_combined)
                 if entities.get("people"):
                     content_parts.append(f"[Entities - People: {', '.join(entities['people'])}]")
+
+                # Collect structured data for graph building
+                has_structure = bool(entities.get("people")) or bool(entities.get("locations"))
+                if has_structure:
+                    entity_extractions.append(entities)
+
+            # Track items that carry structured/ media data (not plain text)
+            is_media_with_data = (
+                item_type in ("voice", "video", "photo")
+                or item.get("forwarded")
+                or bool(entities.get("people"))
+                if item_combined
+                else False
+            )
+            if is_media_with_data:
+                structured_item: dict[str, Any] = {
+                    "type": item_type,
+                    "path": media_path_rel,
+                    "timestamp": timestamp,
+                    "sender": sender,
+                }
+                if (
+                    item_type == "voice" and str(input_dir / media_path_rel)
+                    if media_path_rel
+                    else "" in audio_results
+                ):
+                    abs_media = str(input_dir / media_path_rel) if media_path_rel else ""
+                    segments = audio_results.get(abs_media, [])
+                    structured_item["speakers"] = list(
+                        {seg.get("resolved_name", seg["speaker"]) for seg in segments}
+                    )
+                    structured_item["transcript"] = " ".join(
+                        seg.get("text", "") for seg in segments
+                    )
+                if item_type in ("video", "photo") and media_path_rel in identity_map:
+                    structured_item["faces"] = identity_map[media_path_rel]
+                if item_type == "video" and media_path_rel in video_descriptions:
+                    structured_item["description"] = video_descriptions[media_path_rel]
+                structured_media_items.append(structured_item)
 
             final_combined_content = " ".join(content_parts)
             if final_combined_content:
@@ -432,10 +487,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             logger.info(f"Found {len(audio_files)} audio files. Processing with VibeVoice ASR...")
 
             for audio_file in audio_files:
-                transcript_result = await asr_transcribe(
-                    audio_file,
-                    include_diarization=True
-                )
+                transcript_result = await asr_transcribe(audio_file, include_diarization=True)
 
                 # Create transcript file
                 transcript_file = output_dir / f"{audio_file.stem}_transcript.md"
@@ -479,11 +531,15 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             **state.get("context", {}),
             "ingested_text_files": [str(f) for f in ingested_files],
             "big_text_dump": str(big_dump_file),
+            "ingestion_structured": {
+                "resolved_identity_map": resolved_identity_map,
+                "entity_extractions": entity_extractions,
+                "media_items": structured_media_items,
+                "video_descriptions": video_descriptions,
+            },
         },
-        "__goto__": "drafter"
+        "__goto__": "drafter",
     }
-
-
 
 
 def _extract_pdf_text(pdf_path: Path, page_chunk_size: int = 50) -> str:
@@ -538,9 +594,7 @@ def _find_pdfs(input_dir: Path) -> list[Path]:
     return sorted(pdfs)
 
 
-async def _process_pdfs(
-    pdf_files: list[Path], output_dir: Path
-) -> list[Path]:
+async def _process_pdfs(pdf_files: list[Path], output_dir: Path) -> list[Path]:
     """Process PDF files into ingested markdown files.
 
     Args:
@@ -609,14 +663,16 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
                 if not text and not media_path:
                     continue
 
-                items.append({
-                    "type": item_type,
-                    "path": media_path,
-                    "text": text,
-                    "timestamp": timestamp,
-                    "sender": sender,
-                    "forwarded": forwarded,
-                })
+                items.append(
+                    {
+                        "type": item_type,
+                        "path": media_path,
+                        "text": text,
+                        "timestamp": timestamp,
+                        "sender": sender,
+                        "forwarded": forwarded,
+                    }
+                )
         return items
 
     # Fallback to HTML
@@ -679,9 +735,7 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
             item_type = "voice"
 
         # Video: check both direct video div and forwarded video_file_wrap
-        video_elem = div.find("div", class_="video") or div.find(
-            "div", class_="video_file_wrap"
-        )
+        video_elem = div.find("div", class_="video") or div.find("div", class_="video_file_wrap")
         if video_elem:
             video_src = video_elem.find("source")
             if video_src:
@@ -691,31 +745,27 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
         # Noise filter: skip items with no meaningful content
         # - No text, no media, no sender = empty shell (forwarded body with no attachment)
         # - Sticker-only messages (img with sticker class, no text/audio/video)
-        is_sticker = bool(
-            div.find("img", class_="sticker") or div.find("div", class_="sticker")
-        )
+        is_sticker = bool(div.find("img", class_="sticker") or div.find("div", class_="sticker"))
         if is_sticker and not text:
             continue
         if not text and not media_path:
             continue
 
-        items.append({
-            "type": item_type,
-            "path": media_path,
-            "text": text,
-            "timestamp": timestamp,
-            "sender": sender,
-            "forwarded": forwarded,
-        })
+        items.append(
+            {
+                "type": item_type,
+                "path": media_path,
+                "text": text,
+                "timestamp": timestamp,
+                "sender": sender,
+                "forwarded": forwarded,
+            }
+        )
 
     # Find orphan media (files not in messages.html)
     existing_paths = {item["path"] for item in items if item.get("path")}
 
-    media_dirs = {
-        "photos": "photo",
-        "voice_messages": "voice",
-        "video_files": "video"
-    }
+    media_dirs = {"photos": "photo", "voice_messages": "voice", "video_files": "video"}
 
     for dir_name, type_name in media_dirs.items():
         media_dir = input_dir / dir_name
@@ -727,14 +777,16 @@ async def _parse_telegram_export(input_dir: Path) -> list[dict[str, Any]]:
                         continue
                     rel_path = f"{dir_name}/{f.name}"
                     if rel_path not in existing_paths:
-                        items.append({
-                            "type": type_name,
-                            "path": rel_path,
-                            "text": None,
-                            "timestamp": "Found in archive",
-                            "sender": "Unknown",
-                            "forwarded": False,
-                        })
+                        items.append(
+                            {
+                                "type": type_name,
+                                "path": rel_path,
+                                "text": None,
+                                "timestamp": "Found in archive",
+                                "sender": "Unknown",
+                                "forwarded": False,
+                            }
+                        )
 
     return items
 
@@ -747,5 +799,3 @@ def _combine_ingested_files(files: list[Path], output_path: Path):
             content = f.read_text(encoding="utf-8")
             out.write(f"\n\n--- {f.name} ---\n\n")
             out.write(content)
-
-
