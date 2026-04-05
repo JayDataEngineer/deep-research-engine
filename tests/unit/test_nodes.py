@@ -17,7 +17,6 @@ from deep_research_engine.nodes import (
     neo4j_builder_node,
     artifact_maker_node,
 )
-from deep_research_engine.nodes.ingestion import _extract_pdf_text, _find_pdfs
 from deep_research_engine.workers import WorkerConfig, WorkerRegistry
 
 # Patch locations
@@ -43,7 +42,7 @@ class TestIngestionNode:
     async def test_ingestion_node_success(self, initial_state: EngineState, tmp_path):
         """Test that ingestion node processes data correctly."""
         state = initial_state.copy()
-        
+
         # Mock the context for ingestion
         state["context"] = {
             "config": {
@@ -55,8 +54,15 @@ class TestIngestionNode:
             }
         }
 
-        # Create dummy input
-        (tmp_path / "messages.html").write_text("<html><body>Test message</body></html>")
+        # Create dummy input with a valid Telegram HTML message structure
+        html = """<html><body>
+        <div class="message">
+            <div class="pull_right" title="01.01.2024 12:00:00">12:00</div>
+            <div class="from_name">TestUser</div>
+            <div class="text">Hello world test message</div>
+        </div>
+        </body></html>"""
+        (tmp_path / "messages.html").write_text(html)
 
         command = await ingestion_node(state)
 
@@ -67,67 +73,34 @@ class TestIngestionNode:
 
 
 # =============================================================================
-# PDF EXTRACTION TESTS
+# KREUZBERG DOCUMENT EXTRACTION TESTS
 # =============================================================================
 
-class TestPdfExtraction:
-    """Tests for PDF text extraction in the ingestion pipeline."""
+class TestDocumentExtraction:
+    """Tests for document extraction via Kreuzberg in the ingestion pipeline."""
 
     @pytest.mark.unit
-    def test_find_pdfs_finds_pdf_files(self, tmp_path):
-        """Test that _find_pdfs discovers PDF files recursively."""
-        # Create test PDFs
-        (tmp_path / "doc1.pdf").write_bytes(b"fake pdf")
-        (tmp_path / "doc2.PDF").write_bytes(b"fake pdf")
-        subdir = tmp_path / "subdir"
-        subdir.mkdir()
-        (subdir / "nested.pdf").write_bytes(b"fake pdf")
-        (tmp_path / "not_a_pdf.txt").write_text("text file")
-
-        pdfs = _find_pdfs(tmp_path)
-
-        assert len(pdfs) == 3
-        names = {p.name for p in pdfs}
-        assert "doc1.pdf" in names
-        assert "nested.pdf" in names
+    def test_kreuzberg_extractor_import(self):
+        """Test that Kreuzberg extractor can be imported."""
+        from deep_research_engine.ingestion import KreuzbergExtractor, KreuzbergConfig
+        assert KreuzbergExtractor is not None
+        assert KreuzbergConfig is not None
 
     @pytest.mark.unit
-    def test_find_pdfs_empty_dir(self, tmp_path):
-        """Test _find_pdfs returns empty list when no PDFs exist."""
-        pdfs = _find_pdfs(tmp_path)
-        assert pdfs == []
+    def test_kreuzberg_config_defaults(self):
+        """Test KreuzbergConfig has sensible defaults."""
+        from deep_research_engine.ingestion import KreuzbergConfig
+        config = KreuzbergConfig()
+        assert config.chunking_enabled is True
+        assert config.chunk_max_chars == 4000
+        assert config.output_format == "markdown"
+        assert config.ocr_enabled is True
 
     @pytest.mark.unit
-    def test_extract_pdf_text_real_pdf(self, tmp_path):
-        """Test extraction from a real PDF created with pymupdf."""
-        try:
-            import pymupdf
-        except ImportError:
-            pytest.skip("pymupdf not installed")
-
-        # Create a real PDF
-        doc = pymupdf.open()
-        page = doc.new_page()
-        page.insert_text((72, 72), "Hello from PDF extraction test.\nSecond line of text.")
-        pdf_path = tmp_path / "test.pdf"
-        doc.save(str(pdf_path))
-        doc.close()
-
-        text = _extract_pdf_text(pdf_path)
-
-        assert "test" in text  # filename stem in header
-        assert "Hello from PDF extraction test" in text
-        assert "Page 1" in text
-
-    @pytest.mark.unit
-    def test_extract_pdf_text_no_pymupdf(self, tmp_path, monkeypatch):
-        """Test graceful degradation when pymupdf is not installed."""
-        import deep_research_engine.nodes.ingestion as ingest_mod
-        monkeypatch.setattr(ingest_mod, "pymupdf", None)
-
-        text = _extract_pdf_text(tmp_path / "nonexistent.pdf")
-
-        assert "pymupdf not installed" in text
+    def test_document_router_import(self):
+        """Test that DocumentRouter can be imported."""
+        from deep_research_engine.ingestion import DocumentRouter
+        assert DocumentRouter is not None
 
 
 # =============================================================================

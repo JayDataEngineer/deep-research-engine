@@ -298,17 +298,17 @@ class TestFlashAgent:
     async def test_create_flash_subagents(self):
         """Test flash subagent creation."""
         from deep_research_engine.agents.flash import create_flash_subagents
-        
+
         configs = [
             {"type": "web_researcher", "task": "Search web", "enabled": True},
-            {"type": "chunk_processor", "task": "Process PDFs", "enabled": True}
+            {"type": "content_classifier", "task": "Classify content", "enabled": True}
         ]
-        
+
         subagents = await create_flash_subagents(configs)
-        
+
         assert len(subagents) == 2
         assert subagents[0]["name"] == "web_researcher_specialist"
-        assert subagents[1]["name"] == "chunk_processor_specialist"
+        assert subagents[1]["name"] == "content_classifier_specialist"
 
 
 # =============================================================================

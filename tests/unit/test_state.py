@@ -459,7 +459,7 @@ class TestTypeAliases:
     def test_worker_type_literals(self):
         """Test WorkerType type accepts valid literals."""
         valid_workers: list = [
-            "web_researcher", "chunk_processor", "multimodal",
+            "web_researcher", "content_classifier", "multimodal",
             "scraper", "asr_worker", "vlm_worker", "face_worker", "text_worker"
         ]
         assert len(valid_workers) == 8

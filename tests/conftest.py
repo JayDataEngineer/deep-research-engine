@@ -490,7 +490,7 @@ def sample_worker_results():
         },
         {
             "worker_id": "researcher_1",
-            "worker_type": "chunk_processor",
+            "worker_type": "content_classifier",
             "task": "Process PDF chunks",
             "success": True,
             "output": "PDF analysis results...",

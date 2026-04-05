@@ -281,7 +281,7 @@ WorkflowType = Literal["research", "ingestion", "generation"]
 # Worker types
 WorkerType = Literal[
     "web_researcher",
-    "chunk_processor",
+    "content_classifier",  # Replaces chunk_processor — classifies Kreuzberg chunks
     "multimodal",
     "scraper",
     "asr_worker",

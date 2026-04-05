@@ -9,7 +9,6 @@ Stores results in ``state.context.content_clusters``.
 
 import asyncio
 import json
-from pathlib import Path
 from typing import Any
 
 from ..config import get_phase_config
@@ -42,16 +41,27 @@ async def content_clusterer_node(state: EngineState) -> dict[str, Any]:
         logger.info("Content Clusterer disabled. Skipping.")
         return {"__goto__": "neo4j_builder"}
 
-    # 1. Collect text from worker_results
-    text_chunks = [result["output"] for result in state.get("worker_results", []) if result.get("output")]
+    # 1. Collect text from multiple sources (unified input)
+    # Sources: Kreuzberg document chunks, worker output, big_text_dump
+    text_chunks: list[str] = []
 
-    # Fall back to big_text_dump if no worker results
-    if not text_chunks:
-        dump_path = state.get("context", {}).get("big_text_dump")
-        if dump_path:
-            dump_file = Path(dump_path)
-            if dump_file.exists():
-                text_chunks.append(dump_file.read_text()[:50000])
+    # Source 1: Kreuzberg document chunks (from ingestion node)
+    doc_chunks = state.get("context", {}).get("document_chunks", [])
+    if doc_chunks:
+        for chunk in doc_chunks:
+            if isinstance(chunk, dict):
+                text = chunk.get("text", chunk.get("content", ""))
+                if text:
+                    text_chunks.append(text)
+        logger.info(f"Collected {len(doc_chunks)} document chunks from Kreuzberg")
+
+    # Source 2: Worker results (audio/video transcripts, web research)
+    worker_text = [
+        result["output"]
+        for result in state.get("worker_results", [])
+        if result.get("output") and isinstance(result["output"], str)
+    ]
+    text_chunks.extend(worker_text)
 
     if not text_chunks:
         logger.info("No text to cluster. Skipping.")

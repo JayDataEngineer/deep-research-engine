@@ -72,7 +72,11 @@ dependencies = [
     "torch>=2.11.0",
     "torchvision>=0.26.0",
     "torchaudio>=2.11.0",
-    "pymupdf>=1.27.2",
+    "pymupdf>=1.27.2",                 # PDF rendering (images, OCR images)
+    # Document extraction (Kreuzberg replaces hand-rolled PDF/DOCX/XLSX/PPTX/HTML parsers)
+    "kreuzberg>=3.13.0",               # Document intelligence - 91+ format extraction
+    # Clustering
+    "hdbscan>=0.8.40",
 ]
 
 # =============================================================================
@@ -87,6 +91,10 @@ postgres = [
 mongodb = [
     "pymongo>=4.10.1",
     "motor>=3.7.0",
+]
+# Speech enhancement (requires Rust/Cargo toolchain)
+audio-enhance = [
+    "deepfilternet>=0.5.6",
 ]
 neo4j = [
     "neo4j>=5.27.0",
@@ -115,6 +123,7 @@ image = [
 all-ingestion = [
     "pymupdf>=1.24.0",
     "pillow>=10.0.0",
+    "kreuzberg>=3.13.0",
 ]
 
 ui = [

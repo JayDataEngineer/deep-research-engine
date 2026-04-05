@@ -9,7 +9,7 @@ from deep_research_engine.state import EngineState, create_initial_state
 from deep_research_engine.workers.base import WorkerConfig
 from deep_research_engine.workers.implementations.social_archive import SocialArchiveWorker
 from deep_research_engine.workers.implementations.web_researcher import WebResearcherWorker
-from deep_research_engine.workers.implementations.chunk_processor import ChunkProcessorWorker
+from deep_research_engine.workers.implementations.content_classifier import ContentClassifierWorker
 from deep_research_engine.nodes.drafter import drafter_node
 
 @pytest.fixture
@@ -98,18 +98,22 @@ async def test_web_researcher_worker_execute(initial_state):
         assert mock_comm.called
 
 @pytest.mark.asyncio
-async def test_chunk_processor_worker_execute(initial_state):
+async def test_content_classifier_worker_execute(initial_state):
     config = WorkerConfig(
-        worker_id="chunk_1",
-        worker_type="chunk_processor",
-        task="Process chunk",
-        custom={"chunk": "This is a substantive chunk of text about technology."}
+        worker_id="classifier_1",
+        worker_type="content_classifier",
+        task="Classify chunks",
+        custom={
+            "chunks": [
+                {"text": "This is a substantive chunk of text about technology.", "chunk_id": "chunk_0"}
+            ]
+        }
     )
-    worker = ChunkProcessorWorker(config)
+    worker = ContentClassifierWorker(config)
 
     # Mock the classification and extraction methods
-    with patch.object(ChunkProcessorWorker, "_classify_chunk", new_callable=AsyncMock) as mock_classify, \
-         patch.object(ChunkProcessorWorker, "_extract_core_content", new_callable=AsyncMock) as mock_extract:
+    with patch.object(ContentClassifierWorker, "_classify_chunk", new_callable=AsyncMock) as mock_classify, \
+         patch.object(ContentClassifierWorker, "_extract_core_content", new_callable=AsyncMock) as mock_extract:
 
         mock_classify.return_value = {
             "category": "substantive",
@@ -128,8 +132,13 @@ async def test_chunk_processor_worker_execute(initial_state):
         result = await worker.execute(initial_state, config)
 
         assert result["success"] is True
-        assert result["output"]["classification"]["category"] == "substantive"
-        assert result["output"]["extraction"]["core_content"] == "Extracted text"
+        output = result["output"]
+        assert output["total_chunks"] == 1
+        assert output["filler_filtered"] == 0
+        assert output["substantive_remaining"] == 1
+        classified = output["classified_chunks"][0]
+        assert classified["classification"]["category"] == "substantive"
+        assert classified["extraction"]["core_content"] == "Extracted text"
         assert mock_classify.called
         assert mock_extract.called
 

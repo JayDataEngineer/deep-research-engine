@@ -88,17 +88,17 @@ class TestWorkerConfig:
         """Test WorkerConfig with custom settings."""
         config = WorkerConfig(
             worker_id="test",
-            worker_type="chunk_processor",
-            task="process",
+            worker_type="content_classifier",
+            task="classify",
             custom={
-                "chunk_size": 1000,
-                "overlap": 200,
-                "model": "embedding-model"
+                "enable_classification": True,
+                "enable_extraction": True,
+                "filter_filler": True,
             }
         )
-        
-        assert config.custom["chunk_size"] == 1000
-        assert config.custom["overlap"] == 200
+
+        assert config.custom["enable_classification"] is True
+        assert config.custom["enable_extraction"] is True
     
     @pytest.mark.unit
     def test_config_all_fields_present(self):
