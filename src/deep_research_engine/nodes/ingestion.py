@@ -35,7 +35,7 @@ except ImportError:
 from ..config import get_phase_config
 from ..ingestion.document_router import DocumentRouter
 from ..ingestion.kreuzberg_extractor import KreuzbergConfig
-from ..shared.config import DEFAULT_MODEL, VISION_MODEL
+from ..shared.config import DEFAULT_MODEL, INGESTION_MODEL, VISION_MODEL
 from ..shared.multimodal import (
     _get_infra,
     asr_transcribe,
@@ -400,7 +400,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             text = item.get("text")
             if text and len(text.strip()) > 10:
                 try:
-                    ents = await extract_entities(text[:4000])
+                    ents = await extract_entities(text[:4000], model=INGESTION_MODEL)
                     for p in ents.get("people", []):
                         pre_named_entities.add(p)
                 except Exception:
@@ -422,9 +422,9 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     has_visual_work = photo_items or video_items
 
     if has_visual_work and checkpoint_p2 is None:
-        logger.info(f"Phase 2: Loading LLM model ({VISION_MODEL}) for visual processing...")
+        logger.info(f"Phase 2: Loading LLM model ({INGESTION_MODEL}) for visual processing...")
         infra = _get_infra()
-        infra.load("llm", VISION_MODEL, wait=True)
+        infra.load("llm", INGESTION_MODEL, wait=True)
         logger.info(
             f"LLM loaded. Processing {len(photo_items)} photos and {len(video_items)} videos"
         )
@@ -654,9 +654,9 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     checkpoint_p6 = _load_checkpoint(pipeline_dir, "phase6_identity_map")
 
     if checkpoint_p6 is None and (identity_map or audio_results or video_frames):
-        logger.info("Phase 6: Loading LLM for identity resolution (will auto-unload ASR)...")
+        logger.info(f"Phase 6: Loading LLM for identity resolution ({INGESTION_MODEL}) — will auto-unload ASR...")
         infra = _get_infra()
-        infra.load("llm", DEFAULT_MODEL, wait=True)
+        infra.load("llm", INGESTION_MODEL, wait=True)
         logger.info("Phase 6: Performing final identity resolution and batch VLM analysis...")
 
         # Prepare metadata for LLM resolution
@@ -702,6 +702,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             neo4j_storage=await _try_init_neo4j(config_data),
             namespace=config_data.get("storage", {}).get("neo4j", {}).get("namespace", "default"),
             pre_named_entities=sorted(pre_named_entities),
+            model=INGESTION_MODEL,
         )
 
         # Batch VLM Video Analysis with circuit breaker
@@ -730,7 +731,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         # Still need VLM for video descriptions
         if video_frames:
             infra = _get_infra()
-            infra.load("llm", DEFAULT_MODEL, wait=True)
+            infra.load("llm", INGESTION_MODEL, wait=True)
             cb = VLMBatchCircuitBreaker(pipeline_dir)
             for video_rel_path, frames in video_frames.items():
                 if cb.is_tripped():
@@ -837,7 +838,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         item_combined = " ".join(content_parts)
         entities: dict[str, Any] = {}
         if item_combined:
-            entities = await extract_entities(item_combined)
+            entities = await extract_entities(item_combined, model=INGESTION_MODEL)
             if entities.get("people"):
                 content_parts.append(f"[Entities - People: {', '.join(entities['people'])}]")
 

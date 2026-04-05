@@ -3,14 +3,13 @@
 import asyncio
 import json
 import re
-from typing import Any, Dict, List
+from typing import Any
 
-from pydantic import BaseModel, Field
 from loguru import logger
+from pydantic import BaseModel, Field
 
-from ..shared.infra_client import InfraClient, InfraError
 from ..shared.config import DEFAULT_MODEL
-
+from ..shared.infra_client import InfraClient
 
 EXTRACTION_PROMPT = """Extract all named entities from the following text.
 
@@ -27,16 +26,16 @@ Respond with ONLY the JSON object, no other text."""
 
 
 class ExtractionResult(BaseModel):
-    people: List[str] = Field(default_factory=list, description="Names of people mentioned or detected")
-    topics: List[str] = Field(
+    people: list[str] = Field(default_factory=list, description="Names of people mentioned or detected")
+    topics: list[str] = Field(
         default_factory=list,
         description="Topics, subjects, or themes identified",
     )
-    locations: List[str] = Field(
+    locations: list[str] = Field(
         default_factory=list,
         description="Locations mentioned",
     )
-    dates: List[str] = Field(
+    dates: list[str] = Field(
         default_factory=list,
         description="Dates or time references",
     )
@@ -53,7 +52,7 @@ def _get_infra() -> InfraClient:
     return _infra
 
 
-def _parse_json_response(text: str) -> Dict[str, Any]:
+def _parse_json_response(text: str) -> dict[str, Any]:
     """Try to extract JSON from LLM response text."""
     # Direct parse
     try:
@@ -87,8 +86,13 @@ def _parse_json_response(text: str) -> Dict[str, Any]:
     return {"people": [], "topics": [], "locations": [], "dates": []}
 
 
-async def extract_entities(content: str) -> Dict[str, Any]:
-    """Extract named entities from text content using LLM via InfraClient."""
+async def extract_entities(content: str, model: str | None = None) -> dict[str, Any]:
+    """Extract named entities from text content using LLM via InfraClient.
+
+    Args:
+        content: Text to extract entities from.
+        model: Model to use. Defaults to DEFAULT_MODEL.
+    """
     if not content or len(content.strip()) < 10:
         return {
             "people": [],
@@ -97,15 +101,18 @@ async def extract_entities(content: str) -> Dict[str, Any]:
             "dates": [],
         }
 
+    model_name = model or DEFAULT_MODEL
+
     try:
-        logger.debug(f"Extracting entities from {len(content)} chars")
+        logger.debug(f"Extracting entities from {len(content)} chars using {model_name}")
 
         prompt = EXTRACTION_PROMPT.format(content=content[:8000])
         response = await asyncio.to_thread(
             _get_infra().chat,
             messages=[{"role": "user", "content": prompt}],
-            model=DEFAULT_MODEL,
+            model=model_name,
             temperature=0.1,
+            max_tokens=10000,
         )
 
         # Extract text from response

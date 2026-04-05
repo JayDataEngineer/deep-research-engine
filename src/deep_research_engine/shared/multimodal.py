@@ -27,7 +27,11 @@ import numpy as np
 import pytz
 import torch
 from loguru import logger
-from sklearn.cluster import DBSCAN
+
+try:
+    import hdbscan
+except ImportError:
+    hdbscan = None
 
 # Face Recognition (CompreFace)
 COMPREFACE_BASE_URL = os.environ.get("COMPREFACE_BASE_URL", "http://localhost:8080")
@@ -191,7 +195,7 @@ async def vlm_analyze(
             _get_infra().chat,
             messages=[{"role": "user", "content": content}],
             model=VISION_MODEL,
-            max_tokens=1000,
+            max_tokens=10000,
         )
 
         description = _extract_chat_text(response)
@@ -317,7 +321,7 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
             _get_infra().chat,
             messages=[{"role": "user", "content": content}],
             model=VISION_MODEL,
-            max_tokens=1000,
+            max_tokens=10000,
         )
 
         description = _extract_chat_text(response)
@@ -365,8 +369,12 @@ def purge_vram():
 TARGET_TZ = pytz.timezone("America/New_York")
 
 
-def normalize_timestamp(timestamp: Union[float, str]) -> str:
-    """Normalize timestamp to America/New_York with proper DST handling."""
+def normalize_timestamp(timestamp: Union[float, str]) -> dict[str, str]:
+    """Normalize timestamp to America/New_York with proper DST handling.
+
+    Returns a dict with 'iso' (normalized) and 'tz_offset' (original timezone).
+    """
+    original_tz_offset = ""
     if isinstance(timestamp, (int, float)):
         utc_dt = datetime.fromtimestamp(timestamp, pytz.utc)
     else:
@@ -375,6 +383,11 @@ def normalize_timestamp(timestamp: Union[float, str]) -> str:
             if dt.tzinfo is None:
                 utc_dt = pytz.utc.localize(dt)
             else:
+                # Capture original tz offset before converting
+                original_tz_offset = dt.strftime("%z")
+                if original_tz_offset:
+                    # Format as "+HH:MM"
+                    original_tz_offset = f"{original_tz_offset[:3]}:{original_tz_offset[3:]}"
                 utc_dt = dt.astimezone(pytz.utc)
         except ValueError:
             # Try Telegram HTML format: "13.03.2026 08:59:37 UTC-05:00"
@@ -383,13 +396,16 @@ def normalize_timestamp(timestamp: Union[float, str]) -> str:
                 # Remove "UTC" prefix from timezone offset
                 cleaned = re.sub(r'UTC([+-])', r'\1', cleaned)
                 dt = datetime.strptime(cleaned, "%d.%m.%Y %H:%M:%S %z")
+                original_tz_offset = dt.strftime("%z")
+                if original_tz_offset:
+                    original_tz_offset = f"{original_tz_offset[:3]}:{original_tz_offset[3:]}"
                 utc_dt = dt.astimezone(pytz.utc)
             except (ValueError, AttributeError):
                 logger.warning(f"Could not parse timestamp: {timestamp}")
-                return str(timestamp)
+                return {"iso": str(timestamp), "tz_offset": ""}
 
     localized_dt = TARGET_TZ.normalize(utc_dt.astimezone(TARGET_TZ))
-    return localized_dt.isoformat()
+    return {"iso": localized_dt.isoformat(), "tz_offset": original_tz_offset}
 
 
 # =============================================================================
@@ -398,18 +414,27 @@ def normalize_timestamp(timestamp: Union[float, str]) -> str:
 
 
 async def extract_scene_frames(
-    video_path: Path, output_dir: Path, threshold: float = 0.3
+    video_path: Path, output_dir: Path, threshold: float = 0.3,
+    temporal_interval: int = 150,
 ) -> list[dict[str, Any]]:
-    """Extract visually distinct frames using FFmpeg scene detection."""
+    """Extract visually distinct frames using FFmpeg scene detection.
+
+    Uses both scene-change detection AND temporal sampling to ensure at
+    least one frame every ~5s at 30fps even without scene changes.
+    Critical for long single-take videos (selfie vlogs, security feeds).
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     metadata_file = output_dir / "time.txt"
+
+    # Combined filter: scene change OR every N-th frame
+    select_filter = f"select='gt(scene,{threshold})+not(mod(n,{temporal_interval}))'"
 
     cmd = [
         "ffmpeg",
         "-i",
         str(video_path),
         "-filter_complex",
-        f"select='gt(scene,{threshold})',metadata=print:file={metadata_file}",
+        f"{select_filter},metadata=print:file={metadata_file}",
         "-vsync",
         "vfr",
         str(output_dir / "frame_%04d.png"),
@@ -511,7 +536,7 @@ async def batch_vlm_video_analysis(
                 messages=[{"role": "user", "content": content}],
                 model=VISION_MODEL,
                 temperature=0.0,
-                max_tokens=2000,
+                max_tokens=10000,
             )
             all_descriptions.append(_extract_chat_text(response))
 
@@ -544,6 +569,7 @@ async def batch_vlm_video_analysis(
             messages=[{"role": "user", "content": synth_prompt}],
             model=DEFAULT_MODEL,
             temperature=0.3,
+            max_tokens=10000,
         )
         return _extract_chat_text(response)
 
@@ -551,12 +577,22 @@ async def batch_vlm_video_analysis(
 
 
 def cluster_identities(
-    embeddings: np.ndarray, eps: float = 0.6, min_samples: int = 2
+    embeddings: np.ndarray, min_cluster_size: int = 2
 ) -> np.ndarray:
-    """Cluster facial embeddings using DBSCAN with Cosine similarity."""
+    """Cluster facial embeddings using HDBSCAN with Cosine similarity.
+
+    HDBSCAN handles varying cluster densities better than DBSCAN,
+    which is important when mixing HD photos with compressed thumbnails.
+    Falls back to sklearn DBSCAN if hdbscan is not installed.
+    """
     if len(embeddings) == 0:
         return np.array([])
-    dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine")
+    if hdbscan is not None:
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, metric="cosine")
+        return clusterer.fit_predict(embeddings)
+    # Fallback to DBSCAN if hdbscan unavailable
+    from sklearn.cluster import DBSCAN
+    dbscan = DBSCAN(eps=0.6, min_samples=min_cluster_size, metric="cosine")
     return dbscan.fit_predict(embeddings)
 
 
@@ -566,9 +602,14 @@ def cluster_identities(
 
 
 async def create_mega_files(
-    audio_paths: list[Path], output_dir: Path, max_duration_sec: float = 3600.0
+    audio_paths: list[Path], output_dir: Path, max_duration_sec: float = 3600.0,
+    silence_duration: float = 1.5,
 ) -> list[dict[str, Any]]:
-    """Concatenate audio fragments into multiple Mega-Files with resampling."""
+    """Concatenate audio fragments into multiple Mega-Files with resampling.
+
+    Inserts silence buffers between segments to prevent speaker bleed at
+    Mega-File boundaries during ASR diarization.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     batches = []
@@ -577,7 +618,7 @@ async def create_mega_files(
 
     for path in audio_paths:
         duration = get_audio_duration(path)
-        
+
         # If a single file is longer than max_duration, it will be its own batch
         if current_duration + duration > max_duration_sec and current_batch:
             batches.append(current_batch)
@@ -596,11 +637,34 @@ async def create_mega_files(
         mega_file_path = output_dir / f"mega_audio_batch_{i:02d}.wav"
         concat_list_file = mega_file_path.with_suffix(".txt")
 
+        # Generate silence buffer file (16kHz mono WAV)
+        silence_file = output_dir / "_silence_buffer.wav"
+        if not silence_file.exists():
+            silence_cmd = [
+                "ffmpeg", "-y", "-f", "lavfi",
+                "-i", "anullsrc=r=16000:cl=mono",
+                "-t", str(silence_duration),
+                "-c:a", "pcm_s16le",
+                str(silence_file),
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *silence_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            await proc.wait()
+            if proc.returncode != 0:
+                logger.warning("Failed to generate silence buffer, proceeding without")
+                silence_file = Path()  # sentinel: won't exist
+
         boundary_map = {"mega_file_path": str(mega_file_path), "files": []}
         current_offset = 0.0
 
         with open(concat_list_file, "w") as f:
-            for path, duration in batch:
+            for idx, (path, duration) in enumerate(batch):
+                # Insert silence buffer before every segment except the first
+                if idx > 0 and silence_file.exists():
+                    f.write(f"file '{silence_file.absolute()}'\n")
+                    current_offset += silence_duration
+
                 f.write(f"file '{path.absolute()}'\n")
                 boundary_map["files"].append(
                     {
@@ -700,6 +764,73 @@ async def extract_speaker_embedding(audio_segment_path: Path) -> np.ndarray:
     return embeddings.squeeze().cpu().numpy()
 
 
+async def _enhance_audio(audio_path: Path, output_path: Path) -> bool:
+    """Apply DeepFilterNet noise reduction to an audio snippet.
+
+    Normalizes acoustic conditions between near-field voice notes and
+    far-field video audio before speaker embedding extraction.
+    """
+    try:
+        from df import enhance, init_df
+        df_model = init_df()
+        enhance(df_model, str(audio_path), str(output_path))
+        return True
+    except ImportError:
+        logger.debug("deepfilternet not installed, skipping speech enhancement")
+        return False
+    except Exception as e:
+        logger.warning(f"DeepFilterNet enhancement failed: {e}")
+        return False
+
+
+async def _concat_short_segments(
+    audio_path: Path, segments: list[dict[str, Any]], speaker_id: str,
+    output_path: Path, min_duration: float = 10.0,
+) -> bool:
+    """Concatenate short utterances until we reach min_duration for embedding.
+
+    When a speaker's longest segment < min_duration, this accumulates
+    multiple short segments to get enough audio for a reliable embedding.
+    """
+    speaker_segs = [s for s in segments if s["speaker"] == speaker_id]
+    if not speaker_segs:
+        return False
+
+    # Sort by duration descending
+    speaker_segs.sort(key=lambda x: x.get("duration", 0), reverse=True)
+
+    collected_duration = 0.0
+    concat_parts: list[str] = []
+    concat_list = output_path.with_suffix(".txt")
+
+    with open(concat_list, "w") as f:
+        for seg in speaker_segs:
+            seg_path = output_path.parent / f"_seg_{speaker_id}_{seg['start']:.1f}.wav"
+            ok = await extract_audio_snippet(
+                audio_path, seg["start"], min(seg.get("duration", 0), 30.0), seg_path,
+            )
+            if ok:
+                f.write(f"file '{seg_path.absolute()}'\n")
+                collected_duration += seg.get("duration", 0)
+                if collected_duration >= min_duration:
+                    break
+
+    if collected_duration < min_duration:
+        return False
+
+    cmd = [
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+        "-i", str(concat_list),
+        "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1",
+        str(output_path),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    await proc.wait()
+    return proc.returncode == 0
+
+
 def calculate_speaker_similarity(emb1: np.ndarray, emb2: np.ndarray) -> float:
     """Calculate cosine similarity between speaker embeddings."""
     return np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
@@ -708,7 +839,11 @@ def calculate_speaker_similarity(emb1: np.ndarray, emb2: np.ndarray) -> float:
 async def unify_speakers(
     mega_file_results: list[tuple[Path, dict[str, Any]]], output_dir: Path, threshold: float = 0.8
 ) -> dict[str, str]:
-    """Unify Speaker IDs across multiple Mega-Files using acoustic embeddings."""
+    """Unify Speaker IDs across multiple Mega-Files using acoustic embeddings.
+
+    Uses short-utterance accumulation for speakers whose longest segment
+    is <10s, and applies DeepFilterNet enhancement before embedding extraction.
+    """
     global_speaker_map: dict[str, str] = {}
     speaker_embeddings: dict[str, np.ndarray] = {}
     next_global_id = 0
@@ -723,15 +858,21 @@ async def unify_speakers(
             # Enhancement #1: Extract high-confidence 10-30s snippets
             # Prioritize segments with duration between 10-30s and high confidence
             candidates = [
-                s for s in segments 
-                if s["speaker"] == speaker_id 
+                s for s in segments
+                if s["speaker"] == speaker_id
                 and s.get("duration", 0) >= 10.0
             ]
-            
+
             # Sort by confidence if available, then by duration (favoring 20s-ish)
             if candidates:
                 # Prefer confidence > 0.9 if possible, then duration closest to 20s
-                candidates.sort(key=lambda x: (x.get("confidence", 1.0), -abs(x.get("duration", 20) - 20)), reverse=True)
+                candidates.sort(
+                    key=lambda x: (
+                        x.get("confidence", 1.0),
+                        -abs(x.get("duration", 20) - 20),
+                    ),
+                    reverse=True,
+                )
                 target_seg = candidates[0]
             else:
                 # Fallback to longest segment
@@ -743,25 +884,42 @@ async def unify_speakers(
                 continue
 
             snippet_path = snippet_dir / f"mf{mf_idx}_{speaker_id}.wav"
-            # Limit snippet to 30s
-            snippet_duration = min(target_seg["duration"], 30.0)
-            
-            if await extract_audio_snippet(
-                audio_path, target_seg["start"], snippet_duration, snippet_path
-            ):
-                emb = await extract_speaker_embedding(snippet_path)
-                match_id = None
-                for gid, gemb in speaker_embeddings.items():
-                    if calculate_speaker_similarity(emb, gemb) >= threshold:
-                        match_id = gid
-                        break
-                if match_id:
-                    global_speaker_map[f"mf{mf_idx}:{speaker_id}"] = match_id
-                else:
-                    new_gid = f"Global_Speaker_{next_global_id}"
-                    speaker_embeddings[new_gid] = emb
-                    global_speaker_map[f"mf{mf_idx}:{speaker_id}"] = new_gid
-                    next_global_id += 1
+            enhanced_path = snippet_dir / f"mf{mf_idx}_{speaker_id}_enhanced.wav"
+
+            # Short-utterance accumulator: if longest segment < 10s, concatenate
+            if target_seg.get("duration", 0) < 10.0:
+                ok = await _concat_short_segments(
+                    audio_path, segments, speaker_id, snippet_path, min_duration=10.0,
+                )
+                if not ok:
+                    continue
+            else:
+                snippet_duration = min(target_seg["duration"], 30.0)
+                ok = await extract_audio_snippet(
+                    audio_path, target_seg["start"], snippet_duration, snippet_path,
+                )
+                if not ok:
+                    continue
+
+            # Speech enhancement before embedding extraction
+            if await _enhance_audio(snippet_path, enhanced_path):
+                embedding_source = enhanced_path
+            else:
+                embedding_source = snippet_path
+
+            emb = await extract_speaker_embedding(embedding_source)
+            match_id = None
+            for gid, gemb in speaker_embeddings.items():
+                if calculate_speaker_similarity(emb, gemb) >= threshold:
+                    match_id = gid
+                    break
+            if match_id:
+                global_speaker_map[f"mf{mf_idx}:{speaker_id}"] = match_id
+            else:
+                new_gid = f"Global_Speaker_{next_global_id}"
+                speaker_embeddings[new_gid] = emb
+                global_speaker_map[f"mf{mf_idx}:{speaker_id}"] = new_gid
+                next_global_id += 1
     return global_speaker_map
 
 
@@ -794,6 +952,8 @@ async def resolve_identities(
     text_messages: list[dict[str, Any]],
     neo4j_storage: Any | None = None,
     namespace: str = "default",
+    pre_named_entities: list[str] | None = None,
+    model: str | None = None,
 ) -> dict[str, str]:
     """Use a two-pass Research-then-Format approach to resolve identities.
 
@@ -849,8 +1009,14 @@ async def resolve_identities(
         }
         if existing_persons_text:
             compile_kwargs["existing_persons"] = existing_persons_text
+        if pre_named_entities:
+            compile_kwargs["pre_named_entities"] = "PRE-NER DETECTED NAMES (detected before identity resolution):\n" + "\n".join(
+                f"- {name}" for name in pre_named_entities
+            )
 
         research_prompt = research_prompt_template.compile(**compile_kwargs)
+
+        resolution_model = model or DEFAULT_MODEL
 
         # Pass 1: Research
         research_response = await asyncio.to_thread(
@@ -859,8 +1025,9 @@ async def resolve_identities(
                 {"role": "system", "content": "You are a master identity resolution researcher."},
                 {"role": "user", "content": research_prompt},
             ],
-            model=DEFAULT_MODEL,
+            model=resolution_model,
             temperature=0.0,
+            max_tokens=10000,
         )
         research_report = _extract_chat_text(research_response)
 
@@ -869,8 +1036,9 @@ async def resolve_identities(
         format_response = await asyncio.to_thread(
             _get_infra().chat,
             messages=[{"role": "user", "content": format_prompt}],
-            model=DEFAULT_MODEL,
+            model=resolution_model,
             temperature=0.0,
+            max_tokens=10000,
             response_format={
                 "type": "json_schema",
                 "json_schema": {

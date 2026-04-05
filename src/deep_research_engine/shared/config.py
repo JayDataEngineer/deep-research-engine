@@ -26,6 +26,10 @@ DEFAULT_MODEL = os.getenv("MAIN_MODEL", "qwen35-35b-a3b-vision")
 TOOL_MODEL = os.getenv("TOOL_MODEL", "qwen35-35b-a3b-vision")
 VISION_MODEL = os.getenv("VISION_MODEL", "qwen35-35b-a3b-vision")
 
+# Ingestion-specific model (tiny model for NER, identity resolution, VLM)
+# Defaults to gemma-4-e4b — a small model optimized for fast ingestion tasks
+INGESTION_MODEL = os.getenv("INGESTION_MODEL", "gemma-4-e4b")
+
 
 # =============================================================================
 # Model Name Mappings
@@ -97,8 +101,8 @@ __all__ = [
     "LITELLM_API_KEY",
     "LITELLM_BASE_URL",
     "MODEL_MAPPING",
-    "ORCHESTRATOR_BASE_URL",
     "ORCHESTRATOR_API_KEY",
+    "ORCHESTRATOR_BASE_URL",
     "THINKING_TO_FAST",
     "TOOL_MODEL",
     "VISION_MODEL",
