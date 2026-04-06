@@ -580,10 +580,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         checkpoint_p5 = _load_checkpoint(pipeline_dir, "phase5_speaker_map")
 
         if checkpoint_p4 is None:
-            # Phase 4: VibeVoice ASR with diarization
-            # Model is pre-loaded and managed by the orchestrator's VRAM management.
-            logger.info(f"Phase 4: Running VibeVoice ASR on {len(boundary_maps)} mega file(s)")
-
+            # Phase 3: Create mega-files from audio fragments
             audio_paths: list[Path] = []
             for it in all_audio_items:
                 audio_path = Path(it["path"])
@@ -593,7 +590,10 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     audio_paths.append(audio_path)
 
             boundary_maps = await create_mega_files(audio_paths, pipeline_dir)
+            logger.info(f"Phase 3: Created {len(boundary_maps)} mega file(s)")
 
+            # Phase 4: VibeVoice ASR with diarization
+            # Model is pre-loaded and managed by the orchestrator's VRAM management.
             for i, boundary_map in enumerate(boundary_maps):
                 mega_file_path = Path(boundary_map["mega_file_path"])
 
