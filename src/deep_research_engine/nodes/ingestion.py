@@ -422,11 +422,10 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     has_visual_work = photo_items or video_items
 
     if has_visual_work and checkpoint_p2 is None:
-        logger.info(f"Phase 2: Loading LLM model ({INGESTION_MODEL}) for visual processing...")
-        infra = _get_infra()
-        infra.load("llm", INGESTION_MODEL, wait=True)
+        # Models are pre-loaded and managed by the orchestrator's VRAM management.
+        # Just log what we're doing and proceed.
         logger.info(
-            f"LLM loaded. Processing {len(photo_items)} photos and {len(video_items)} videos"
+            f"Phase 2: Processing {len(photo_items)} photos and {len(video_items)} videos"
         )
 
         # Collect embeddings from photos
@@ -581,11 +580,9 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         checkpoint_p5 = _load_checkpoint(pipeline_dir, "phase5_speaker_map")
 
         if checkpoint_p4 is None:
-            # Phase 3.5: Load ASR model (SDK auto-unloads LLM to free VRAM)
-            logger.info("Loading vibevoice-asr for Phase 4 (will auto-unload LLM)...")
-            infra = _get_infra()
-            infra.load("asr", "vibevoice-asr", timeout=600, wait=True)
-            logger.info("vibevoice-asr loaded and ready")
+            # Phase 4: VibeVoice ASR with diarization
+            # Model is pre-loaded and managed by the orchestrator's VRAM management.
+            logger.info(f"Phase 4: Running VibeVoice ASR on {len(boundary_maps)} mega file(s)")
 
             audio_paths: list[Path] = []
             for it in all_audio_items:
@@ -654,9 +651,6 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     checkpoint_p6 = _load_checkpoint(pipeline_dir, "phase6_identity_map")
 
     if checkpoint_p6 is None and (identity_map or audio_results or video_frames):
-        logger.info(f"Phase 6: Loading LLM for identity resolution ({INGESTION_MODEL}) — will auto-unload ASR...")
-        infra = _get_infra()
-        infra.load("llm", INGESTION_MODEL, wait=True)
         logger.info("Phase 6: Performing final identity resolution and batch VLM analysis...")
 
         # Prepare metadata for LLM resolution
@@ -730,8 +724,6 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         resolved_identity_map = checkpoint_p6
         # Still need VLM for video descriptions
         if video_frames:
-            infra = _get_infra()
-            infra.load("llm", INGESTION_MODEL, wait=True)
             cb = VLMBatchCircuitBreaker(pipeline_dir)
             for video_rel_path, frames in video_frames.items():
                 if cb.is_tripped():
