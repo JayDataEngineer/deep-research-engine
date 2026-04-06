@@ -26,9 +26,9 @@ DEFAULT_MODEL = os.getenv("MAIN_MODEL", "qwen35-35b-a3b-vision")
 TOOL_MODEL = os.getenv("TOOL_MODEL", "qwen35-35b-a3b-vision")
 VISION_MODEL = os.getenv("VISION_MODEL", "qwen35-35b-a3b-vision")
 
-# Ingestion-specific model (tiny model for NER, identity resolution, VLM)
-# Defaults to gemma-4-e4b — a small model optimized for fast ingestion tasks
-INGESTION_MODEL = os.getenv("INGESTION_MODEL", "gemma-4-e4b")
+# Ingestion-specific model (tiny model for NER, identity resolution)
+# gemma4-e4b-vision-fast is ~6GB VRAM, no thinking mode — fast for text tasks
+INGESTION_MODEL = os.getenv("INGESTION_MODEL", "gemma4-e4b-vision-fast")
 
 
 # =============================================================================

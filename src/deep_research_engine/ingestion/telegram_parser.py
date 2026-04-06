@@ -248,23 +248,26 @@ class TelegramParser:
                     media_path = photo_link.get("href", "")
                     item_type = "photo"
 
-                voice_elem = div.find("div", class_="voice") or div.find(
-                    "div", class_="media_voice_message"
-                )
-                if voice_elem:
-                    audio_src = voice_elem.find("source")
-                    if audio_src:
-                        media_path = audio_src.get("src", "")
+                # Voice messages are <a> tags with class media_voice_message
+                voice_link = div.find("a", class_="media_voice_message")
+                if voice_link:
+                    media_path = voice_link.get("href", "")
                     item_type = "voice"
 
-                video_elem = div.find("div", class_="video") or div.find(
-                    "div", class_="video_file_wrap"
-                )
-                if video_elem:
-                    video_src = video_elem.find("source")
+                # Video
+                video_link = div.find("a", class_="video_file_wrap")
+                if video_link:
+                    video_src = video_link.get("href", "")
                     if video_src:
-                        media_path = video_src.get("src", "")
+                        media_path = video_src
                     item_type = "video"
+                else:
+                    video_elem = div.find("div", class_="video")
+                    if video_elem:
+                        video_src = video_elem.find("source")
+                        if video_src:
+                            media_path = video_src.get("src", "")
+                        item_type = "video"
 
                 # Stickers
                 is_sticker = bool(
@@ -292,10 +295,8 @@ class TelegramParser:
                     "forwarded": forwarded,
                 })
 
-            # Find orphan media (files in archive dirs but not linked from messages)
-            orphan_media = self._find_orphan_media()
-
-            result = self._build_result("html", items, orphan_media)
+            # Find orphan media and build result
+            result = self._build_result("html", items)
             _internal_logger.info(
                 f"Parsed {result.message_count} messages from HTML "
                 f"({result.media_count} with media, {len(result.sender_set)} senders, "
@@ -311,19 +312,44 @@ class TelegramParser:
                 error=str(e),
             )
 
-    def _find_orphan_media(self) -> list[dict[str, Any]]:
+    def _find_orphan_media(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Find media files in archive directories not linked from messages.
 
         Telegram exports media into subdirectories: photos/, voice_messages/,
         video_files/, stickers/. Some files may exist on disk but not be
         referenced in the HTML.
-
-        Returns:
-            List of orphan media items.
         """
-        # Would need items from current parse - caller should pass them
-        # This is called internally by _build_result
-        return []
+        orphan_items: list[dict[str, Any]] = []
+        existing_paths = {
+            item["path"] for item in items if item.get("path")
+        }
+
+        media_dirs = {
+            "voice_messages": "voice",
+            "video_files": "video",
+            "photos": "photo",
+            "stickers": "sticker",
+        }
+
+        for dir_name, type_name in media_dirs.items():
+            media_dir = self.input_dir / dir_name
+            if not media_dir.exists():
+                continue
+            for f in sorted(media_dir.iterdir()):
+                if f.is_file() and "_thumb." not in f.name:
+                    rel_path = f"{dir_name}/{f.name}"
+                    if rel_path not in existing_paths:
+                        orphan_items.append({
+                            "type": type_name,
+                            "path": rel_path,
+                            "text": None,
+                            "timestamp": "Found in archive",
+                            "tz_offset": "",
+                            "sender": "Unknown",
+                            "forwarded": False,
+                        })
+
+        return orphan_items
 
     def _extract_json_text(self, text: Any) -> str:
         """Extract text from Telegram JSON message text field.
@@ -363,15 +389,21 @@ class TelegramParser:
         Returns:
             TelegramExtractionResult with summary stats.
         """
-        sender_set = {item["sender"] for item in items if item.get("sender")}
+        # Find orphan media if not provided
+        if orphan_media is None:
+            orphan_media = self._find_orphan_media(items)
+
+        all_items = items + orphan_media
+
+        sender_set = {item["sender"] for item in all_items if item.get("sender")}
         timestamps = [
             item["timestamp"]
-            for item in items
+            for item in all_items
             if item.get("timestamp") and item["timestamp"] != "Unknown"
         ]
 
         media_count = sum(
-            1 for item in items
+            1 for item in all_items
             if item.get("path") or item["type"] in ("voice", "video", "photo", "sticker")
         )
 
@@ -386,12 +418,12 @@ class TelegramParser:
         return TelegramExtractionResult(
             success=True,
             source=source,
-            items=items,
-            message_count=len(items),
+            items=all_items,
+            message_count=len(all_items),
             media_count=media_count,
             sender_set=sender_set,
             date_range=date_range,
-            orphan_media=orphan_media or [],
+            orphan_media=orphan_media,
         )
 
 

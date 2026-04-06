@@ -25,11 +25,11 @@ Usage:
 from __future__ import annotations
 
 import io
+import logging
 import os
 import time
-import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
 try:
     import requests
@@ -49,7 +49,7 @@ _TRAEFIK_PORTS = [18880, 8880, 80]
 _DOCKER_HOSTNAMES = ["orchestrator:8000", "shared-orchestrator-orchestrator-1:8000"]
 _DISCOVER_TIMEOUT = 2  # seconds per probe
 _HEALTH_POLL_INTERVAL = 3  # seconds between health checks
-_LOAD_TIMEOUT = 300  # max seconds to wait for model load
+_LOAD_TIMEOUT = 600  # max seconds to wait for model load
 _REQUEST_TIMEOUT = 600  # max seconds for inference calls
 
 # Valid slot types and their models (from orchestrator config)
@@ -102,10 +102,10 @@ class InfraClient:
     and unloading.  You never need to think about GPU management.
     """
 
-    def __init__(self, url: Optional[str] = None, timeout: int = 30):
+    def __init__(self, url: str | None = None, timeout: int = 30):
         self._timeout = timeout
         self._session = requests.Session()
-        self._loaded_models: Dict[str, str] = {}  # slot -> model key cache
+        self._loaded_models: dict[str, str] = {}  # slot -> model key cache
 
         if url:
             self._base = url.rstrip("/")
@@ -114,7 +114,10 @@ class InfraClient:
 
         # If going through Traefik on localhost, set Host header on every request
         if "localhost" in self._base or "127.0.0.1" in self._base:
-            self._session.headers.update({"Host": "api.orchestrator.local"})
+            self._session.headers.update({
+                "Host": "api.orchestrator.local",
+                "Authorization": f"Bearer {_LITELLM_KEY}",
+            })
 
         logger.info("InfraClient connected to %s", self._base)
 
@@ -186,7 +189,7 @@ class InfraClient:
     # Model lifecycle
     # ------------------------------------------------------------------
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         """Get full infrastructure status.
 
         Returns dict with:
@@ -198,13 +201,13 @@ class InfraClient:
         self._raise_for_status(resp, "status")
         return resp.json()
 
-    def vram(self) -> Dict[str, Any]:
+    def vram(self) -> dict[str, Any]:
         """Get VRAM usage."""
         resp = self._get("/vram")
         self._raise_for_status(resp, "vram")
         return resp.json()
 
-    def load(self, slot: str, model: str, wait: bool = True) -> Dict[str, Any]:
+    def load(self, slot: str, model: str, wait: bool = True) -> dict[str, Any]:
         """Load a model into a slot. Unloads conflicting models first.
 
         Args:
@@ -257,14 +260,14 @@ class InfraClient:
         self._loaded_models[slot] = model
         return result
 
-    def unload(self, slot: str) -> Dict[str, Any]:
+    def unload(self, slot: str) -> dict[str, Any]:
         """Unload a model from a slot."""
         self._loaded_models.pop(slot, None)
         resp = self._post(f"/unload/{slot}", timeout=60)
         self._raise_for_status(resp, f"unload {slot}")
         return resp.json()
 
-    def unload_all(self) -> Dict[str, Any]:
+    def unload_all(self) -> dict[str, Any]:
         """Unload all models from all slots."""
         self._loaded_models.clear()
         resp = self._post("/unload/all", timeout=60)
@@ -296,7 +299,7 @@ class InfraClient:
             time.sleep(3)
         logger.warning("VRAM not fully freed after %ds, proceeding anyway", timeout)
 
-    def _get_slot_info(self, slot: str) -> Optional[Dict[str, Any]]:
+    def _get_slot_info(self, slot: str) -> dict[str, Any] | None:
         """Get current slot state from /status."""
         try:
             status = self.status()
@@ -338,11 +341,11 @@ class InfraClient:
 
     def chat(
         self,
-        messages: Union[str, List[Dict[str, str]]],
+        messages: Union[str, list[dict[str, str]]],
         model: str = "qwen35-35b-a3b-vision",
         stream: bool = False,
         **kwargs,
-    ) -> Union[Dict[str, Any], Any]:
+    ) -> Union[dict[str, Any], Any]:
         """Chat with an LLM. Auto-loads the model if needed.
 
         Args:
@@ -359,6 +362,16 @@ class InfraClient:
             messages = [{"role": "user", "content": messages}]
 
         payload = {"model": model, "messages": messages, "stream": stream, **kwargs}
+
+        # Disable thinking mode for text-only local models (prevents token waste on reasoning)
+        # Skip for image/multimodal calls as extra_body breaks VLM
+        has_images = any(
+            isinstance(c, dict) and c.get("type") == "image_url"
+            for m in messages
+            for c in (m.get("content", []) if isinstance(m.get("content"), list) else [])
+        )
+        if not has_images and not is_cloud:
+            payload["extra_body"] = {"thinking": {"type": "disabled"}}
 
         for attempt in range(2):
             # Load model if it's a GPU model (skip for CPU/cloud models)
@@ -383,8 +396,8 @@ class InfraClient:
             if resp.ok:
                 return resp.json()
 
-            # On 404/503, invalidate cache and retry once (orchestrator may have restarted)
-            if resp.status_code in (404, 503) and attempt == 0 and not is_cloud:
+            # On 404/502/503, invalidate cache and retry once (orchestrator may have restarted / model busy)
+            if resp.status_code in (404, 502, 503) and attempt == 0 and not is_cloud:
                 logger.warning(
                     "chat got HTTP %d - invalidating model cache and retrying",
                     resp.status_code,
@@ -406,11 +419,11 @@ class InfraClient:
         audio: Union[str, Path, bytes],
         model: str = "vibevoice-asr",
         diarize: bool = True,
-        language: Optional[str] = None,
+        language: str | None = None,
         response_format: str = "verbose_json",
-        num_speakers: Optional[int] = None,
+        num_speakers: int | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Transcribe audio with optional speaker diarization.
 
         Auto-loads the ASR model, unloading other models if needed.
@@ -433,7 +446,7 @@ class InfraClient:
         if model == "vibevoice-asr":
             api_model = "vibevoice-asr-7b"
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "model": api_model,
             "diarize": str(diarize).lower(),
             "response_format": response_format,
@@ -560,7 +573,7 @@ class InfraClient:
         prompt: str,
         model: str = "comfyui",
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate an image from a text prompt via ComfyUI.
 
         Auto-loads the image-gen model, unloading other models if needed.
@@ -588,7 +601,7 @@ class InfraClient:
     # Convenience
     # ------------------------------------------------------------------
 
-    def available_models(self, slot: Optional[str] = None) -> Dict[str, List[Dict]]:
+    def available_models(self, slot: str | None = None) -> dict[str, list[dict]]:
         """List available models, optionally filtered by slot type."""
         status = self.status()
         models = status.get("available_models", {})
