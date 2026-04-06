@@ -207,12 +207,13 @@ class InfraClient:
         self._raise_for_status(resp, "vram")
         return resp.json()
 
-    def load(self, slot: str, model: str, wait: bool = True) -> dict[str, Any]:
+    def load(self, slot: str, model: str, timeout: int = 600, wait: bool = True) -> dict[str, Any]:
         """Load a model into a slot. Unloads conflicting models first.
 
         Args:
             slot: One of 'llm', 'asr', 'tts', 'image-gen'.
             model: Model key (e.g. 'vibevoice-asr', 'kokoro', 'qwen35-35b-a3b-vision').
+            timeout: Max seconds to wait for model to become healthy (default 600).
             wait: If True, block until the model is healthy.
 
         Returns:
@@ -247,7 +248,7 @@ class InfraClient:
         # Load the requested model
         logger.info("Loading %s into slot %s", model, slot)
         try:
-            resp = self._post(f"/load/{slot}/{model}", timeout=_LOAD_TIMEOUT)
+            resp = self._post(f"/load/{slot}/{model}", timeout=timeout)
             self._raise_for_status(resp, f"load {slot}/{model}")
             result = resp.json()
         except requests.exceptions.Timeout:
@@ -255,7 +256,7 @@ class InfraClient:
             result = {"status": "loading", "slot": slot, "model": model}
 
         if wait:
-            self._wait_healthy(slot, model)
+            self._wait_healthy(slot, model, timeout=timeout)
 
         self._loaded_models[slot] = model
         return result
