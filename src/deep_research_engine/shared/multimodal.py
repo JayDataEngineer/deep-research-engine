@@ -587,13 +587,27 @@ def cluster_identities(
     """
     if len(embeddings) == 0:
         return np.array([])
+
+    # Normalize embeddings for cosine similarity via euclidean on unit vectors
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    norms[norms == 0] = 1  # avoid division by zero
+    normalized = embeddings / norms
+
     if hdbscan is not None:
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, metric="cosine")
-        return clusterer.fit_predict(embeddings)
-    # Fallback to DBSCAN if hdbscan unavailable
+        try:
+            clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=min_cluster_size,
+                metric="euclidean",  # cosine via normalized vectors
+                cluster_selection_epsilon=0.3,
+            )
+            return clusterer.fit_predict(normalized)
+        except Exception as e:
+            logger.warning(f"HDBSCAN failed ({e}), falling back to DBSCAN")
+
+    # Fallback to DBSCAN
     from sklearn.cluster import DBSCAN
-    dbscan = DBSCAN(eps=0.6, min_samples=min_cluster_size, metric="cosine")
-    return dbscan.fit_predict(embeddings)
+    dbscan = DBSCAN(eps=0.4, min_samples=min_cluster_size, metric="euclidean")
+    return dbscan.fit_predict(normalized)
 
 
 # =============================================================================
