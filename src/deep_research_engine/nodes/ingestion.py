@@ -584,7 +584,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             # Phase 3.5: Load ASR model (SDK auto-unloads LLM to free VRAM)
             logger.info("Loading vibevoice-asr for Phase 4 (will auto-unload LLM)...")
             infra = _get_infra()
-            infra.load("asr", "vibevoice-asr", wait=True)
+            infra.load("asr", "vibevoice-asr", timeout=600, wait=True)
             logger.info("vibevoice-asr loaded and ready")
 
             audio_paths: list[Path] = []
