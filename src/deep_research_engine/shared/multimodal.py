@@ -71,7 +71,7 @@ async def asr_transcribe(
     audio_path: Path,
     language: str | None = None,
     include_diarization: bool = True,
-    max_segment_duration_sec: float = 600.0,
+    max_segment_duration_sec: float = 120.0,
 ) -> Union[str, dict[str, Any]]:
     """Transcribe audio file using VibeVoice ASR via InfraClient.
 
