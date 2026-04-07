@@ -71,10 +71,22 @@ async def asr_transcribe(
     audio_path: Path,
     language: str | None = None,
     include_diarization: bool = True,
+    max_segment_duration_sec: float = 600.0,
 ) -> Union[str, dict[str, Any]]:
     """Transcribe audio file using VibeVoice ASR via InfraClient.
 
-    Auto-loads the ASR model and handles GPU management.
+    Large files are split into segments to avoid VRAM OOM during inference.
+    Each segment is transcribed separately, then transcripts are merged
+    with proper timing offsets.
+
+    Args:
+        audio_path: Path to audio file.
+        language: Language code (auto-detect if None).
+        include_diarization: Enable speaker diarization.
+        max_segment_duration_sec: Max duration per ASR call in seconds (default 600 = 10 min).
+
+    Returns:
+        Transcription result (string or dict with segments).
     """
     logger.info(f"Transcribing audio: {audio_path} (diarization={include_diarization})")
 
@@ -84,7 +96,98 @@ async def asr_transcribe(
 
     infra = _get_infra()
 
-    # VibeVoice ASR only - provides native diarization
+    # Check if file needs splitting
+    duration = get_audio_duration(audio_path)
+    logger.info(f"Audio duration: {duration:.1f}s ({duration/60:.1f} min)")
+
+    if duration <= max_segment_duration_sec:
+        # Small enough to transcribe in one shot
+        return await _transcribe_segment(
+            infra, audio_path, language, include_diarization, time_offset=0.0
+        )
+
+    # Split large file into segments
+    import tempfile
+    logger.info(f"Splitting {audio_path.name} into {max_segment_duration_sec:.0f}s segments...")
+
+    all_segments = []
+    all_text_parts = []
+    segment_count = int(duration // max_segment_duration_sec) + 1
+
+    for seg_idx in range(segment_count):
+        seg_start = seg_idx * max_segment_duration_sec
+        seg_duration = min(max_segment_duration_sec, duration - seg_start)
+        if seg_duration <= 0:
+            break
+
+        logger.info(
+            f"Transcribing segment {seg_idx+1}/{segment_count}: "
+            f"{seg_start:.0f}s - {seg_start+seg_duration:.0f}s ({seg_duration:.0f}s)"
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
+        # Use ffmpeg to extract segment
+        cmd = [
+            "ffmpeg", "-y", "-i", str(audio_path),
+            "-ss", str(seg_start),
+            "-t", str(seg_duration),
+            "-c:a", "pcm_s16le",
+            "-ar", "16000",
+            "-ac", "1",
+            str(tmp_path),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        await proc.wait()
+
+        if proc.returncode != 0 or not tmp_path.exists():
+            logger.warning(f"Failed to extract segment {seg_idx+1}, skipping")
+            continue
+
+        result = await _transcribe_segment(
+            infra, tmp_path, language, include_diarization, time_offset=seg_start
+        )
+
+        # Clean up temp file
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+
+        if isinstance(result, dict) and "segments" in result:
+            all_segments.extend(result["segments"])
+            all_text_parts.append(result.get("text", ""))
+        elif isinstance(result, str):
+            all_text_parts.append(result)
+
+    # Merge results
+    if include_diarization:
+        speakers = set()
+        for seg in all_segments:
+            spk = seg.get("speaker", "")
+            if spk:
+                speakers.add(spk)
+        return {
+            "text": " ".join(all_text_parts),
+            "segments": all_segments,
+            "speakers": len(speakers),
+            "diarization": "native",
+            "model": "vibevoice-asr",
+        }
+    return " ".join(all_text_parts)
+
+
+async def _transcribe_segment(
+    infra,
+    audio_path: Path,
+    language: str | None,
+    include_diarization: bool,
+    time_offset: float = 0.0,
+) -> Union[str, dict[str, Any]]:
+    """Transcribe a single audio segment via InfraClient."""
     models_to_try = ["vibevoice-asr"]
 
     for model in models_to_try:
@@ -99,7 +202,12 @@ async def asr_transcribe(
             )
 
             if include_diarization:
-                return _parse_vibevoice_response(result)
+                parsed = _parse_vibevoice_response(result)
+                # Adjust segment timestamps by time_offset
+                for seg in parsed.get("segments", []):
+                    seg["start"] = seg.get("start", 0.0) + time_offset
+                    seg["end"] = seg.get("end", 0.0) + time_offset
+                return parsed
 
             text = result.get("text", "")
             logger.info(f"Transcription complete with {model}: {len(text)} chars")
