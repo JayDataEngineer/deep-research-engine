@@ -593,7 +593,10 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             logger.info(f"Phase 3: Created {len(boundary_maps)} mega file(s)")
 
             # Phase 4: VibeVoice ASR with diarization
-            # Model is pre-loaded and managed by the orchestrator's VRAM management.
+            # Unload LLM first to free VRAM for ASR, then transcribe in 10-min segments.
+            logger.info("Unloading LLM to free VRAM for ASR transcription...")
+            infra = _get_infra()
+            infra.unload("llm")
             for i, boundary_map in enumerate(boundary_maps):
                 mega_file_path = Path(boundary_map["mega_file_path"])
 
@@ -651,6 +654,10 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     checkpoint_p6 = _load_checkpoint(pipeline_dir, "phase6_identity_map")
 
     if checkpoint_p6 is None and (identity_map or audio_results or video_frames):
+        # Reload LLM for identity resolution (was unloaded for ASR)
+        logger.info("Reloading LLM for identity resolution...")
+        infra = _get_infra()
+        infra.load("llm", INGESTION_MODEL, wait=True)
         logger.info("Phase 6: Performing final identity resolution and batch VLM analysis...")
 
         # Prepare metadata for LLM resolution
@@ -722,6 +729,10 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         _save_checkpoint(pipeline_dir, "phase6_identity_map", resolved_identity_map)
     elif checkpoint_p6 is not None:
         resolved_identity_map = checkpoint_p6
+        # Reload LLM for video VLM analysis (was unloaded for ASR)
+        logger.info("Reloading LLM for VLM video analysis...")
+        infra = _get_infra()
+        infra.load("llm", INGESTION_MODEL, wait=True)
         # Still need VLM for video descriptions
         if video_frames:
             cb = VLMBatchCircuitBreaker(pipeline_dir)
