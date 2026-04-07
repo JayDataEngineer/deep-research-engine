@@ -593,10 +593,8 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             logger.info(f"Phase 3: Created {len(boundary_maps)} mega file(s)")
 
             # Phase 4: VibeVoice ASR with diarization
-            # Unload LLM first to free VRAM for ASR, then transcribe in 10-min segments.
-            logger.info("Unloading LLM to free VRAM for ASR transcription...")
-            infra = _get_infra()
-            infra.unload("llm")
+            # The orchestrator handles VRAM management - it will unload LLM and load ASR.
+            # Audio is split into 2-min segments to avoid container OOM.
             for i, boundary_map in enumerate(boundary_maps):
                 mega_file_path = Path(boundary_map["mega_file_path"])
 
@@ -605,7 +603,11 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     f"(Batch {i + 1}/{len(boundary_maps)})"
                 )
 
-                asr_output = await asr_transcribe(mega_file_path, include_diarization=True)
+                try:
+                    asr_output = await asr_transcribe(mega_file_path, include_diarization=True)
+                except Exception as e:
+                    logger.error(f"ASR failed for batch {i + 1}: {e}")
+                    asr_output = {"text": f"[ASR failed: {e}]", "segments": [], "speakers": 0, "error": str(e)}
 
                 if isinstance(asr_output, dict):
                     mega_file_results.append((mega_file_path, asr_output))

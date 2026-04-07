@@ -49,8 +49,8 @@ _TRAEFIK_PORTS = [18880, 8880, 80]
 _DOCKER_HOSTNAMES = ["orchestrator:8000", "shared-orchestrator-orchestrator-1:8000"]
 _DISCOVER_TIMEOUT = 2  # seconds per probe
 _HEALTH_POLL_INTERVAL = 3  # seconds between health checks
-_LOAD_TIMEOUT = 600  # max seconds to wait for model load
-_REQUEST_TIMEOUT = 600  # max seconds for inference calls
+_LOAD_TIMEOUT = 1800  # 30 minutes for model loading
+_REQUEST_TIMEOUT = 1800  # 30 minutes for ASR requests
 
 # Valid slot types and their models (from orchestrator config)
 SLOT_TYPES = ("llm", "asr", "tts", "image-gen")
@@ -239,12 +239,16 @@ class InfraClient:
         status = self.status()
         if status:
             free_mb = status.get("vram", {}).get("free_mb", 0)
-            # Get model's VRAM requirement from slot metadata
-            slot_meta = self._get_slot_info(slot) or {}
-            model_info = slot_meta.get("current_model", {}) if slot_meta else {}
-            # If no model loaded, use config VRAM
-            needed_mb = model_info.get("vram_mb", 0)
-            if free_mb >= needed_mb and needed_mb > 0:
+            # Use known VRAM defaults (more reliable than slot info which may be stale)
+            known_vram = {
+                "gemma4-e4b-vision-fast": 6000,
+                "gemma4-e4b-vision": 6000,
+                "vibevoice-asr": 18500,
+                "qwen35-35b-a3b-vision": 14000,
+                "qwen35-35b-a3b-vision-fast": 14000,
+            }
+            needed_mb = known_vram.get(model, 6000)
+            if free_mb >= needed_mb:
                 logger.info("VRAM already sufficient (%dMB free, %dMB needed), skipping unload", free_mb, needed_mb)
             else:
                 # Free GPU by unloading everything
