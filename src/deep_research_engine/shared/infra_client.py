@@ -374,7 +374,13 @@ class InfraClient:
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
-        payload = {"model": model, "messages": messages, "stream": stream, **kwargs}
+        # Map orchestrator load model names to LiteLLM model names
+        model_name_map = {
+            "gemma4-e4b-vision-fast": "gemma-4-e4b",
+            "gemma4-e4b-vision": "gemma-4-e4b",
+        }
+        api_model = model_name_map.get(model, model)
+        payload = {"model": api_model, "messages": messages, "stream": stream, **kwargs}
 
         # Disable thinking mode for text-only local models (prevents token waste on reasoning)
         # Skip for image/multimodal calls as extra_body breaks VLM
