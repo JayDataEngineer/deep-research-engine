@@ -235,15 +235,27 @@ class InfraClient:
                 self._loaded_models[slot] = model
                 return {"status": "already_loaded", "slot": slot, "model": model}
 
-        # Free GPU by unloading everything
-        logger.info("Unloading all models to free GPU for %s/%s", slot, model)
-        self._loaded_models.clear()
-        unload_resp = self._post("/unload/all", timeout=60)
-        if not unload_resp.ok:
-            logger.warning("Unload all returned %s", unload_resp.status_code)
+        # Check if VRAM is already sufficient (skip unload if enough VRAM)
+        status = self.status()
+        if status:
+            free_mb = status.get("vram", {}).get("free_mb", 0)
+            # Get model's VRAM requirement from slot metadata
+            slot_meta = self._get_slot_info(slot) or {}
+            model_info = slot_meta.get("current_model", {}) if slot_meta else {}
+            # If no model loaded, use config VRAM
+            needed_mb = model_info.get("vram_mb", 0)
+            if free_mb >= needed_mb and needed_mb > 0:
+                logger.info("VRAM already sufficient (%dMB free, %dMB needed), skipping unload", free_mb, needed_mb)
+            else:
+                # Free GPU by unloading everything
+                logger.info("Unloading all models to free GPU for %s/%s", slot, model)
+                self._loaded_models.clear()
+                unload_resp = self._post("/unload/all", timeout=300)
+                if not unload_resp.ok:
+                    logger.warning("Unload all returned %s", unload_resp.status_code)
 
-        # Wait for VRAM to actually be freed (container stop is async)
-        self._wait_vram_freed(model)
+                # Wait for VRAM to actually be freed (container stop is async)
+                self._wait_vram_freed(model)
 
         # Load the requested model
         logger.info("Loading %s into slot %s", model, slot)
