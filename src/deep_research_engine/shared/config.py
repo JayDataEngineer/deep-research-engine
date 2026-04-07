@@ -15,7 +15,7 @@ import os
 
 # Primary: Model Orchestrator (direct, manages GPU lifecycle)
 ORCHESTRATOR_BASE_URL = os.getenv("ORCHESTRATOR_BASE_URL", "http://localhost:18880/v1")
-ORCHESTRATOR_API_KEY = os.getenv("ORCHESTRATOR_API_KEY", "not-needed")
+ORCHESTRATOR_API_KEY = os.getenv("ORCHESTRATOR_API_KEY", "sk-litellm-e2e-test-master-key")
 
 # Fallback: LiteLLM proxy (for cloud models, Langfuse tracing)
 LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", ORCHESTRATOR_BASE_URL)
