@@ -779,6 +779,7 @@ async def create_mega_files(
 
         boundary_map = {"mega_file_path": str(mega_file_path), "files": []}
         current_offset = 0.0
+        converted_paths: list[Path] = []
 
         with open(concat_list_file, "w") as f:
             for idx, (path, duration) in enumerate(batch):
@@ -787,7 +788,26 @@ async def create_mega_files(
                     f.write(f"file '{silence_file.absolute()}'\n")
                     current_offset += silence_duration
 
-                f.write(f"file '{path.absolute()}'\n")
+                # Convert non-wav files to wav for concat compatibility
+                if path.suffix.lower() != ".wav":
+                    wav_path = output_dir / f"_conv_{path.stem}.wav"
+                    conv_cmd = [
+                        "ffmpeg", "-y", "-i", str(path),
+                        "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1",
+                        str(wav_path),
+                    ]
+                    conv_proc = await asyncio.create_subprocess_exec(
+                        *conv_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    )
+                    await conv_proc.wait()
+                    if conv_proc.returncode != 0:
+                        logger.warning(f"Failed to convert {path.name}, skipping")
+                        continue
+                    converted_paths.append(wav_path)
+                    f.write(f"file '{wav_path.absolute()}'\n")
+                else:
+                    f.write(f"file '{path.absolute()}'\n")
+
                 boundary_map["files"].append(
                     {
                         "original_path": str(path),
