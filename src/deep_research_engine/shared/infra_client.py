@@ -50,7 +50,7 @@ _DOCKER_HOSTNAMES = ["orchestrator:8000", "shared-orchestrator-orchestrator-1:80
 _DISCOVER_TIMEOUT = 2  # seconds per probe
 _HEALTH_POLL_INTERVAL = 3  # seconds between health checks
 _LOAD_TIMEOUT = 1800  # 30 minutes for model loading
-_REQUEST_TIMEOUT = 120  # 30 minutes for ASR requests
+_REQUEST_TIMEOUT = 300  # 5 min per request (first ASR segment needs warm-up time)
 
 # Valid slot types and their models (from orchestrator config)
 SLOT_TYPES = ("llm", "asr", "tts", "image-gen")
