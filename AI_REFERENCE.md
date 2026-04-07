@@ -3,6 +3,10 @@
 **For**: 4 AIs working in parallel on implementation
 **Project**: `/home/ubuntu/Documents/programs/deep-research-engine/`
 
+> 📚 **Note**: This file has been moved to `shared-docs/developer-guide/AI_REFERENCE.md`. 
+> The root-level copy is kept for backwards compatibility.
+> For the latest documentation, see [`shared-docs/README.md`](shared-docs/README.md).
+
 ---
 
 ## Project Overview

@@ -1,0 +1,105 @@
+# Quick Start
+
+## Run Your First Workflow
+
+### RAG Research
+
+```bash
+# Using CLI
+deep-research research "What is quantum computing?" --config rag.yaml
+
+# Using Python
+python -c "
+from deep_research_engine import run_workflow, load_config
+import asyncio
+
+async def main():
+    config = load_config('configs/rag.yaml')
+    async for event in run_workflow('What is quantum computing?', config):
+        print(event)
+
+asyncio.run(main())
+"
+```
+
+### PDF Summarizer
+
+```bash
+deep-research pdf ./book.pdf --config pdf_summarizer.yaml
+```
+
+### Telegram Ingestion
+
+```bash
+deep-research ingest ./ChatExport_2026-03-13 --config telegram_ingest.yaml
+```
+
+### Skill Generator
+
+```bash
+deep-research scrape https://docs.example.com --config skill_generator.yaml
+```
+
+## Infrastructure Setup
+
+Before running workflows, start the shared infrastructure:
+
+```bash
+cd ~/Documents/programs/shared-docker-infra
+
+# Start core services (LiteLLM, Orchestrator)
+make core-up
+
+# Start databases (if needed by your workflow)
+make db-up
+
+# Verify
+curl http://litellm.local/v1/models
+```
+
+See [Infrastructure Requirements](./infrastructure) for details.
+
+## Python API Example
+
+```python
+from deep_research_engine import run_workflow, load_config
+
+# Load config
+config = load_config("configs/rag.yaml")
+
+# Run with streaming
+async for event in run_workflow(
+    query="What is quantum computing?",
+    config=config,
+    stream=True,
+):
+    if event["type"] == "phase_complete":
+        print(f"✓ Phase {event['phase']} complete")
+    elif event["type"] == "synthesis_complete":
+        print(f"\nResult:\n{event['output']}")
+```
+
+## FastAPI Integration
+
+```python
+from fastapi import FastAPI
+from deep_research_engine import run_workflow, load_config
+
+app = FastAPI()
+
+@app.post("/api/research")
+async def research(query: str):
+    config = load_config("configs/rag.yaml")
+
+    async def generate():
+        async for event in run_workflow(query, config, stream=True):
+            yield f"data: {event}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+```
+
+## Next Steps
+
+- **[Workflow Configs](../workflows)** - Customize configs
+- **[Workers](../workers)** - Learn about worker types
+- **[Storage](../storage)** - Configure backends

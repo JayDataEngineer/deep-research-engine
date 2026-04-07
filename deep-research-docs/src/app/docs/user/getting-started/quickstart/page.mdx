@@ -1,0 +1,94 @@
+export const metadata = {
+  title: "Quick Start Guide",
+  description: "Run your first research or processing workflow with the Deep Research Engine.",
+};
+
+# Quick Start Guide
+
+This guide will walk you through running your first workflow using the Deep Research Engine. We support both a command-line interface (CLI) for rapid testing and a Python API for deep integration.
+
+<Divider />
+
+## 🚀 Run Your First Workflow
+
+### 1. RAG Research Workflow
+The primary workflow for autonomous web research. It will search the web, scrape relevant pages, and synthesize a comprehensive report.
+
+```bash
+# Using the CLI
+uv run deep-research research "What is the current state of room-temperature superconductivity?" --config rag.yaml
+```
+
+### 2. PDF Summarization
+Process long PDF documents using hierarchical summarization.
+
+```bash
+# Using the CLI
+uv run deep-research pdf ./whitepaper.pdf --config pdf_summarizer.yaml
+```
+
+### 3. Telegram Ingestion
+Ingest and analyze messaging data from Telegram exports.
+
+```bash
+# Using the CLI
+uv run deep-research ingest ./ChatExport_2026-04-01 --config telegram_ingest.yaml
+```
+
+<Divider />
+
+## 🛠️ Infrastructure Setup
+
+Before running workflows, ensure the shared services are active. The engine relies on LiteLLM for inference and various databases for persistence.
+
+```bash
+# Navigate to the shared infrastructure directory
+cd ~/Documents/programs/shared-docker-infra
+
+# Start core services (LiteLLM, API Gateway)
+make core-up
+
+# Start databases (PostgreSQL, Neo4j, MongoDB, MinIO)
+make db-up
+
+# Verify LiteLLM is reachable
+curl http://litellm.local/v1/models
+```
+
+<Divider />
+
+## 🐍 Python API Integration
+
+For programmatic use, the engine provides a first-class async API.
+
+```python
+from deep_research_engine import run_workflow, load_config
+import asyncio
+
+async def main():
+    # 1. Load the desired workflow configuration
+    config = load_config('configs/rag.yaml')
+    
+    # 2. Execute the workflow and stream events
+    async for event in run_workflow('Quantum computing trends 2026', config):
+        if event["type"] == "phase_complete":
+            print(f"✓ {event['phase'].upper()} phase complete")
+        elif event["type"] == "complete":
+            print(f"\nFinal Report:\n{event['output']}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+<Divider />
+
+## Next Steps
+
+- **[Workflow Configs](/docs/user/workflows)**: Learn how to customize `.yaml` settings.
+- **[Workers Guide](/docs/user/workers)**: Dive into the specialized agent types.
+- **[Storage Backends](/docs/user/storage)**: Configure persistent memory and vector stores.
+
+---
+
+**Last Updated:** March 2026
+**Project:** Deep Research Engine

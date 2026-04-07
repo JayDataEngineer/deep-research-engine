@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Space Grotesk", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "Fira Code", monospace;
+
+  /* Deep Cyber Palette */
+  --color-primary: #00f0ff; /* Electric Cyan */
+  --color-primary-container: #004d55;
+  --color-on-primary: #000000;
+  --color-on-primary-container: #80f8ff;
+
+  --color-accent: #bc00ff; /* Cyber Purple */
+  --color-matrix: #00ff41; /* Matrix Green */
+
+  --color-surface: #020203; /* Deep Midnight */
+  --color-surface-bright: #0a0b10;
+  --color-surface-dim: #050507;
+  --color-surface-container-lowest: #010102;
+  --color-surface-container-low: #08080a;
+  --color-surface-container: #0c0d12;
+  --color-surface-container-high: #14161f;
+  --color-surface-container-highest: #1a1c26;
+
+  --color-on-surface: #e0e0e0;
+  --color-on-surface-variant: #a0a0b0;
+  --color-outline: #2a2a3a;
+  --color-outline-variant: #3a3a4a;
+
+  --radius-none: 0px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+
+  --spacing-sidebar: 280px;
+}
+
+:root {
+  --background: #020203;
+  --foreground: #e0e0e0;
+  --sidebar-width: 280px;
+}
+
+* {
+  border-radius: 0 !important;
+}
+
+pre p, code p {
+  color: inherit !important;
+  margin: 0 !important;
+  font-size: inherit !important;
+  display: inline;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-headline);
+  letter-spacing: -0.02em;
+  color: var(--color-primary);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3a4a;
+}
+
+.blueprint-grid {
+  background-image: 
+    linear-gradient(to right, rgba(0, 240, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 240, 255, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.glass-panel {
+  background: rgba(10, 11, 16, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(58, 58, 74, 0.3);
+}
+
+.ghost-border {
+  outline: 1px solid rgba(58, 58, 74, 0.5);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Typography Scales */
+.display-lg {
+  font-size: 4rem;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #00f0ff 0%, #bc00ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.label-md {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  font-family: var(--font-headline);
+  color: var(--color-matrix);
+}
+
+.prose-technical {
+  table {
+    @apply w-full border-separate border-spacing-0 mb-12 bg-surface-container-low text-left font-body text-sm border border-outline;
+    & thead {
+      @apply bg-surface-container text-[10px] font-headline font-bold uppercase tracking-[0.2em] text-primary border-b border-outline;
+    }
+    & th, & td {
+      @apply p-4 border-b border-outline align-top leading-relaxed;
+    }
+    & th {
+      @apply border-r last:border-r-0;
+    }
+    & td {
+      @apply border-r last:border-r-0;
+    }
+    & tr:last-child td {
+      @apply border-b-0;
+    }
+    & code {
+      @apply bg-surface-container-high px-1.5 py-0.5 text-accent font-mono font-bold text-[13px];
+    }
+  }
+}
+
+@media (min-width: 1024px) {
+  .docs-main-container {
+    margin-left: 280px !important;
+  }
+}
+

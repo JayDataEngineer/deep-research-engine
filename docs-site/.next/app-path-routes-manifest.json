@@ -1,0 +1,21 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/docs/api-reference/page": "/docs/api-reference",
+  "/docs/architecture/design-decisions/page": "/docs/architecture/design-decisions",
+  "/docs/architecture/page": "/docs/architecture",
+  "/docs/developer-guide/page": "/docs/developer-guide",
+  "/docs/internals/page": "/docs/internals",
+  "/docs/page": "/docs",
+  "/docs/project-status/page": "/docs/project-status",
+  "/docs/user-guide/examples/page": "/docs/user-guide/examples",
+  "/docs/user-guide/getting-started/infrastructure/page": "/docs/user-guide/getting-started/infrastructure",
+  "/docs/user-guide/getting-started/installation/page": "/docs/user-guide/getting-started/installation",
+  "/docs/user-guide/getting-started/page": "/docs/user-guide/getting-started",
+  "/docs/user-guide/getting-started/quickstart/page": "/docs/user-guide/getting-started/quickstart",
+  "/docs/user-guide/page": "/docs/user-guide",
+  "/docs/user-guide/storage/page": "/docs/user-guide/storage",
+  "/docs/user-guide/workers/page": "/docs/user-guide/workers",
+  "/docs/user-guide/workflows/page": "/docs/user-guide/workflows",
+  "/page": "/"
+}

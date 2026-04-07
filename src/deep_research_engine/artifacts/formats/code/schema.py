@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+
 class CodeSnippet(BaseModel):
     filename: str = Field(description="Name of the file")
     language: str = Field(description="Programming language")

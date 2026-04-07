@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Space Grotesk", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "Fira Code", monospace;
+
+  --color-primary: #006875;
+  --color-primary-container: #00e5ff;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #00626e;
+
+  --color-surface: #f9f9f9;
+  --color-surface-bright: #f9f9f9;
+  --color-surface-dim: #dadada;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f3f3f3;
+  --color-surface-container: #eeeeee;
+  --color-surface-container-high: #e8e8e8;
+  --color-surface-container-highest: #e2e2e2;
+
+  --color-on-surface: #1a1c1c;
+  --color-on-surface-variant: #3b494c;
+  --color-outline: #6b7a7d;
+  --color-outline-variant: #bac9cc;
+
+  --radius-none: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+
+  --spacing-sidebar: 280px;
+}
+
+:root {
+  --background: #f9f9f9;
+  --foreground: #1a1c1c;
+  --sidebar-width: 280px;
+}
+
+* {
+  border-radius: 0 !important;
+}
+
+pre p, code p {
+  color: inherit !important;
+  margin: 0 !important;
+  font-size: inherit !important;
+  display: inline;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-headline);
+  letter-spacing: -0.02em;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #bac9cc;
+}
+
+.blueprint-grid {
+  background-image: radial-gradient(#bac9cc 0.5px, transparent 0.5px);
+  background-size: 24px 24px;
+}
+
+.glass-header {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.ghost-border {
+  outline: 1px solid rgba(186, 201, 204, 0.15);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Typography Scales */
+.display-lg {
+  font-size: 3.5rem;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+
+.label-md {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  font-family: var(--font-headline);
+}
+
+.prose-technical {
+  table {
+    @apply w-full border-separate border-spacing-0 mb-12 bg-surface text-left font-body text-sm border border-surface-container;
+    & thead {
+      @apply bg-surface-container-low text-[10px] font-headline font-bold uppercase tracking-[0.2em] text-on-surface-variant border-b border-surface-container;
+    }
+    & th, & td {
+      @apply p-4 border-b border-surface-container align-top leading-relaxed;
+    }
+    & th {
+      @apply border-r last:border-r-0;
+    }
+    & td {
+      @apply border-r last:border-r-0;
+    }
+    & tr:last-child td {
+      @apply border-b-0;
+    }
+    & code {
+      @apply bg-surface-container-high px-1.5 py-0.5 text-primary font-mono font-bold text-[13px];
+    }
+  }
+}
+
+/* Specific Layout Clearances */
+@media (min-width: 1024px) {
+  .docs-main-container {
+    margin-left: 280px !important;
+  }
+}

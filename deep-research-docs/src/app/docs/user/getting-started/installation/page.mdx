@@ -1,0 +1,76 @@
+export const metadata = {
+  title: "Installation Guide",
+  description: "How to install and set up the Deep Research Engine on your local machine or server.",
+};
+
+# Installation Guide
+
+Setting up the Deep Research Engine requires matching the core package with our standard infrastructure stack for LLM inference and data persistence.
+
+<Divider />
+
+## 📋 Prerequisites
+
+Before proceeding, ensure your environment meets these requirements:
+
+- **Python 3.11+**: The engine uses modern typing and async features.
+- **Docker & Docker Compose**: Required to run the [Shared Infrastructure](/docs/user/getting-started/infrastructure).
+- **uv (Recommended)**: For fast, reliable dependency management.
+
+<Divider />
+
+## 📦 Install via pip
+
+The package is available on our internal PyPI registry.
+
+```bash
+# Standard installation
+pip install deep-research-engine
+
+# With all storage backends (Postgres, MongoDB, Neo4j, MinIO)
+pip install deep-research-engine[all-storage]
+
+# Development & Testing tools
+pip install deep-research-engine[dev]
+```
+
+<Divider />
+
+## 🛠️ Install from Source
+
+If you are contributing to the engine or need the latest development features:
+
+```bash
+# Clone the repository
+git clone https://github.com/deep-research/deep-research-engine.git
+cd deep-research-engine
+
+# Synchronize dependencies with uv
+uv sync --group dev
+```
+
+<Divider />
+
+## ✅ Verify Installation
+
+Run the following commands to confirm the engine is correctly installed and accessible via your shell:
+
+```bash
+# Check installed version
+uv run deep-research --version
+
+# Display global help and command list
+uv run deep-research --help
+```
+
+<Divider />
+
+## Next Steps
+
+- **[Quick Start](/docs/user/getting-started/quickstart)**: Run your first research workflow.
+- **[Infrastructure](/docs/user/getting-started/infrastructure)**: Set up LiteLLM and databases.
+
+---
+
+**Last Updated:** March 2026
+**Project:** Deep Research Engine

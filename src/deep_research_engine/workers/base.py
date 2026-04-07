@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any
 from ..state import WorkerResult as WorkerResultDict
 
 if TYPE_CHECKING:
-    from ..state import EngineState
     from shared.base import BaseLLM
+
+    from ..state import EngineState
 
 
 # =============================================================================

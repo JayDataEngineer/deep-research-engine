@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/docs/layout,_N_T_/docs/architecture/layout,_N_T_/docs/architecture/design-decisions/layout,_N_T_/docs/architecture/design-decisions/page,_N_T_/docs/architecture/design-decisions"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/docs/architecture/design-decisions/__PAGE__",
+    "/docs/architecture/design-decisions",
+    "/docs/architecture",
+    "/docs",
+    "/_index",
+    "/_head"
+  ]
+}

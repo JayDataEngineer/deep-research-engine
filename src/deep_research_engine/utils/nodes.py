@@ -2,7 +2,8 @@
 
 import functools
 import time
-from typing import Any, Callable, Literal
+from collections.abc import Callable
+from typing import Any
 
 from langgraph.types import Command
 
@@ -70,17 +71,21 @@ def node_context(phase_name: str):
                 return result
                 
             except Exception as e:
-                logger.error(f"Error in {phase_name} node: {e}", exc_info=True)
+                # Escape braces in error message to prevent loguru format errors
+                # (error messages may contain JSON like {'status': 'error'})
+                safe_msg = str(e).replace("{", "{{").replace("}", "}}")
+                logger.error(f"Error in {phase_name} node: {safe_msg}", exc_info=True)
                 error_msg = str(e)
                 
-                # Return Command with error
+                # Return Command with error - route to END to stop the graph
+                from langgraph.graph import END
                 return Command(
                     update={
                         "fatal_error": error_msg,
                         "current_phase": phase_name,
                         "phase_history": history,
                     },
-                    goto=None # Let the graph builder handle error routing
+                    goto=END
                 )
 
         return wrapper

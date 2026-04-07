@@ -12,36 +12,15 @@ Note: Core multimodal functions are in shared/multimodal.py to avoid duplication
 This module contains only pipeline-specific utilities.
 """
 
-import asyncio
-import gc
-import os
 import re
 import subprocess
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pytz
-import torch
 from loguru import logger
-from sklearn.cluster import DBSCAN
 
 # Import shared multimodal functions instead of duplicating
-from ..shared.multimodal import (
-    purge_vram,
-    normalize_timestamp,
-    extract_scene_frames,
-    cluster_identities,
-    create_mega_files,
-    get_audio_duration,
-    extract_audio_snippet,
-    extract_speaker_embedding,
-    calculate_speaker_similarity,
-    unify_speakers,
-    unstitch_transcript,
-    resolve_identities,
-)
 
 # Timezone Constants
 TARGET_TZ = pytz.timezone('America/New_York')
@@ -78,7 +57,7 @@ async def parse_ffmpeg_metadata(time_file: Path) -> list[dict[str, Any]]:
         logger.warning(f"FFmpeg metadata file not found: {time_file}")
         return frames
     
-    with open(time_file, "r") as f:
+    with open(time_file) as f:
         content = f.read()
     
     # Try new format first: pts_time with scene score

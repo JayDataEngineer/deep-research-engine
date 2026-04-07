@@ -1,0 +1,569 @@
+# Workflow Configuration Reference
+
+Complete reference for configuring deep research workflows using YAML.
+
+## Overview
+
+The Deep Research Engine uses YAML configuration files to define workflow behavior. Each config specifies:
+
+- **Workflow metadata** - Name, type, version
+- **Input source** - Query, file, or URL
+- **Phases** - Ingestion, Drafter, Critic, Neo4j, Synthesis
+- **Storage backends** - PostgreSQL, MongoDB, Neo4j, MinIO
+- **LLM configuration** - Models for different tasks
+- **Tools** - Available tools for workers
+- **Execution settings** - Timeouts, concurrency, streaming
+- **Output format** - Destination and format
+
+## Quick Start
+
+```yaml
+workflow:
+  name: my_research
+  type: research
+  version: 1.0.0
+
+input:
+  type: query
+  source: "${QUERY}"
+
+phases:
+  - name: ingestion
+    node: IngestionNode
+
+  - name: drafter
+    node: DrafterNode
+    config:
+      strategy: complexity_based
+
+  - name: critic
+    node: CriticNode
+
+  - name: neo4j
+    node: Neo4jBuilderNode
+
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      format: research_report
+
+storage:
+  memory:
+    enabled: true
+
+execution:
+  max_steps: 100
+  timeout: 600
+
+output:
+  destination:
+    type: file
+    path: ./output
+  format: markdown
+```
+
+## Configuration Schema
+
+### `workflow` Section
+
+Workflow metadata and identification.
+
+```yaml
+workflow:
+  name: string              # Unique workflow name
+  type: string              # Workflow type: research, pdf_summarization, skill_generation, telegram_ingest
+  version: string           # Semantic version (e.g., "1.0.0")
+  description: string       # Optional description
+```
+
+**Example:**
+```yaml
+workflow:
+  name: rag_research
+  type: research
+  version: 1.0.0
+  description: Multi-agent RAG research with web search
+```
+
+### `input` Section
+
+Defines workflow input source.
+
+```yaml
+input:
+  type: string              # Input type: query, pdf, urls, telegram_export
+  source: string|list       # Input source (query string, file path, URL list)
+```
+
+**Types:**
+
+| Type | Source Format | Description |
+|------|--------------|-------------|
+| `query` | string | Text query for research |
+| `pdf` | string | Path to PDF file |
+| `urls` | list | List of URLs to process |
+| `telegram_export` | string | Path to Telegram export directory |
+
+**Examples:**
+
+```yaml
+# Query input
+input:
+  type: query
+  source: "What is quantum computing?"
+
+# PDF input
+input:
+  type: pdf
+  source: "/path/to/document.pdf"
+
+# Multiple URLs
+input:
+  type: urls
+  source:
+    - https://docs.python.org
+    - https://docs.djangoproject.com
+```
+
+### `phases` Section
+
+Defines workflow execution phases. The engine uses a 5-node pipeline:
+
+```yaml
+phases:
+  - name: ingestion
+    node: IngestionNode
+
+  - name: drafter
+    node: DrafterNode
+    config:
+      # Drafter configuration
+
+  - name: critic
+    node: CriticNode
+    config:
+      # Critic configuration
+
+  - name: neo4j
+    node: Neo4jBuilderNode
+    config:
+      # Neo4j configuration
+
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      # Synthesis configuration
+```
+
+#### Ingestion Phase
+
+```yaml
+phases:
+  - name: ingestion
+    node: IngestionNode
+    config:
+      extract_audio: boolean        # Extract audio from video
+      extract_frames: boolean       # Extract video frames
+      asr_model: string             # ASR model for transcription
+      vlm_model: string             # VLM for image analysis
+```
+
+#### Drafter Phase
+
+```yaml
+phases:
+  - name: drafter
+    node: DrafterNode
+    config:
+      strategy: string                    # Planning strategy
+      workers:
+        min: integer                      # Minimum workers
+        max: integer                      # Maximum workers
+      subagents:
+        enabled: boolean                  # Enable Flash subagents
+        max_concurrent: integer           # Max concurrent subagents
+```
+
+**Strategies:**
+
+| Strategy | Description |
+|----------|-------------|
+| `complexity_based` | Adjusts worker count based on query complexity |
+| `simple` | Single worker for simple queries |
+| `comprehensive` | Maximum workers for thorough coverage |
+
+#### Critic Phase
+
+```yaml
+phases:
+  - name: critic
+    node: CriticNode
+    config:
+      evaluate: string                    # What to evaluate
+      criteria:                           # Evaluation criteria
+        - name: string
+          weight: float
+          threshold: float
+
+      on_fail:
+        action: string                    # Action on failure
+        max_retries: integer
+```
+
+**Criteria:**
+
+| Name | Description | Typical Threshold |
+|------|-------------|-------------------|
+| `completeness` | Coverage completeness | 0.7 |
+| `accuracy` | Factual accuracy | 0.8 |
+| `relevance` | Query relevance | 0.75 |
+| `quality` | Overall quality | 0.7 |
+
+**On Fail Actions:**
+
+| Action | Description |
+|--------|-------------|
+| `retry_drafter` | Retry drafter phase |
+| `terminate` | Stop workflow |
+| `proceed` | Continue despite failure |
+
+#### Neo4j Builder Phase
+
+```yaml
+phases:
+  - name: neo4j
+    node: Neo4jBuilderNode
+    config:
+      enabled: boolean                  # Enable graph construction
+      extract_entities: boolean         # Extract entities
+      extract_relationships: boolean    # Extract relationships
+      graph_name: string                # Graph name
+```
+
+#### Synthesis Phase
+
+```yaml
+phases:
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      output:
+        format: string                    # Output format
+        citations:
+          enabled: boolean
+          format: string
+
+      format_config:
+        max_retries: integer
+        include_metadata: boolean
+        min_sections: integer
+        min_findings: integer
+```
+
+**Output Formats:**
+
+| Format | Description |
+|--------|-------------|
+| `research_report` | Full research report |
+| `markdown` | Markdown document |
+| `structured_json` | JSON structure |
+| `summary` | Brief summary |
+
+**Citation Formats:**
+
+| Format | Example |
+|--------|---------|
+| `numbered` | [1], [2], [3] |
+| `APA` | (Smith, 2024) |
+| `MLA` | (Smith 123) |
+| `chicago` | Smith, John. "Title." 2024. |
+
+### `storage` Section
+
+Configures storage backends.
+
+```yaml
+storage:
+  postgres:
+    enabled: boolean
+    connection: string              # Connection URL
+    vector_index: string            # Vector index name
+
+  neo4j:
+    enabled: boolean
+    uri: string                     # Neo4j URI
+    username: string
+    password: string
+
+  mongodb:
+    enabled: boolean
+    connection: string              # Connection URL
+    database: string                # Database name
+
+  minio:
+    enabled: boolean
+    endpoint: string                # MinIO endpoint
+    access_key: string
+    secret_key: string
+    bucket: string
+
+  memory:
+    enabled: boolean                # In-memory storage (default)
+```
+
+### `llm` Section
+
+Configures LLM models.
+
+```yaml
+llm:
+  models:
+    main: string                      # Main model for reasoning
+    tool: string                      # Model for tool use
+    embedding: string                 # Embedding model
+
+  provider: string                    # LLM provider (optional)
+  api_key: string                     # API key (or use env var)
+  base_url: string                    # Custom base URL (optional)
+```
+
+**Example:**
+```yaml
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+    embedding: jina-v5-embed
+
+  provider: openai
+  api_key: "${OPENAI_API_KEY}"
+  base_url: "http://litellm.local/v1"
+```
+
+### `tools` Section
+
+Configures available tools.
+
+```yaml
+tools:
+  enabled:                            # List of enabled tools
+    - web_search
+    - web_get
+    - web_research_agent
+    - vector_search
+    - pdf_reader
+    - scraper
+
+  config:                             # Tool-specific config
+    web_search:
+      engine: string                  # Search engine
+      num_results: integer
+    vector_search:
+      index: string
+      top_k: integer
+```
+
+### `execution` Section
+
+Configures workflow execution.
+
+```yaml
+execution:
+  max_steps: integer                # Maximum execution steps
+  timeout: integer                  # Timeout in seconds
+  logging: string                   # Log level
+
+  streaming:
+    enabled: boolean                # Enable streaming
+    batch_size: integer             # Batch size for streaming
+
+  retry:
+    max_attempts: integer           # Max retry attempts
+    delay: integer                  # Delay between retries
+```
+
+### `output` Section
+
+Configures output destination and format.
+
+```yaml
+output:
+  destination:
+    type: string                    # Destination type
+    path: string                    # Output path
+
+  format: string                    # Output format
+  include_metadata: boolean         # Include metadata
+```
+
+## Environment Variables
+
+Use environment variables with `${VAR}` or `${VAR-default}` syntax:
+
+```yaml
+workflow:
+  name: ${WORKFLOW_NAME-my_workflow}
+
+storage:
+  postgres:
+    connection: "${POSTGRES_URL-postgresql://localhost:5433/deep_research}"
+
+  neo4j:
+    password: "${NEO4J_PASSWORD}"
+
+llm:
+  api_key: "${OPENAI_API_KEY}"
+```
+
+## Complete Example Configs
+
+### RAG Research
+
+```yaml
+workflow:
+  name: rag_research
+  type: research
+  version: 1.0.0
+  description: Multi-agent RAG research
+
+input:
+  type: query
+  source: "${QUERY}"
+
+phases:
+  - name: ingestion
+    node: IngestionNode
+
+  - name: drafter
+    node: DrafterNode
+    config:
+      strategy: complexity_based
+      workers:
+        min: 1
+        max: 3
+
+  - name: critic
+    node: CriticNode
+
+  - name: neo4j
+    node: Neo4jBuilderNode
+
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      format: research_report
+      citations:
+        enabled: true
+        format: numbered
+
+storage:
+  postgres:
+    enabled: true
+    connection: "${POSTGRES_URL}"
+  memory:
+    enabled: true
+
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+
+tools:
+  enabled:
+    - web_search
+    - vector_search
+
+execution:
+  max_steps: 100
+  timeout: 600
+  streaming:
+    enabled: true
+
+output:
+  destination:
+    type: both
+    path: ./output
+  format: markdown
+```
+
+### PDF Summarizer
+
+```yaml
+workflow:
+  name: pdf_summarizer
+  type: pdf_summarization
+  version: 1.0.0
+
+input:
+  type: pdf
+  source: "${PDF_PATH}"
+
+phases:
+  - name: ingestion
+    node: IngestionNode
+
+  - name: drafter
+    node: DrafterNode
+    config:
+      strategy: simple
+
+  - name: critic
+    node: CriticNode
+
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      format: summary
+
+storage:
+  memory:
+    enabled: true
+
+execution:
+  max_steps: 50
+  timeout: 300
+
+output:
+  destination:
+    type: file
+    path: ./output/summary.md
+  format: markdown
+```
+
+## Usage
+
+### CLI
+
+```bash
+# Run with config
+uv run deep-research research "query" --config configs/rag.yaml
+
+# Run PDF summarizer
+uv run deep-research pdf /path/to/document.pdf --config configs/pdf_summarizer.yaml
+
+# Run with custom config
+uv run deep-research research "query" --config /path/to/custom.yaml
+```
+
+### Python API
+
+```python
+from deep_research_engine import run_workflow, load_config
+
+# Load config
+config = load_config("configs/rag.yaml")
+
+# Run workflow
+async for event in run_workflow("Research query", config):
+    print(event)
+```
+
+## Best Practices
+
+1. **Use environment variables** for sensitive data (API keys, passwords)
+2. **Start simple** - Begin with minimal config, add complexity as needed
+3. **Test phases individually** - Validate each phase before full workflow
+4. **Set appropriate timeouts** - Prevent infinite loops
+5. **Enable streaming** for long-running workflows
+6. **Use critic** for quality-critical workflows
+7. **Configure storage** based on data persistence needs

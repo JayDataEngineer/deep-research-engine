@@ -279,4 +279,40 @@ A JSON mapping from Speaker IDs (e.g., "Speaker 0") or Visual Cluster IDs (e.g.,
             "temperature": 0.3,
         },
     },
+
+    "content-cluster": {
+        "prompt": """You are a content clustering specialist. Group the following items into thematic clusters.
+
+**RULES:**
+1. Create 3-15 clusters covering all the content.
+2. Each cluster has a concise name, a one-sentence summary, a list of suggested labels/tags, and key entities mentioned.
+3. Group by topic, person, time period, or activity.
+4. Items may belong to multiple clusters (use overlapping indices).
+5. Prefer existing topic names when the content clearly fits.
+
+{{ topics_section }}
+
+**OUTPUT FORMAT — respond with ONLY valid JSON:**
+```json
+{
+  "clusters": [
+    {
+      "name": "...",
+      "summary": "...",
+      "item_indices": [0, 5],
+      "suggested_labels": ["..."],
+      "key_entities": ["..."]
+    }
+  ]
+}
+```
+
+**SOURCE TEXT (items separated by ---):**
+
+{{ combined }}""",
+        "config": {
+            "model": "qwen-35-27",
+            "temperature": 0.3,
+        },
+    },
 }

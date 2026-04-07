@@ -23,8 +23,8 @@ from typing import Any
 from langgraph.types import Command
 
 from ...state import EngineState, WorkerResult
-from ..base import BaseWorker, WorkerConfig, WorkerRegistry
 from ...utils.logging import get_loguru_logger
+from ..base import BaseWorker, WorkerConfig, WorkerRegistry
 
 logger = get_loguru_logger("worker.web_researcher")
 

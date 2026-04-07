@@ -1,9 +1,9 @@
-import asyncio
-from typing import Any, List, Dict
-from ..state import EngineState, WorkerResult
+from typing import Any
+
+from ..config import get_phase_config
+from ..state import EngineState
 from ..utils.logging import get_loguru_logger
 from ..utils.nodes import node_context
-from ..config import get_phase_config
 from ..workers import WorkerConfig, WorkerRegistry
 
 logger = get_loguru_logger("nodes.artifact_maker")

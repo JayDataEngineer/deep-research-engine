@@ -4,11 +4,12 @@ Uses LLM-based evaluation with structured output for consistent quality assessme
 """
 
 from typing import Any
-from ..state import EngineState, CriticEvaluation
-from ..utils.logging import get_loguru_logger
-from ..utils.nodes import node_context
+
 from ..config import get_phase_config
 from ..shared import get_langchain_llm
+from ..state import CriticEvaluation, EngineState
+from ..utils.logging import get_loguru_logger
+from ..utils.nodes import node_context
 
 logger = get_loguru_logger("nodes.critic")
 

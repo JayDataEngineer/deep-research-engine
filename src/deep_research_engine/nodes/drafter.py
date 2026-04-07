@@ -141,10 +141,40 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
         if dump_file.exists():
             dump_content = dump_file.read_text()
             logger.info(f"Loaded ingestion output: {len(dump_content)} chars from {dump_file.name}")
+
+            # Try sort+extract sub-agents first (uses DeepAgents pattern)
+            try:
+                from ..agents.subagents import run_sort_then_extract
+                sorted_result = await run_sort_then_extract(
+                    dump_content, model=king_model_name if king_model_name else "gemma4-e4b-vision-fast",
+                    config_data=config_data,
+                )
+                logger.info(
+                    f"Sort Agent: {len(sorted_result['sorted_content'])} chars, "
+                    f"Entity Extractor: {len(sorted_result['entities'])} chars"
+                )
+                # Write sorted output for reference
+                sorted_path = dump_file.parent / "sorted_content.md"
+                sorted_path.write_text(sorted_result["sorted_content"])
+                entities_path = dump_file.parent / "extracted_entities.md"
+                entities_path.write_text(sorted_result["entities"])
+
+                # Use sorted content for the king (it's organized and often shorter)
+                analysis_content = sorted_result["sorted_content"]
+            except Exception as e:
+                logger.warning(f"Sort/Extract sub-agents failed, using raw dump: {e}")
+                analysis_content = dump_content
+
+            # Truncate to fit context (32K = ~100K chars for gemma4-e4b)
+            max_chars = 90000
+            if len(analysis_content) > max_chars:
+                logger.info(f"Truncating analysis content from {len(analysis_content)} to {max_chars} chars")
+                analysis_content = analysis_content[:max_chars] + "\n\n...[content truncated]..."
+
             user_message = (
                 f"Execute the research plan for: {user_query}\n\n"
                 f"## INGESTION DATA (from pipeline)\n\n"
-                f"{dump_content[:80000]}\n\n"
+                f"{analysis_content}\n\n"
                 f"Use the above data to produce your analysis."
             )
         else:

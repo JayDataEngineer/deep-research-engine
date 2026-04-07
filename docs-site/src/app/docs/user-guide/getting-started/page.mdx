@@ -1,0 +1,55 @@
+# Getting Started
+
+Welcome to the Deep Research Engine. This section will help you get up and running.
+
+## Quick Navigation
+
+- **[Installation](./installation)** - Install the package and dependencies
+- **[Quick Start](./quickstart)** - Run your first workflow in minutes
+- **[Infrastructure](./infrastructure)** - Set up required services
+
+## What is Deep Research Engine?
+
+Deep Research Engine is a high-performance orchestration framework for:
+
+- **Multi-agent intelligence** - Coordinate multiple AI agents for complex research tasks
+- **Vector search** - Semantic memory and knowledge retrieval
+- **Recursive knowledge synthesis** - Iterative refinement and quality assurance
+- **Multimodal processing** - Handle text, PDFs, audio, video, and images
+
+## Architecture Overview
+
+```
+Config (YAML) → Engine → Ingestion → Drafter ↔ Critic → Neo4j → Synthesis
+```
+
+The engine uses a 5-node pipeline:
+
+1. **Ingestion** - Extract text from various sources (PDFs, audio, video, web)
+2. **Drafter** - Plan and execute research tasks with sub-agents
+3. **Critic** - Quality assurance and revision loop
+4. **Neo4j Builder** - Optional knowledge graph construction
+5. **Synthesis** - Generate final reports and outputs
+
+## Prerequisites
+
+- Python 3.11+
+- Docker (for infrastructure services)
+- Access to LLM providers (via LiteLLM)
+
+## Next Steps
+
+<div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-10">
+  <a href="./installation" className="p-6 border border-outline bg-surface-container hover:border-primary transition-all group">
+    <h4 className="text-primary group-hover:animate-pulse mb-2">Installation Guide</h4>
+    <p className="text-xs text-on-surface-variant">Step-by-step installation and environment configuration.</p>
+  </a>
+  <a href="./quickstart" className="p-6 border border-outline bg-surface-container hover:border-accent transition-all group">
+    <h4 className="text-accent group-hover:animate-pulse mb-2">Quick Start</h4>
+    <p className="text-xs text-on-surface-variant">Run your first research workflow in minutes.</p>
+  </a>
+  <a href="./infrastructure" className="p-6 border border-outline bg-surface-container hover:border-matrix transition-all group">
+    <h4 className="text-matrix group-hover:animate-pulse mb-2">Infrastructure Setup</h4>
+    <p className="text-xs text-on-surface-variant">Configure databases, vector stores, and LLM gateway.</p>
+  </a>
+</div>

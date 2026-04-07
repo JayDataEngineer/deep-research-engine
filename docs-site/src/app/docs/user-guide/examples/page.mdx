@@ -1,0 +1,435 @@
+# Examples
+
+Practical examples of using the Deep Research Engine.
+
+## RAG Research Example
+
+Research a topic using web search and vector storage.
+
+### Configuration
+
+```yaml
+# configs/rag.yaml
+workflow:
+  name: rag_research
+  type: research
+  version: 1.0.0
+
+input:
+  type: query
+  source: "${QUERY}"
+
+phases:
+  - name: ingestion
+    node: IngestionNode
+
+  - name: drafter
+    node: DrafterNode
+    config:
+      strategy: complexity_based
+
+  - name: critic
+    node: CriticNode
+
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      format: research_report
+      citations:
+        enabled: true
+
+storage:
+  postgres:
+    enabled: true
+  memory:
+    enabled: true
+
+llm:
+  models:
+    main: qwen-35-27
+    tool: qwen-35-27-fast
+```
+
+### Run with CLI
+
+```bash
+deep-research research "What is quantum computing?" --config configs/rag.yaml
+```
+
+### Run with Python
+
+```python
+from deep_research_engine import run_workflow, load_config
+import asyncio
+
+async def main():
+    config = load_config("configs/rag.yaml")
+    
+    async for event in run_workflow("What is quantum computing?", config):
+        if event["type"] == "phase_complete":
+            print(f"✓ Phase {event['phase']} complete")
+        elif event["type"] == "synthesis_complete":
+            print(f"\nResult:\n{event['output']}")
+
+asyncio.run(main())
+```
+
+---
+
+## PDF Summarizer Example
+
+Process and summarize a PDF document.
+
+### Configuration
+
+```yaml
+# configs/pdf_summarizer.yaml
+workflow:
+  name: pdf_summarizer
+  type: pdf_summarization
+  version: 1.0.0
+
+input:
+  type: pdf
+  source: "${PDF_PATH}"
+
+phases:
+  - name: ingestion
+    node: IngestionNode
+
+  - name: drafter
+    node: DrafterNode
+    config:
+      strategy: simple
+
+  - name: critic
+    node: CriticNode
+
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      format: summary
+
+storage:
+  memory:
+    enabled: true
+
+execution:
+  max_steps: 50
+  timeout: 300
+```
+
+### Run with CLI
+
+```bash
+deep-research pdf ./book.pdf --config configs/pdf_summarizer.yaml
+```
+
+### Run with Python
+
+```python
+from deep_research_engine import run_workflow, load_config
+import asyncio
+
+async def main():
+    config = load_config("configs/pdf_summarizer.yaml")
+    
+    async for event in run_workflow("", config, pdf_path="./book.pdf"):
+        if event["type"] == "synthesis_complete":
+            print(f"\nSummary:\n{event['output']}")
+
+asyncio.run(main())
+```
+
+---
+
+## Telegram Ingestion Example
+
+Process Telegram chat exports with multimodal support.
+
+### Configuration
+
+```yaml
+# configs/telegram_vibevoice.yaml
+workflow:
+  name: telegram_ingest
+  type: telegram_ingest
+  version: 1.0.0
+
+input:
+  type: telegram_export
+  source: "${TELEGRAM_EXPORT_PATH}"
+
+phases:
+  - name: ingestion
+    node: IngestionNode
+    config:
+      extract_audio: true
+      extract_frames: true
+      asr_model: vibevoice
+      diarization: true
+
+  - name: drafter
+    node: DrafterNode
+
+  - name: critic
+    node: CriticNode
+
+  - name: neo4j
+    node: Neo4jBuilderNode
+
+  - name: synthesis
+    node: SynthesisNode
+
+storage:
+  postgres:
+    enabled: true
+  neo4j:
+    enabled: true
+  mongodb:
+    enabled: true
+  minio:
+    enabled: true
+```
+
+### Run with CLI
+
+```bash
+deep-research ingest ./ChatExport_2026-03-13 --config configs/telegram_vibevoice.yaml
+```
+
+---
+
+## Skill Generator Example
+
+Scrape documentation and generate skills.
+
+### Configuration
+
+```yaml
+# configs/skill_generator.yaml
+workflow:
+  name: skill_generator
+  type: skill_generation
+  version: 1.0.0
+
+input:
+  type: urls
+  source:
+    - https://docs.python.org
+    - https://docs.djangoproject.com
+
+phases:
+  - name: ingestion
+    node: IngestionNode
+
+  - name: drafter
+    node: DrafterNode
+    config:
+      worker_type: scraper
+
+  - name: critic
+    node: CriticNode
+
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      format: skill_cards
+
+storage:
+  memory:
+    enabled: true
+```
+
+### Run with CLI
+
+```bash
+deep-research scrape https://docs.example.com --config configs/skill_generator.yaml
+```
+
+---
+
+## FastAPI Integration
+
+Integrate the engine into a FastAPI application.
+
+```python
+from fastapi import FastAPI, BackgroundTasks
+from fastapi.responses import StreamingResponse
+from deep_research_engine import run_workflow, load_config
+import asyncio
+import json
+
+app = FastAPI()
+
+@app.post("/api/research")
+async def research(query: str):
+    """Start research and stream results."""
+    config = load_config("configs/rag.yaml")
+
+    async def generate():
+        async for event in run_workflow(query, config, stream=True):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+@app.post("/api/research/async")
+async def research_async(query: str, background_tasks: BackgroundTasks):
+    """Start research in background."""
+    config = load_config("configs/rag.yaml")
+    
+    async def run_research():
+        async for event in run_workflow(query, config):
+            # Store results or send notifications
+            pass
+    
+    background_tasks.add_task(asyncio.run, run_research())
+    return {"status": "started", "query": query}
+```
+
+---
+
+## Custom Worker Example
+
+Create and use a custom worker.
+
+```python
+from deep_research_engine.workers import BaseWorker, WorkerConfig, WorkerRegistry
+from deep_research_engine.state import EngineState, WorkerResult
+import httpx
+
+@WorkerRegistry.register("api_call")
+class APICallWorker(BaseWorker):
+    """Worker for making API calls."""
+
+    worker_type = "api_call"
+    description = "Makes HTTP requests to external APIs"
+
+    async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+        """Execute API call."""
+        self._start_timing()
+
+        try:
+            url = config.custom.get("url")
+            method = config.custom.get("method", "GET")
+            headers = config.custom.get("headers", {})
+
+            async with httpx.AsyncClient() as client:
+                response = await client.request(method, url, headers=headers)
+                response.raise_for_status()
+
+                return self._create_result(
+                    success=True,
+                    output=response.json(),
+                    output_type="api_response",
+                    confidence=0.9,
+                    sources=[{"type": "api", "url": url}]
+                )
+
+        except Exception as e:
+            return self._create_result(
+                success=False,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+```
+
+### Use Custom Worker in Config
+
+```yaml
+phases:
+  - name: workers
+    node: WorkerNode
+    config:
+      worker_type: api_call
+      custom:
+        url: "https://api.example.com/data"
+        method: "GET"
+```
+
+---
+
+## Multi-Workflow Orchestration
+
+Run multiple workflows in sequence.
+
+```python
+from deep_research_engine import run_workflow, load_config
+import asyncio
+
+async def run_research_pipeline(query: str):
+    """Run multi-stage research pipeline."""
+    
+    # Stage 1: Initial research
+    rag_config = load_config("configs/rag.yaml")
+    initial_findings = []
+    
+    async for event in run_workflow(query, rag_config):
+        if event["type"] == "synthesis_complete":
+            initial_findings = event["output"]
+    
+    # Stage 2: Deep dive
+    pdf_config = load_config("configs/pdf_summarizer.yaml")
+    summaries = []
+    
+    for pdf_path in ["paper1.pdf", "paper2.pdf"]:
+        async for event in run_workflow("", pdf_config, pdf_path=pdf_path):
+            if event["type"] == "synthesis_complete":
+                summaries.append(event["output"])
+    
+    # Stage 3: Final synthesis
+    return {
+        "initial_findings": initial_findings,
+        "summaries": summaries,
+        "combined": initial_findings + summaries
+    }
+
+# Run pipeline
+results = asyncio.run(run_research_pipeline("Quantum computing advances"))
+```
+
+---
+
+## Streaming Events
+
+Handle streaming events from the engine.
+
+```python
+from deep_research_engine import run_workflow, load_config
+
+async def stream_research(query: str):
+    config = load_config("configs/rag.yaml")
+    
+    async for event in run_workflow(query, config, stream=True):
+        event_type = event.get("type")
+        
+        if event_type == "phase_start":
+            print(f"🔄 Starting phase: {event['phase']}")
+        
+        elif event_type == "phase_complete":
+            print(f"✓ Completed phase: {event['phase']}")
+        
+        elif event_type == "worker_complete":
+            print(f"  → Worker {event['worker_id']} complete")
+        
+        elif event_type == "critic_decision":
+            if event["decision"] == "pass":
+                print(f"✓ Critic approved")
+            else:
+                print(f"↺ Critic requested revision: {event['feedback']}")
+        
+        elif event_type == "synthesis_complete":
+            print(f"\n📄 Final Report:\n{event['output']}")
+        
+        elif event_type == "error":
+            print(f"❌ Error: {event['error']}")
+```
+
+---
+
+## Reference
+
+- [Workflow Configs](../workflows)
+- [Workers Guide](../workers)
+- [Storage Backends](../storage)
+- [API Reference](../../api-reference)

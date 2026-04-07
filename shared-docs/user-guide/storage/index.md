@@ -1,0 +1,797 @@
+# Storage Backends Guide
+
+Complete guide to storage backends in the Deep Research Engine.
+
+## Overview
+
+The Deep Research Engine supports multiple storage backends for persisting workflow data, research findings, and media files. Storage is pluggable - enable only what you need.
+
+## Architecture
+
+```
+┌─────────────────┐
+│ StorageManager  │ → Orchestrates backends
+└─────────────────┘
+       ↓
+┌─────────────────┐
+│ StorageRegistry │ → Backend registration
+└─────────────────┘
+       ↓
+┌─────────────────┐
+│ Backends:       │
+│ - InMemory      │
+│ - PostgreSQL    │
+│ - MongoDB       │
+│ - Neo4j         │
+│ - MinIO         │
+└─────────────────┘
+```
+
+## StorageManager
+
+Central orchestrator for storage backends:
+
+```python
+from deep_research_engine.storage import StorageManager
+
+# Create manager
+storage = StorageManager()
+
+# Initialize backends
+await storage.initialize("postgres", {
+    "connection": "postgresql://localhost:5433/deep_research",
+    "vector_index": "research"
+})
+
+await storage.initialize("mongodb", {
+    "connection": "mongodb://localhost:27017",
+    "database": "deep_research"
+})
+
+# Get backend
+backend = storage.get_backend("postgres")
+
+# Store data
+result = await storage.store(data, namespace="research")
+
+# Retrieve data
+data = await storage.retrieve(result.id, namespace="research")
+
+# Query data
+results = await storage.query("machine learning", namespace="research", limit=10)
+
+# Cleanup
+await storage.cleanup()
+```
+
+## StorageBackend Interface
+
+All backends implement this interface:
+
+```python
+from deep_research_engine.storage import StorageBackend, StorageResult
+from typing import Dict, Any, List, Optional
+
+class StorageBackend(ABC):
+    """Abstract base class for storage backends."""
+    
+    backend_name: str           # Backend identifier
+    description: str            # Backend description
+    
+    async def initialize(self) -> None:
+        """Initialize backend connection."""
+        pass
+    
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
+        pass
+    
+    async def health_check(self) -> bool:
+        """Check backend health."""
+        pass
+    
+    async def store(
+        self,
+        data: Dict[str, Any],
+        namespace: str = "default"
+    ) -> StorageResult:
+        """Store data."""
+        pass
+    
+    async def retrieve(
+        self,
+        id: str,
+        namespace: str = "default"
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieve data by ID."""
+        pass
+    
+    async def delete(
+        self,
+        id: str,
+        namespace: str = "default"
+    ) -> bool:
+        """Delete data."""
+        pass
+    
+    async def list_items(
+        self,
+        namespace: str = "default",
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """List items in namespace."""
+        pass
+    
+    async def query(
+        self,
+        query: str,
+        namespace: str = "default",
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Query data (for vector/search backends)."""
+        pass
+```
+
+## StorageResult
+
+Standardized result contract:
+
+```python
+from dataclasses import dataclass
+from typing import Dict, Any, Optional
+
+@dataclass
+class StorageResult:
+    success: bool                   # Operation success
+    id: Optional[str] = None        # Stored item ID
+    data: Optional[Any] = None      # Retrieved data
+    metadata: Optional[Dict] = None # Metadata
+    error: Optional[str] = None     # Error message
+```
+
+## Built-in Backends
+
+### InMemoryStorage
+
+Default in-memory storage for testing and development.
+
+**Configuration:**
+```yaml
+storage:
+  memory:
+    enabled: true
+    max_size: 1000  # Optional: max items
+```
+
+**Features:**
+- Fast, no setup required
+- Non-persistent (lost on restart)
+- Good for testing
+- Default fallback
+
+**Usage:**
+```python
+from deep_research_engine.storage import InMemoryStorage
+
+storage = InMemoryStorage({"namespace": "test", "max_size": 100})
+await storage.initialize()
+
+# Store
+result = await storage.store(
+    {"content": "test data", "metadata": {"source": "test"}},
+    namespace="research"
+)
+
+# Retrieve
+data = await storage.retrieve(result.id, namespace="research")
+
+# List
+items = await storage.list_items(namespace="research", limit=10)
+
+# Cleanup
+await storage.cleanup()
+```
+
+### PostgresStorage
+
+PostgreSQL storage with pgvector for vector search.
+
+**Configuration:**
+```yaml
+storage:
+  postgres:
+    enabled: true
+    connection: "${POSTGRES_URL-postgresql://localhost:5433/deep_research}"
+    vector_index: research_vectors
+    embedding_model: jina-v5-embed
+```
+
+**Features:**
+- Persistent storage
+- Vector similarity search
+- Full-text search
+- ACID compliance
+- Scalable
+
+**Schema:**
+```sql
+CREATE TABLE IF NOT EXISTS documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    content TEXT,
+    metadata JSONB,
+    embedding vector(768),
+    namespace VARCHAR(100),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_embedding ON documents USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_namespace ON documents (namespace);
+```
+
+**Usage:**
+```python
+from deep_research_engine.storage import PostgresStorage
+
+storage = PostgresStorage({
+    "connection": "postgresql://localhost:5433/deep_research",
+    "vector_index": "research_vectors"
+})
+
+await storage.initialize()
+
+# Store with embedding
+result = await storage.store(
+    {
+        "content": "Research findings...",
+        "metadata": {"source": "web", "url": "http://example.com"}
+    },
+    namespace="research"
+)
+
+# Vector search
+results = await storage.query(
+    "machine learning applications",
+    namespace="research",
+    limit=10
+)
+
+# Full-text search
+results = await storage.query(
+    "neural networks",
+    namespace="research"
+)
+
+await storage.cleanup()
+```
+
+**Infrastructure:**
+```bash
+# Docker Compose
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: deep_research
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+```
+
+### MongoDBStorage
+
+MongoDB for media files and unstructured data.
+
+**Configuration:**
+```yaml
+storage:
+  mongodb:
+    enabled: true
+    connection: "${MONGODB_URL-mongodb://localhost:27017}"
+    database: deep_research
+    collection: media_files
+```
+
+**Features:**
+- Document storage
+- GridFS for large files
+- Flexible schema
+- Horizontal scaling
+
+**Usage:**
+```python
+from deep_research_engine.storage import MongoDBStorage
+
+storage = MongoDBStorage({
+    "connection": "mongodb://localhost:27017",
+    "database": "deep_research",
+    "collection": "media_files"
+})
+
+await storage.initialize()
+
+# Store document
+result = await storage.store(
+    {
+        "content": "Media metadata...",
+        "file_path": "/path/to/file.mp4",
+        "type": "video"
+    },
+    namespace="media"
+)
+
+# Store large file (GridFS)
+with open("large_file.mp4", "rb") as f:
+    result = await storage.store(
+        {"file": f.read(), "filename": "large_file.mp4"},
+        namespace="gridfs"
+    )
+
+# Query
+results = await storage.query(
+    {"type": "video"},
+    namespace="media",
+    limit=10
+)
+
+await storage.cleanup()
+```
+
+**Infrastructure:**
+```bash
+services:
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_DATABASE: deep_research
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+```
+
+### Neo4jStorage
+
+Neo4j for knowledge graph storage.
+
+**Configuration:**
+```yaml
+storage:
+  neo4j:
+    enabled: true
+    uri: "${NEO4J_URI-bolt://localhost:7687}"
+    username: neo4j
+    password: "${NEO4J_PASSWORD}"
+    database: neo4j
+```
+
+**Features:**
+- Graph relationships
+- Entity linking
+- Path queries
+- Knowledge representation
+
+**Usage:**
+```python
+from deep_research_engine.storage import Neo4jStorage
+
+storage = Neo4jStorage({
+    "uri": "bolt://localhost:7687",
+    "username": "neo4j",
+    "password": "password"
+})
+
+await storage.initialize()
+
+# Store entity
+result = await storage.store(
+    {
+        "name": "Machine Learning",
+        "type": "Concept",
+        "description": "AI subset..."
+    },
+    namespace="entities"
+)
+
+# Create relationship
+await storage.execute(
+    """
+    MATCH (a:Concept {name: "Machine Learning"})
+    MATCH (b:Concept {name: "Neural Networks"})
+    CREATE (a)-[:RELATED_TO]->(b)
+    """
+)
+
+# Query graph
+results = await storage.query(
+    """
+    MATCH (c:Concept)-[:RELATED_TO*1..3]->(target)
+    WHERE c.name = "Machine Learning"
+    RETURN target
+    """
+)
+
+await storage.cleanup()
+```
+
+**Infrastructure:**
+```bash
+services:
+  neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7687:7687"  # Bolt
+      - "7474:7474"  # HTTP
+    volumes:
+      - neo4j_data:/data
+```
+
+### MinIOStorage
+
+S3-compatible object storage for files.
+
+**Configuration:**
+```yaml
+storage:
+  minio:
+    enabled: true
+    endpoint: "${MINIO_ENDPOINT-http://localhost:9000}"
+    access_key: "${MINIO_ACCESS_KEY}"
+    secret_key: "${MINIO_SECRET_KEY}"
+    bucket: deep-research
+    region: us-east-1
+```
+
+**Features:**
+- S3-compatible API
+- Large file storage
+- Versioning support
+- Lifecycle policies
+
+**Usage:**
+```python
+from deep_research_engine.storage import MinIOStorage
+
+storage = MinIOStorage({
+    "endpoint": "http://localhost:9000",
+    "access_key": "minioadmin",
+    "secret_key": "minioadmin",
+    "bucket": "deep-research"
+})
+
+await storage.initialize()
+
+# Upload file
+with open("document.pdf", "rb") as f:
+    result = await storage.store(
+        {"file": f.read(), "filename": "document.pdf"},
+        namespace="documents"
+    )
+
+# Download file
+data = await storage.retrieve(
+    result.id,
+    namespace="documents"
+)
+
+# List objects
+objects = await storage.list_items(
+    namespace="documents",
+    limit=100
+)
+
+# Delete object
+await storage.delete(result.id, namespace="documents")
+
+await storage.cleanup()
+```
+
+**Infrastructure:**
+```bash
+services:
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+```
+
+## StorageRegistry
+
+Backend registration system:
+
+```python
+from deep_research_engine.storage import StorageRegistry, StorageBackend
+
+# Register custom backend
+@StorageRegistry.register("custom_backend")
+class CustomStorage(StorageBackend):
+    backend_name = "custom_backend"
+    # Implementation
+
+# Check if registered
+if StorageRegistry.is_registered("custom_backend"):
+    print("Backend is registered")
+
+# List all backends
+for name, cls in StorageRegistry.list_all():
+    print(f"{name}: {cls.description}")
+
+# Get backend class
+BackendClass = StorageRegistry.get("custom_backend")
+```
+
+## Implementing Custom Backends
+
+### Template
+
+```python
+from deep_research_engine.storage import StorageBackend, StorageResult, StorageRegistry
+from typing import Dict, Any, List, Optional
+
+@StorageRegistry.register("my_backend")
+class MyStorageBackend(StorageBackend):
+    """Custom storage backend."""
+    
+    backend_name = "my_backend"
+    description = "My custom storage backend"
+    
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+        self.connection = None
+        self.initialized = False
+    
+    async def initialize(self) -> None:
+        """Initialize connection."""
+        # Setup connection
+        self.connection = await self._connect()
+        self.initialized = True
+        self.health_status = "healthy"
+    
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
+        if self.connection:
+            await self.connection.close()
+        self.initialized = False
+    
+    async def health_check(self) -> bool:
+        """Check health."""
+        return self.initialized
+    
+    async def store(self, data: Dict[str, Any], namespace: str = "default") -> StorageResult:
+        """Store data."""
+        try:
+            # Implementation
+            doc_id = await self._insert(data, namespace)
+            return StorageResult(success=True, id=doc_id)
+        except Exception as e:
+            return StorageResult(success=False, error=str(e))
+    
+    async def retrieve(self, id: str, namespace: str = "default") -> Optional[Dict[str, Any]]:
+        """Retrieve data."""
+        try:
+            data = await self._find_by_id(id, namespace)
+            return data
+        except Exception:
+            return None
+    
+    async def delete(self, id: str, namespace: str = "default") -> bool:
+        """Delete data."""
+        try:
+            await self._delete(id, namespace)
+            return True
+        except Exception:
+            return False
+    
+    async def list_items(self, namespace: str = "default", limit: int = 100) -> List[Dict[str, Any]]:
+        """List items."""
+        try:
+            items = await self._list(namespace, limit)
+            return items
+        except Exception:
+            return []
+    
+    async def query(self, query: str, namespace: str = "default", limit: int = 10) -> List[Dict[str, Any]]:
+        """Query data."""
+        try:
+            results = await self._search(query, namespace, limit)
+            return results
+        except Exception:
+            return []
+```
+
+## Multi-Backend Usage
+
+Use multiple backends simultaneously:
+
+```yaml
+storage:
+  postgres:
+    enabled: true   # For research findings
+  neo4j:
+    enabled: true   # For knowledge graph
+  mongodb:
+    enabled: true   # For media files
+  minio:
+    enabled: true   # For large objects
+  memory:
+    enabled: true   # For caching
+```
+
+```python
+from deep_research_engine.storage import StorageManager
+
+storage = StorageManager()
+
+# Initialize multiple backends
+await storage.initialize("postgres", config1)
+await storage.initialize("neo4j", config2)
+await storage.initialize("mongodb", config3)
+
+# Store in specific backend
+postgres_backend = storage.get_backend("postgres")
+await postgres_backend.store(data, namespace="research")
+
+# Query across backends
+neo4j_backend = storage.get_backend("neo4j")
+graph_results = await neo4j_backend.query("MATCH (n) RETURN n")
+
+# Cleanup all
+await storage.cleanup()
+```
+
+## Testing Storage Backends
+
+### Unit Test Example
+
+```python
+import pytest
+from deep_research_engine.storage import StorageResult
+
+class TestMyStorageBackend:
+    
+    @pytest.fixture
+    async def storage(self):
+        """Create test storage."""
+        storage = MyStorageBackend({"namespace": "test"})
+        await storage.initialize()
+        yield storage
+        await storage.cleanup()
+    
+    @pytest.mark.asyncio
+    async def test_store_and_retrieve(self, storage):
+        """Test store and retrieve."""
+        data = {"content": "test", "metadata": {"key": "value"}}
+        
+        # Store
+        result = await storage.store(data, namespace="test")
+        assert result.success is True
+        assert result.id is not None
+        
+        # Retrieve
+        retrieved = await storage.retrieve(result.id, namespace="test")
+        assert retrieved is not None
+        assert retrieved["content"] == "test"
+    
+    @pytest.mark.asyncio
+    async def test_delete(self, storage):
+        """Test delete."""
+        result = await storage.store({"content": "test"}, namespace="test")
+        
+        # Delete
+        deleted = await storage.delete(result.id, namespace="test")
+        assert deleted is True
+        
+        # Verify deleted
+        retrieved = await storage.retrieve(result.id, namespace="test")
+        assert retrieved is None
+    
+    @pytest.mark.asyncio
+    async def test_health_check(self, storage):
+        """Test health check."""
+        healthy = await storage.health_check()
+        assert healthy is True
+```
+
+## Best Practices
+
+1. **Use appropriate backend** - Match storage to data type
+2. **Enable only needed backends** - Reduce resource usage
+3. **Use namespaces** - Organize data logically
+4. **Handle errors gracefully** - Return StorageResult with error info
+5. **Implement health checks** - Monitor backend status
+6. **Clean up resources** - Close connections properly
+7. **Use connection pooling** - Improve performance
+8. **Index appropriately** - Optimize queries
+9. **Backup regularly** - Protect data
+10. **Monitor performance** - Track latency and throughput
+
+## Performance Optimization
+
+### Connection Pooling
+
+```python
+import asyncpg
+
+class PostgresStorage(StorageBackend):
+    async def initialize(self):
+        self.pool = await asyncpg.create_pool(
+            self.config["connection"],
+            min_size=5,
+            max_size=20
+        )
+```
+
+### Batch Operations
+
+```python
+async def store_batch(self, items: List[Dict], namespace: str):
+    """Store multiple items efficiently."""
+    async with self.pool.acquire() as conn:
+        async with conn.transaction():
+            for item in items:
+                await self._insert(conn, item, namespace)
+```
+
+### Caching
+
+```python
+from functools import lru_cache
+
+class CachedStorage(StorageBackend):
+    @lru_cache(maxsize=1000)
+    async def retrieve(self, id: str, namespace: str):
+        # Check cache first
+        cached = self._cache.get(f"{namespace}:{id}")
+        if cached:
+            return cached
+        
+        # Fetch from storage
+        data = await super().retrieve(id, namespace)
+        self._cache[f"{namespace}:{id}"] = data
+        return data
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Connection refused:**
+```yaml
+# Check connection string
+storage:
+  postgres:
+    connection: "postgresql://user:pass@host:5432/db"
+```
+
+**Vector search not working:**
+```sql
+-- Ensure pgvector extension is enabled
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+**Timeout errors:**
+```yaml
+# Increase timeout
+storage:
+  mongodb:
+    timeout: 30000  # 30 seconds
+```
+
+## Reference
+
+- [Workflow Configs](../workflow-configs/)
+- [Workers Guide](../workers/)
+- [API Reference](../api-reference/)
+- [Infrastructure](../getting-started/infrastructure.md)

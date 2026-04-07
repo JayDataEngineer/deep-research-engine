@@ -8,22 +8,30 @@
 ## Quick Start for AI Agents
 
 ### 1. Read These First
-1. `AI_REFERENCE.md` - Main implementation guide
-2. `IMPLEMENTATION_STATUS.md` - What's done vs TODO
-3. `pyproject.toml` - Dependencies and configuration
+1. **`shared-docs/README.md`** - 📚 Main documentation hub (START HERE)
+2. `shared-docs/developer-guide/AI_REFERENCE.md` - Main implementation guide
+3. `shared-docs/developer-guide/contributing/IMPLEMENTATION_STATUS.md` - What's done vs TODO
+4. `pyproject.toml` - Dependencies and configuration
 
 ### 2. Project Structure
 ```
 deep-research-engine/
 ├── src/deep_research_engine/    # Main package
 ├── configs/                      # Workflow configs
-├── docs/                         # Documentation
-├── design/                       # Architecture docs
+├── shared-docs/                  # 📚 ALL DOCUMENTATION (centralized)
+│   ├── user-guide/               # User documentation
+│   ├── developer-guide/          # Developer docs (AGENTS.md, AI_REFERENCE.md)
+│   ├── architecture/             # Design decisions
+│   ├── api-reference/            # API docs
+│   ├── internals/                # Internal details
+│   └── project-status/           # Status reports
+├── design/                       # [DEPRECATED] Legacy design docs
+├── docs/                         # [DEPRECATED] Legacy docs
 ├── reference/                    # External library docs (cloned)
 │   ├── langgraph/                # LangGraph reference
 │   ├── deepagents/               # DeepAgents reference
 │   └── langchain/                # LangChain reference
-└── tests/                        # Tests (TODO)
+└── tests/                        # Tests
 ```
 
 ### 3. Development Commands
@@ -279,11 +287,10 @@ Key services:
 - MinIO: Object storage
 
 ### Local Documentation
-- `docs/` - Deep Research Engine docs
-- `AGENTS.md` - This file
-- `CLAUDE.md` - Quick reference
-- `AI_REFERENCE.md` - Detailed guide
-- `design/` - Architecture docs
+- **`shared-docs/README.md`** - 📚 Central documentation hub
+- `shared-docs/developer-guide/` - Developer guides
+- `shared-docs/architecture/` - Architecture docs
+- `shared-docs/user-guide/` - User documentation
 
 ---
 
@@ -320,7 +327,8 @@ See `../../shared-docker-infra/docs/` for full documentation.
 
 ## Questions?
 
-1. Check `design/` for architecture decisions
-2. Check `reference/` for LangGraph/DeepAgents/LangChain docs
-3. Check `../../shared-docker-infra/docs/` for infrastructure
-4. Check `AI_REFERENCE.md` for detailed implementation guide
+1. **Start at `shared-docs/README.md`** - Central documentation hub
+2. Check `shared-docs/architecture/design-decisions/` for architecture decisions
+3. Check `reference/` for LangGraph/DeepAgents/LangChain docs
+4. Check `../../shared-docker-infra/docs/` for infrastructure
+5. Check `shared-docs/developer-guide/AI_REFERENCE.md` for detailed implementation guide

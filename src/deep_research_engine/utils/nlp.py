@@ -91,7 +91,7 @@ async def extract_entities(content: str, model: str | None = None) -> dict[str, 
 
     Args:
         content: Text to extract entities from.
-        model: Model to use. Defaults to DEFAULT_MODEL.
+        model: Model to use. Defaults to INGESTION_MODEL (smaller, faster).
     """
     if not content or len(content.strip()) < 10:
         return {
@@ -101,7 +101,9 @@ async def extract_entities(content: str, model: str | None = None) -> dict[str, 
             "dates": [],
         }
 
-    model_name = model or DEFAULT_MODEL
+    # Use INGESTION_MODEL by default (gemma4-e4b-vision-fast, ~6GB, fast)
+    from ..shared.config import INGESTION_MODEL
+    model_name = model or INGESTION_MODEL
 
     try:
         logger.debug(f"Extracting entities from {len(content)} chars using {model_name}")

@@ -1,0 +1,16 @@
+name: CI Failure Fixer
+
+on:
+  workflow_run:
+    workflows: ["Your Main Test Workflow"] # The name of your tests
+    types: [completed]
+
+jobs:
+  fix-on-failure:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    steps:
+      - uses: google-labs-code/jules-invoke@v1
+        with:
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          prompt: "The CI build just failed. Analyze the logs, fix the bug, and update the PR."

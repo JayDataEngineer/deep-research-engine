@@ -1,0 +1,273 @@
+# AI Reference Guide
+
+**For**: Developers implementing the Deep Research Engine  
+**Project**: `/home/ubuntu/Documents/programs/deep-research-engine/`
+
+---
+
+## Project Overview
+
+The Deep Research Engine is a config-driven multi-agent workflow engine that unifies 4 existing projects:
+
+1. **Deep Research** - Multi-agent RAG research
+2. **PDF Summarizer** - PDF processing  
+3. **make-llmstxt** - Skill generation
+4. **tracer** - Telegram ingestion with multimodal support
+
+**Key Insight**: All 4 projects use the same `Ingestion → Drafter ↔ Critic → Neo4j → Synthesis` pattern. The engine makes this configurable via YAML.
+
+---
+
+## Architecture
+
+```
+Config (YAML) → Engine → LangGraph Workflow
+                     ↓
+        Ingestion → Drafter ↔ Critic → Neo4j → Synthesis
+```
+
+### Core Design Decisions
+
+1. **Generic State** - 18 fields max (not 50+)
+   - Workflow-specific data in `context` dict
+   - See: `src/deep_research_engine/state/types.py`
+
+2. **Pluggable Storage** - Optional backends
+   - PDF: Just Memory
+   - Telegram: Postgres + Neo4j + MongoDB + MinIO
+   - See: `src/deep_research_engine/storage/`
+
+3. **Worker ABC** - Uniform interface
+   - All workers implement `execute(state, config) -> WorkerResult`
+   - See: `src/deep_research_engine/workers/base.py`
+
+4. **Config-Driven** - New workflow = new YAML
+   - See: `configs/*.yaml`
+
+---
+
+## Reference Materials
+
+### Existing Implementations
+
+#### Deep Research
+```
+../../text/unified-llm-interface/backend/src/extensions/content/deep_research/
+├── config.yaml              ← Main config
+├── graph/
+│   ├── graph_factory.py     ← LangGraph builder
+│   └── nodes/
+│       └── unified/         ← Boss/Critic/Synthesis
+└── agents/
+    └── flash_explorer.py    ← Flash Explorer
+```
+
+#### PDF Summarizer
+```
+../../text/pdf-summarizer/src/pdf_summarizer/
+├── graph.py                 ← Linear pipeline
+├── state.py                 ← PDFSummarizerState
+└── nodes/
+    ├── parser.py            ← pymupdf4llm
+    ├── filter.py            ← Filler removal
+    ├── dedupe.py            ← Semantic clustering
+    └── summarize.py         ← Hierarchical summary
+```
+
+#### make-llmstxt
+```
+../../text/make-llmstxt/src/make_llmstxt/
+├── generators/
+│   ├── base_agent.py        ← DeepAgentGenerator
+│   └── critic.py            ← Critic with structured output
+└── scrapers/                ← MCP scraping
+```
+
+#### tracer
+```
+../../operations/tracer/src/tracer/
+├── graph/
+│   ├── ingestion/           ← Stage A: Parse → Process → Critic → Store
+│   └── inference/           ← Stage B: Query → Decompose → Fan-out → Synthesize
+└── tools/                   ← ASR, VLM, face recognition
+```
+
+### Infrastructure Documentation
+
+```
+../../shared-docker-infra/docs/
+├── services/                ← LiteLLM, Postgres, Neo4j, MongoDB, MinIO
+├── integration/             ← How to connect
+└── architecture/            ← Network topology, security
+```
+
+---
+
+## Implementation Tasks
+
+### Graph Execution
+
+**Goal**: Implement LangGraph workflow
+
+**Files**:
+```
+src/deep_research_engine/graph/
+├── builder.py              # build_workflow_graph(config)
+└── nodes/
+    ├── ingestion.py
+    ├── drafter.py
+    ├── critic.py
+    ├── neo4j_builder.py
+    └── synthesis.py
+```
+
+**Key Patterns**:
+```python
+from langgraph.graph import StateGraph, START, END
+from deep_research_engine.state import EngineState
+
+def build_workflow_graph(config):
+    graph = StateGraph(EngineState)
+    
+    graph.add_node("ingestion", ingestion_node)
+    graph.add_node("drafter", drafter_node)
+    graph.add_node("critic", critic_node)
+    graph.add_node("neo4j", neo4j_builder_node)
+    graph.add_node("synthesis", synthesis_node)
+    
+    graph.add_edge(START, "ingestion")
+    graph.add_edge("ingestion", "drafter")
+    graph.add_edge("drafter", "critic")
+    graph.add_conditional_edges(
+        "critic",
+        route_after_critic,
+        {"pass": "neo4j", "revise": "drafter"}
+    )
+    graph.add_edge("neo4j", "synthesis")
+    graph.add_edge("synthesis", END)
+    
+    return graph.compile()
+```
+
+---
+
+### Worker Implementations
+
+**Goal**: Implement worker types for all workflows
+
+**Files**:
+```
+src/deep_research_engine/workers/implementations/
+├── web_researcher.py       # Flash Explorer wrapper
+├── chunk_processor.py      # PDF chunk processing
+├── multimodal.py           # ASR/VLM/face processing
+├── scraper.py              # Web scraping
+└── synthesis.py            # Report generation
+```
+
+**Reference**:
+- `../../text/unified-llm-interface/backend/src/extensions/content/deep_research/agents/flash_explorer.py`
+- `../../text/pdf-summarizer/src/pdf_summarizer/nodes/filter.py`
+- `../../operations/tracer/src/tracer/tools/`
+
+---
+
+### Storage Backends
+
+**Goal**: Implement pluggable storage backends
+
+**Files**:
+```
+src/deep_research_engine/storage/backends/
+├── in_memory.py            # Default, for testing
+├── postgres.py             # PostgreSQL + pgvector
+├── mongodb.py              # Media files
+├── neo4j.py                # Knowledge graph
+└── minio.py                # Object storage
+```
+
+**Reference**:
+- `../../shared-docker-infra/docs/services/`
+- `../../text/unified-llm-interface/backend/src/extensions/storage/`
+
+---
+
+## Infrastructure Integration
+
+The engine integrates with `shared-docker-infra`:
+
+| Service | Purpose | Port |
+|---------|---------|------|
+| LiteLLM | LLM gateway | `litellm.local` |
+| Postgres | Vector storage | 5433 |
+| Neo4j | Knowledge graph | 7687 |
+| MongoDB | Media files | 27017 |
+| MinIO | Object storage | 9000 |
+
+### Start Infrastructure
+
+```bash
+cd ../../shared-docker-infra
+make core-up
+make db-up
+```
+
+### Environment Variables
+
+```bash
+export LITELLM_BASE_URL=http://litellm.local/v1
+export POSTGRES_URL=postgresql://postgres:password@localhost:5433/deep_research
+export NEO4J_URI=bolt://localhost:7687
+export MONGO_URL=mongodb://localhost:27017/telegram
+export MINIO_ENDPOINT=http://localhost:9000
+```
+
+---
+
+## Testing
+
+### Unit Tests
+
+```python
+import pytest
+from deep_research_engine import load_config
+
+def test_load_rag_config():
+    config = load_config("configs/rag.yaml")
+    assert config.workflow["name"] == "rag"
+```
+
+### Integration Tests
+
+```python
+import pytest
+from deep_research_engine import run_workflow, load_config
+
+@pytest.mark.asyncio
+async def test_rag_workflow():
+    config = load_config("configs/rag.yaml")
+    
+    async for event in run_workflow("Test query", config):
+        assert event["type"] in ["phase_start", "phase_complete", "synthesis_complete"]
+```
+
+---
+
+## Best Practices
+
+1. **Keep state minimal** - 18 fields max, use `context` for workflow-specific data
+2. **Use storage abstraction** - Don't couple workers to specific backends
+3. **Handle errors gracefully** - Return structured `WorkerResult` with error info
+4. **Test thoroughly** - Unit tests for workers, integration tests for workflows
+5. **Document configs** - Each YAML config should have comments
+6. **Use type hints** - Required by mypy
+7. **Log appropriately** - Use the logging utility
+
+---
+
+## Reference
+
+- **[AGENTS.md](./agents)** - AI development guide
+- **[Implementation Status](./contributing/implementation-status)** - What's done vs TODO
+- **[Workflow Configs](../user-guide/workflows)** - Config reference
+- **[Workers Guide](../user-guide/workers)** - Worker implementation guide

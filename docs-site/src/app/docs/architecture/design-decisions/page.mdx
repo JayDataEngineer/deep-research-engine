@@ -1,0 +1,84 @@
+# Design Decisions
+
+This section contains Architecture Decision Records (ADRs) and design documents for the Deep Research Engine.
+
+## Design Decisions
+
+### [Engine State Design](./design-decisions/engine-state)
+
+**Decision**: Use a generic 18-field TypedDict instead of workflow-specific state classes.
+
+**Rationale**:
+- Previous implementations had 50+ field state classes
+- Most fields were unused by specific workflows
+- Generic state with `context` dict for workflow-specific data
+- Easier to maintain and understand
+
+### [Base Worker Design](./design-decisions/base-worker)
+
+**Decision**: All workers inherit from `BaseWorker` ABC with standardized interface.
+
+**Rationale**:
+- Uniform contract: `execute(state, config) -> WorkerResult`
+- Built-in helpers for timing, error handling, retry
+- Easy to add new workers via registry
+- Consistent error handling across all workers
+
+### [Package Structure](./design-decisions/package-structure)
+
+**Decision**: Clean package structure with clear separation of concerns.
+
+**Rationale**:
+- `src/deep_research_engine/` - Main package
+- `configs/` - Workflow configurations
+- `shared-docs/` - Centralized documentation
+- Easy to navigate and maintain
+
+### [Pluggable Storage Design](./design-decisions/pluggable-storage)
+
+**Decision**: Storage backends are pluggable via registry pattern.
+
+**Rationale**:
+- Different workflows need different storage
+- PDF summarizer: Just in-memory
+- Telegram: Postgres + Neo4j + MongoDB + MinIO
+- Easy to add new backends
+- Uniform interface via `StorageBackend` ABC
+
+### [Unified Config Schema](./design-decisions/unified-config-schema)
+
+**Decision**: Single YAML schema for all workflow types.
+
+**Rationale**:
+- New workflow = new YAML config
+- No code changes needed for new workflows
+- Environment variable interpolation with `${VAR}` syntax
+- Schema validation on load
+
+### [Workflow Migration](./design-decisions/workflow-migration)
+
+**Decision**: Migrate 4 existing projects to unified engine.
+
+**Rationale**:
+- All projects use same `Boss → Workers → Critic → Synthesis` pattern
+- Eliminate code duplication
+- Centralized maintenance
+- Consistent user experience
+
+---
+
+## Architecture Principles
+
+1. **Simplicity** - 18 fields max, not 50+
+2. **Pluggability** - Storage, workers, tools via registry
+3. **Config-Driven** - New workflow = new YAML
+4. **Type Safety** - TypedDict, mypy validation
+5. **Infrastructure Integration** - Deep integration with shared-docker-infra
+
+---
+
+## Related Documents
+
+- **[System Architecture](../architecture)** - High-level architecture
+- **[Implementation Status](../developer-guide/contributing/implementation-status)** - What's done vs TODO
+- **[AI Reference](../developer-guide/ai-reference)** - Implementation guide

@@ -1,0 +1,21 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/docs/api-reference/page": "app/docs/api-reference/page.js",
+  "/docs/architecture/design-decisions/page": "app/docs/architecture/design-decisions/page.js",
+  "/docs/architecture/page": "app/docs/architecture/page.js",
+  "/docs/developer-guide/page": "app/docs/developer-guide/page.js",
+  "/docs/internals/page": "app/docs/internals/page.js",
+  "/docs/page": "app/docs/page.js",
+  "/docs/project-status/page": "app/docs/project-status/page.js",
+  "/docs/user-guide/examples/page": "app/docs/user-guide/examples/page.js",
+  "/docs/user-guide/getting-started/infrastructure/page": "app/docs/user-guide/getting-started/infrastructure/page.js",
+  "/docs/user-guide/getting-started/installation/page": "app/docs/user-guide/getting-started/installation/page.js",
+  "/docs/user-guide/getting-started/page": "app/docs/user-guide/getting-started/page.js",
+  "/docs/user-guide/getting-started/quickstart/page": "app/docs/user-guide/getting-started/quickstart/page.js",
+  "/docs/user-guide/page": "app/docs/user-guide/page.js",
+  "/docs/user-guide/storage/page": "app/docs/user-guide/storage/page.js",
+  "/docs/user-guide/workers/page": "app/docs/user-guide/workers/page.js",
+  "/docs/user-guide/workflows/page": "app/docs/user-guide/workflows/page.js",
+  "/page": "app/page.js"
+}

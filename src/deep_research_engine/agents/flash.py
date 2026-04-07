@@ -7,10 +7,10 @@ Implements the Flash Explorer pattern for autonomous research with:
 - Iterative refinement loops
 """
 
-import asyncio
-from typing import Any, List, Dict, Optional
+from typing import Any
+
+from deepagents import SubAgent, create_deep_agent
 from loguru import logger
-from deepagents import create_deep_agent, SubAgent
 
 
 class FlashAgent:
@@ -22,7 +22,7 @@ class FlashAgent:
         task: str,
         model: str = "openai:gpt-4o",
         max_iterations: int = 3,
-        specialists: Optional[List[SubAgent]] = None
+        specialists: list[SubAgent] | None = None
     ):
         """Initialize Flash Agent.
         
@@ -58,7 +58,7 @@ class FlashAgent:
             "Be thorough, cite sources, and ensure factual accuracy."
         )
     
-    async def _identify_gaps(self, result: str) -> List[str]:
+    async def _identify_gaps(self, result: str) -> list[str]:
         """Identify gaps in the research result.
         
         Args:
@@ -100,7 +100,7 @@ class FlashAgent:
     
     async def _fill_gaps(
         self,
-        gaps: List[str],
+        gaps: list[str],
         existing_result: str
     ) -> str:
         """Fill identified gaps with targeted research.
@@ -123,7 +123,7 @@ class FlashAgent:
         
         gap_prompt = (
             "Fill these research gaps with targeted information:\n\n"
-            f"Gaps:\n" + "\n".join([f"- {g}" for g in gaps]) + "\n\n"
+            "Gaps:\n" + "\n".join([f"- {g}" for g in gaps]) + "\n\n"
             f"Existing research:\n{existing_result[:3000]}...\n\n"
             "Provide detailed information to address each gap."
         )
@@ -165,7 +165,7 @@ class FlashAgent:
 
         return result["messages"][-1].content
 
-    async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, state: dict[str, Any]) -> dict[str, Any]:
         """Execute research task with autonomous refinement.
         
         Args:
@@ -199,7 +199,7 @@ class FlashAgent:
             gaps = await self._identify_gaps(current_result)
             
             if not gaps:
-                logger.info(f"No gaps identified - research complete")
+                logger.info("No gaps identified - research complete")
                 break
             
             logger.info(f"Identified {len(gaps)} gaps to fill")
@@ -224,8 +224,8 @@ class FlashAgent:
 
 
 async def create_flash_subagents(
-    worker_configs: List[Dict[str, Any]]
-) -> List[SubAgent]:
+    worker_configs: list[dict[str, Any]]
+) -> list[SubAgent]:
     """Create specialist sub-sub agents from worker configs.
     
     Args:

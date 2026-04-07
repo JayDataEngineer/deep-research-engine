@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/docs/layout,_N_T_/docs/user-guide/layout,_N_T_/docs/user-guide/getting-started/layout,_N_T_/docs/user-guide/getting-started/page,_N_T_/docs/user-guide/getting-started"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/docs/user-guide/getting-started/__PAGE__",
+    "/docs/user-guide/getting-started",
+    "/docs/user-guide",
+    "/docs",
+    "/_index",
+    "/_head"
+  ]
+}

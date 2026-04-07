@@ -11,10 +11,11 @@ import asyncio
 import json
 import re
 from datetime import datetime
-from typing import Any, List, Dict
+from typing import Any
+
 from ...state import EngineState, WorkerResult
-from ..base import BaseWorker, WorkerConfig, WorkerRegistry
 from ...utils.logging import get_loguru_logger
+from ..base import BaseWorker, WorkerConfig, WorkerRegistry
 
 logger = get_loguru_logger("worker.social_archive")
 
@@ -55,7 +56,7 @@ class SocialArchiveWorker(BaseWorker):
                 )
 
             # Read the dump
-            with open(big_dump_path, "r", encoding="utf-8") as f:
+            with open(big_dump_path, encoding="utf-8") as f:
                 content = f.read()
 
             # Truncate content for now to avoid hitting context limits, or use a large context model
@@ -134,7 +135,7 @@ class SocialArchiveWorker(BaseWorker):
         response = await llm.ainvoke(prompt)
         return response.content if hasattr(response, "content") else str(response)
 
-    async def _map_social_graph(self, state: EngineState, content: str) -> List[Dict[str, Any]]:
+    async def _map_social_graph(self, state: EngineState, content: str) -> list[dict[str, Any]]:
         """Specialist sub-sub agent to map relationships."""
         llm = await self._get_llm(state)
         prompt = (
@@ -146,7 +147,7 @@ class SocialArchiveWorker(BaseWorker):
         content_str = response.content if hasattr(response, "content") else str(response)
         return self._parse_json_list(content_str)
 
-    async def _extract_friend_profiles(self, state: EngineState, content: str) -> List[Dict[str, Any]]:
+    async def _extract_friend_profiles(self, state: EngineState, content: str) -> list[dict[str, Any]]:
         """Specialist sub-sub agent to create personality profiles."""
         llm = await self._get_llm(state)
         prompt = (
@@ -159,7 +160,7 @@ class SocialArchiveWorker(BaseWorker):
         content_str = response.content if hasattr(response, "content") else str(response)
         return self._parse_json_list(content_str)
 
-    async def _find_key_memories(self, state: EngineState, content: str) -> List[Dict[str, Any]]:
+    async def _find_key_memories(self, state: EngineState, content: str) -> list[dict[str, Any]]:
         """Specialist sub-sub agent to find key moments."""
         llm = await self._get_llm(state)
         prompt = (
@@ -171,7 +172,7 @@ class SocialArchiveWorker(BaseWorker):
         content_str = response.content if hasattr(response, "content") else str(response)
         return self._parse_json_list(content_str)
 
-    def _parse_json_list(self, text: str) -> List[Dict[str, Any]]:
+    def _parse_json_list(self, text: str) -> list[dict[str, Any]]:
         """Extract and parse a JSON list from text."""
         try:
             # Try to find JSON list in the text

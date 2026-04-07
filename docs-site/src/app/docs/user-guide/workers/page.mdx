@@ -1,0 +1,397 @@
+# Workers Guide
+
+Complete guide to using, implementing, and customizing workers in the Deep Research Engine.
+
+## Overview
+
+Workers are autonomous agents that execute specific tasks within a workflow. Each worker:
+
+- Receives a task from the boss node
+- Executes autonomously using tools and LLM
+- Returns structured results
+- Supports retry and error handling
+
+## Worker Architecture
+
+```
+┌─────────────┐
+│ Boss Node   │ → Creates tasks
+└─────────────┘
+       ↓
+┌─────────────┐
+│ Worker Queue│ → Parallel execution
+└─────────────┘
+       ↓
+┌─────────────┐
+│ Worker N    │ → Executes task
+└─────────────┘
+       ↓
+┌─────────────┐
+│ Critic Node │ → Evaluates results
+└─────────────┘
+```
+
+## Built-in Workers
+
+### WebResearcherWorker
+
+Autonomous web research agent using Flash Explorer.
+
+**Configuration:**
+```yaml
+phases:
+  - name: workers
+    node: WorkerNode
+    config:
+      worker_type: web_researcher
+      parallel: true
+      max_concurrent: 10
+```
+
+**Features:**
+- Web search integration
+- Content extraction
+- Source tracking
+- Confidence scoring
+
+### ChunkProcessorWorker
+
+Processes PDF chunks for summarization.
+
+**Configuration:**
+```yaml
+phases:
+  - name: workers
+    node: WorkerNode
+    config:
+      worker_type: chunk_processor
+      parallel: true
+      max_concurrent: 5
+```
+
+**Features:**
+- Text chunk processing
+- Summary generation
+- Key point extraction
+- Metadata preservation
+
+### ScraperWorker
+
+Web scraping using make-llmstxt patterns.
+
+**Configuration:**
+```yaml
+phases:
+  - name: workers
+    node: WorkerNode
+    config:
+      worker_type: scraper
+      parallel: true
+```
+
+**Features:**
+- URL content extraction
+- Documentation scraping
+- Structured data extraction
+- robots.txt compliance
+
+### MultimodalWorker
+
+Processes multimodal content (ASR, VLM, face recognition).
+
+**Configuration:**
+```yaml
+phases:
+  - name: workers
+    node: WorkerNode
+    config:
+      worker_type: multimodal
+      parallel: true
+```
+
+**Subtypes:**
+- `asr` - Speech-to-text
+- `vlm` - Vision-language model
+- `face` - Face recognition
+- `text` - Text processing
+
+### SynthesisWorker
+
+Synthesizes research findings into formatted output.
+
+**Configuration:**
+```yaml
+phases:
+  - name: synthesis
+    node: SynthesisNode
+    config:
+      worker_type: synthesis
+      format: research_report
+```
+
+**Features:**
+- Report generation
+- Citation formatting
+- Section organization
+- Metadata inclusion
+
+**Output Formats:**
+- `research_report` - Full report
+- `markdown` - Markdown document
+- `structured_json` - JSON structure
+- `summary` - Brief summary
+
+## Implementing Custom Workers
+
+### Base Class
+
+All workers inherit from `BaseWorker`:
+
+```python
+from deep_research_engine.workers import BaseWorker, WorkerConfig, WorkerRegistry
+from deep_research_engine.state import EngineState, WorkerResult
+
+@WorkerRegistry.register("my_custom_worker")
+class MyCustomWorker(BaseWorker):
+    """Custom worker implementation."""
+
+    worker_type = "my_custom_worker"
+    description = "My custom worker for specialized tasks"
+
+    async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+        """Execute worker task.
+
+        Args:
+            state: Current engine state
+            config: Worker configuration
+
+        Returns:
+            WorkerResult with success status and output
+        """
+        self._start_timing()
+
+        try:
+            # Your implementation here
+            result = await self.do_work(config.task)
+
+            return self._create_result(
+                success=True,
+                output=result,
+                output_type="custom",
+                confidence=0.9,
+                sources=self._sources
+            )
+
+        except Exception as e:
+            return self._create_result(
+                success=False,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+```
+
+### WorkerConfig
+
+Configuration passed to workers:
+
+```python
+from dataclasses import dataclass
+from typing import Dict, Any, List, Optional
+
+@dataclass
+class WorkerConfig:
+    worker_id: str              # Unique worker identifier
+    worker_type: str            # Worker type name
+    task: Any                   # Task to execute
+    tools: List[str]            # Available tools
+    max_retries: int = 3        # Maximum retry attempts
+    timeout: int = 300          # Timeout in seconds
+    enable_critic: bool = True  # Enable critic evaluation
+    critic_threshold: float = 0.7  # Quality threshold
+    custom: Dict[str, Any] = None   # Custom configuration
+```
+
+### WorkerResult
+
+Standardized result contract:
+
+```python
+from dataclasses import dataclass
+from typing import Dict, Any, List, Optional
+
+@dataclass
+class WorkerResult:
+    worker_id: str                      # Worker identifier
+    worker_type: str                    # Worker type
+    task: Any                           # Executed task
+    success: bool                       # Success status
+    output: Optional[Any] = None        # Output data
+    output_type: str = "generic"        # Output type
+    confidence: float = 0.0             # Confidence score
+    timing: Optional[Dict] = None       # Timing information
+    sources: Optional[List[Dict]] = None  # Source references
+    source_count: int = 0               # Number of sources
+    retry_count: int = 0                # Retry count
+    error: Optional[str] = None         # Error message
+    error_type: Optional[str] = None    # Error type
+```
+
+### Helper Methods
+
+BaseWorker provides helper methods:
+
+```python
+class BaseWorker(ABC):
+
+    def _start_timing(self) -> None:
+        """Start timing execution."""
+        self._start_time = time.time()
+
+    def _create_result(
+        self,
+        success: bool,
+        output: Any = None,
+        output_type: str = "generic",
+        confidence: float = 0.0,
+        sources: List[Dict] = None,
+        error: str = None,
+        error_type: str = None
+    ) -> WorkerResult:
+        """Create standardized result."""
+
+    async def _retry(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+        """Retry execution."""
+```
+
+## Worker Registry
+
+Workers are registered using the `@WorkerRegistry.register` decorator:
+
+```python
+from deep_research_engine.workers import WorkerRegistry
+
+# Register worker
+@WorkerRegistry.register("my_worker")
+class MyWorker(BaseWorker):
+    worker_type = "my_worker"
+
+# Retrieve worker class
+WorkerClass = WorkerRegistry.get("my_worker")
+
+# Check if registered
+if WorkerRegistry.is_registered("my_worker"):
+    print("Worker is registered")
+
+# List all registered workers
+for name, cls in WorkerRegistry.list_all():
+    print(f"{name}: {cls.description}")
+```
+
+## Worker Execution Flow
+
+1. **Boss Node** creates tasks and worker configs
+2. **WorkerNode** spawns workers in parallel
+3. **Workers** execute autonomously:
+   - Initialize
+   - Execute task
+   - Handle errors
+   - Return results
+4. **Results** accumulated in state
+5. **Critic Node** evaluates quality
+
+## Error Handling
+
+Workers should handle errors gracefully:
+
+```python
+async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+    self._start_timing()
+
+    try:
+        result = await self.do_work()
+        return self._create_result(success=True, output=result)
+
+    except TimeoutError as e:
+        return self._create_result(
+            success=False,
+            error=f"Timeout: {e}",
+            error_type="TimeoutError"
+        )
+
+    except ConnectionError as e:
+        return self._create_result(
+            success=False,
+            error=f"Connection failed: {e}",
+            error_type="ConnectionError"
+        )
+
+    except Exception as e:
+        return self._create_result(
+            success=False,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+```
+
+## Best Practices
+
+1. **Keep workers focused** - Single responsibility
+2. **Handle errors gracefully** - Return structured errors
+3. **Track sources** - Enable citation and verification
+4. **Report confidence** - Help critic evaluate quality
+5. **Respect timeouts** - Don't hang indefinitely
+6. **Use retry wisely** - Not all errors are retryable
+7. **Document thoroughly** - Explain worker behavior
+8. **Test extensively** - Unit and integration tests
+
+## Performance Considerations
+
+### Parallel Execution
+
+```yaml
+# Enable parallel execution
+phases:
+  - name: workers
+    node: WorkerNode
+    config:
+      parallel: true
+      max_concurrent: 10  # Limit concurrency
+```
+
+### Memory Management
+
+```python
+async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+    # Process in chunks for large data
+    async for chunk in self.process_large_data(config.task):
+        # Yield results incrementally
+        yield chunk
+```
+
+## Debugging Workers
+
+### Enable Debug Logging
+
+```python
+from deep_research_engine.utils.logging import get_logger
+
+logger = get_logger("workers.my_worker")
+
+async def execute(self, state: EngineState, config: WorkerConfig) -> WorkerResult:
+    logger.info("Starting execution", task=config.task)
+
+    try:
+        result = await self.do_work()
+        logger.info("Execution complete", success=True)
+        return self._create_result(success=True, output=result)
+    except Exception as e:
+        logger.error("Execution failed", error=str(e), exc_info=True)
+        return self._create_result(success=False, error=str(e))
+```
+
+## Reference
+
+- [Workflow Configs](../workflows)
+- [Storage Backends](../storage)
+- [API Reference](../../api-reference)
+- [Examples](../examples)

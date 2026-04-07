@@ -3,11 +3,11 @@
 from pathlib import Path
 from typing import Any
 
+from ...shared.multimodal import asr_transcribe, face_recognize, video_analyze, vlm_analyze
 from ...state import EngineState, WorkerResult
-from ..base import BaseWorker, WorkerConfig, WorkerRegistry
-from ...shared.multimodal import asr_transcribe, vlm_analyze, face_recognize, video_analyze
-from ...utils.nlp import extract_entities
 from ...utils.logging import get_loguru_logger
+from ...utils.nlp import extract_entities
+from ..base import BaseWorker, WorkerConfig, WorkerRegistry
 
 logger = get_loguru_logger(__name__)
 

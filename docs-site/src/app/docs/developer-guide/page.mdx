@@ -1,0 +1,259 @@
+# Developer Guide
+
+Welcome to the Deep Research Engine developer guide. This section is for contributors and developers working on the engine.
+
+## Quick Navigation
+
+- **[AGENTS.md](./agents)** - AI development guide
+- **[AI Reference](./ai-reference)** - Main implementation guide
+- **[Contributing](./contributing)** - Contribution guidelines
+- **[Testing](./testing)** - Testing guide
+- **[Debugging](./debugging)** - Debugging guide
+
+## Project Overview
+
+The Deep Research Engine is a config-driven multi-agent workflow engine that unifies 4 existing projects:
+
+1. **Deep Research** - Multi-agent RAG research
+2. **PDF Summarizer** - PDF processing
+3. **make-llmstxt** - Skill generation
+4. **tracer** - Telegram ingestion with multimodal support
+
+**Key Insight**: All 4 projects use the same `Ingestion → Drafter ↔ Critic → Neo4j → Synthesis` pattern. The engine makes this configurable via YAML.
+
+## Architecture
+
+```
+Config (YAML) → Engine → LangGraph Workflow
+                     ↓
+        Ingestion → Drafter ↔ Critic → Neo4j → Synthesis
+```
+
+### Core Design Decisions
+
+1. **Generic State** - 18 fields max (not 50+)
+   - Workflow-specific data in `context` dict
+   - See: `src/deep_research_engine/state/types.py`
+
+2. **Pluggable Storage** - Optional backends
+   - PDF: Just Memory
+   - Telegram: Postgres + Neo4j + MongoDB + MinIO
+   - See: `src/deep_research_engine/storage/`
+
+3. **Worker ABC** - Uniform interface
+   - All workers implement `execute(state, config) -> WorkerResult`
+   - See: `src/deep_research_engine/workers/base.py`
+
+4. **Config-Driven** - New workflow = new YAML
+   - See: `configs/*.yaml`
+
+## Development Commands
+
+```bash
+# Setup
+cd /home/ubuntu/Documents/programs/deep-research-engine
+uv sync --group dev
+
+# Run CLI
+uv run deep-research --help
+uv run deep-research research "query" --config rag.yaml
+
+# Testing
+uv run pytest tests/
+uv run pytest tests/unit/ -v
+
+# Linting
+uv run ruff check src/
+uv run ruff format src/
+uv run mypy src/
+
+# All checks
+uv run pre-commit run --all-files
+```
+
+## Project Structure
+
+```
+deep-research-engine/
+├── src/deep_research_engine/    # Main package
+│   ├── agents/                  # AI agents
+│   ├── artifacts/               # Artifact generation
+│   ├── cli/                     # CLI commands
+│   ├── graph/                   # LangGraph workflows
+│   ├── nodes/                   # Workflow nodes
+│   ├── prompts/                 # Prompt templates
+│   ├── state/                   # State management
+│   ├── storage/                 # Storage backends
+│   ├── synthesis/               # Synthesis logic
+│   ├── tools/                   # Tools and utilities
+│   ├── workers/                 # Worker implementations
+│   └── utils/                   # Utilities
+├── configs/                      # Workflow configs
+├── shared-docs/                  # Documentation
+├── reference/                    # External library docs
+└── tests/                        # Tests
+```
+
+## Core Interfaces
+
+### EngineState
+
+```python
+class EngineState(TypedDict, total=False):
+    """18 fields max - workflow-specific data in context dict"""
+    workflow_id: str
+    workflow_name: str
+    current_phase: str
+    plan: List[str]
+    worker_results: Annotated[List[Dict], operator.add]
+    context: Dict[str, Any]  # <-- Workflow-specific data
+    # ... (18 fields total)
+```
+
+### BaseWorker
+
+```python
+class BaseWorker(ABC):
+    @abstractmethod
+    async def execute(self, state, config) -> WorkerResult:
+        """All workers implement this"""
+        pass
+```
+
+### StorageBackend
+
+```python
+class StorageBackend(ABC):
+    async def store(self, data, namespace) -> StorageResult: ...
+    async def retrieve(self, id, namespace) -> Optional[Dict]: ...
+    async def query(self, query, namespace, limit) -> List[Dict]: ...
+```
+
+## Implementation Patterns
+
+### Graph Execution
+
+```python
+from langgraph.graph import StateGraph, START, END
+from deep_research_engine.state import EngineState
+
+def build_workflow_graph(config):
+    graph = StateGraph(EngineState)
+    
+    graph.add_node("ingestion", ingestion_node)
+    graph.add_node("drafter", drafter_node)
+    graph.add_node("critic", critic_node)
+    graph.add_node("neo4j", neo4j_builder_node)
+    graph.add_node("synthesis", synthesis_node)
+    
+    graph.add_edge(START, "ingestion")
+    graph.add_edge("ingestion", "drafter")
+    graph.add_edge("drafter", "critic")
+    graph.add_conditional_edges(
+        "critic",
+        route_after_critic,
+        {"pass": "neo4j", "revise": "drafter"}
+    )
+    graph.add_edge("neo4j", "synthesis")
+    graph.add_edge("synthesis", END)
+    
+    return graph.compile()
+```
+
+### Worker Implementation
+
+```python
+from deep_research_engine.workers import BaseWorker, WorkerRegistry
+
+@WorkerRegistry.register("web_researcher")
+class WebResearcherWorker(BaseWorker):
+    worker_type = "web_researcher"
+    description = "Autonomous web research agent"
+    
+    async def execute(self, state, config) -> WorkerResult:
+        self._start_timing()
+        # Implementation
+        return self._create_result(success=True, output=findings)
+```
+
+### Storage Backend
+
+```python
+from deep_research_engine.storage import StorageBackend, StorageRegistry
+
+@StorageRegistry.register("postgres")
+class PostgresStorage(StorageBackend):
+    backend_name = "postgres"
+    
+    async def initialize(self):
+        import asyncpg
+        self.pool = await asyncpg.create_pool(...)
+        
+    async def store(self, data, namespace) -> StorageResult:
+        # Implementation
+```
+
+## Reference Materials
+
+### Existing Implementations
+
+- **Deep Research**: `../../text/unified-llm-interface/backend/src/extensions/content/deep_research/`
+- **PDF Summarizer**: `../../text/pdf-summarizer/src/pdf_summarizer/`
+- **make-llmstxt**: `../../text/make-llmstxt/src/make_llmstxt/`
+- **tracer**: `../../operations/tracer/src/tracer/`
+
+### Infrastructure Documentation
+
+- **Shared Docker Infra**: `../../shared-docker-infra/docs/`
+  - Services: LiteLLM, Postgres, Neo4j, MongoDB, MinIO
+  - Integration guides
+  - Architecture docs
+
+### External Libraries
+
+- **LangGraph**: `reference/langgraph/docs/`
+- **DeepAgents**: `reference/deepagents/docs/`
+- **LangChain**: `reference/langchain/docs/`
+
+## Coding Standards
+
+### Imports
+
+```python
+# Standard library
+from typing import Dict, Any, Optional
+
+# Third-party
+from langgraph.graph import StateGraph
+
+# Local
+from deep_research_engine.state import EngineState
+```
+
+### Type Hints
+
+Always use type hints. Required by mypy.
+
+### Logging
+
+```python
+from deep_research_engine.utils.logging import get_logger
+logger = get_logger(__name__)
+logger.info("Message", extra_context=value)
+```
+
+### Error Handling
+
+```python
+try:
+    result = await operation()
+except Exception as e:
+    logger.error(f"Failed: {e}")
+    return self._create_result(success=False, error=str(e))
+```
+
+## Next Steps
+
+- Read **[AGENTS.md](./agents)** for AI development guide
+- Read **[AI Reference](./ai-reference)** for detailed implementation guide
+- Check **[Implementation Status](./contributing/implementation-status)** for what's done vs TODO

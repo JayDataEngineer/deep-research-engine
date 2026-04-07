@@ -1,0 +1,3 @@
+module.exports=[11310,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(59464);a.n(d("[project]/Documents/programs/deep-research-engine/docs-site/node_modules/next/dist/client/components/builtin/global-error.js <module evaluation>"))},44637,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(59464);a.n(d("[project]/Documents/programs/deep-research-engine/docs-site/node_modules/next/dist/client/components/builtin/global-error.js"))},16470,a=>{"use strict";a.i(11310);var b=a.i(44637);a.n(b)},34920,a=>{a.n(a.i(16470))}];
+
+//# sourceMappingURL=0ep4_next_dist_client_components_builtin_global-error_0oglfhu.js.map

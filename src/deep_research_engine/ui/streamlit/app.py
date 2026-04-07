@@ -3,14 +3,11 @@
 import asyncio
 import json
 import os
-import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
-from streamlit_extras.add_vertical_space import add_vertical_space
-
 from deep_research_engine.config import load_config
 from deep_research_engine.engine import run_workflow
 

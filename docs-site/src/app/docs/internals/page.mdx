@@ -1,0 +1,126 @@
+# Internals
+
+Internal implementation details and integration guides.
+
+## Integrations
+
+### VibeVoice ASR
+
+VibeVoice ASR integration for audio transcription with diarization.
+
+**Features:**
+- Speaker diarization (who spoke when)
+- High-accuracy transcription
+- Multi-language support
+- Timestamp alignment
+
+**Configuration:**
+```yaml
+phases:
+  - name: ingestion
+    node: IngestionNode
+    config:
+      extract_audio: true
+      asr_model: vibevoice
+      diarization: true
+```
+
+**Usage:**
+```python
+from deep_research_engine.utils.asr import asr_transcribe
+
+result = await asr_transcribe(
+    audio_path="audio.mp3",
+    model="vibevoice",
+    diarization=True
+)
+
+print(result.transcript)
+print(result.speakers)  # Speaker segments
+```
+
+---
+
+### LangFuse Prompt Management
+
+LangFuse integration for prompt management and tracing.
+
+**Features:**
+- Centralized prompt storage
+- Version control for prompts
+- A/B testing
+- Execution tracing
+
+**Configuration:**
+```bash
+export LANGFUSE_PUBLIC_KEY=pk-lf-...
+export LANGFUSE_SECRET_KEY=sk-lf-...
+export LANGFUSE_HOST=https://cloud.langfuse.com
+```
+
+**Usage:**
+```python
+from langfuse import Langfuse
+
+langfuse = Langfuse()
+
+prompt = langfuse.get_prompt("research-brief")
+response = llm.generate(prompt.prompt, **prompt.config)
+
+langfuse.trace(
+    name="research",
+    prompt=prompt,
+    generation=response
+)
+```
+
+---
+
+## Internal Documents
+
+### [DRY Cleanup Report](./dry-cleanup)
+
+Analysis of code duplication across the 4 unified projects.
+
+**Findings:**
+- All 4 projects use same `Boss → Workers → Critic → Synthesis` pattern
+- 80% code duplication in graph logic
+- State classes had 50+ fields (bloated)
+- Storage logic duplicated across projects
+
+**Actions:**
+- Extracted common pattern to engine
+- Generic 18-field state
+- Pluggable storage backends
+- Config-driven workflows
+
+---
+
+### [Phased Ingestion Summary](./phased-ingestion)
+
+Two-stage ingestion pipeline design.
+
+**Stage A: Ingestion**
+- Parse raw data
+- Process content
+- Quality check
+- Store results
+
+**Stage B: Inference**
+- Query decomposition
+- Fan-out to workers
+- Synthesize findings
+
+---
+
+## Architecture Decisions
+
+See **[Design Decisions](../architecture/design-decisions)** for detailed ADRs.
+
+---
+
+## Reference
+
+- **[System Architecture](../architecture)** - High-level architecture
+- **[API Reference](../api-reference)** - API documentation
+- **[Developer Guide](../developer-guide)** - Development guide

@@ -1,0 +1,504 @@
+# API Reference
+
+Complete API reference for the Deep Research Engine.
+
+## Main Entry Points
+
+### run_workflow()
+
+Main entry point for executing workflows.
+
+```python
+from deep_research_engine import run_workflow, load_config
+
+config = load_config("configs/rag.yaml")
+
+async for event in run_workflow(
+    query="What is quantum computing?",
+    config=config,
+    stream=True,
+):
+    print(event)
+```
+
+**Parameters:**
+- `query` (str): Research query or input
+- `config` (WorkflowConfig): Loaded workflow configuration
+- `stream` (bool, optional): Enable streaming events. Default: `True`
+- **kwargs: Additional workflow-specific parameters
+
+**Returns:**
+- AsyncGenerator yielding event dictionaries
+
+**Event Types:**
+- `phase_start` - Phase beginning
+- `phase_complete` - Phase completed
+- `worker_complete` - Worker finished
+- `critic_decision` - Critic evaluation result
+- `synthesis_complete` - Final output ready
+- `error` - Error occurred
+
+---
+
+### load_config()
+
+Load and validate workflow configuration from YAML.
+
+```python
+from deep_research_engine import load_config
+
+config = load_config("configs/rag.yaml")
+```
+
+**Parameters:**
+- `path` (str): Path to YAML config file
+
+**Returns:**
+- `WorkflowConfig`: Validated configuration object
+
+**Raises:**
+- `ConfigNotFoundError`: Config file not found
+- `ConfigValidationError`: Invalid configuration
+- `ConfigError`: General configuration error
+
+---
+
+## Configuration
+
+### WorkflowConfig
+
+Workflow configuration schema.
+
+```python
+from deep_research_engine import WorkflowConfig
+
+config = WorkflowConfig(
+    workflow={
+        "name": "rag_research",
+        "type": "research",
+        "version": "1.0.0"
+    },
+    input={
+        "type": "query",
+        "source": "${QUERY}"
+    },
+    phases=[...],
+    storage={...},
+    llm={...},
+    tools={...},
+    execution={...},
+    output={...}
+)
+```
+
+**Fields:**
+- `workflow` (dict): Workflow metadata
+- `input` (dict): Input configuration
+- `phases` (list): Phase definitions
+- `storage` (dict): Storage backend config
+- `llm` (dict): LLM configuration
+- `tools` (dict): Tool configuration
+- `execution` (dict): Execution settings
+- `output` (dict): Output configuration
+
+---
+
+## State
+
+### EngineState
+
+Generic state dictionary for workflow execution.
+
+```python
+from deep_research_engine.state import EngineState
+
+state: EngineState = {
+    "workflow_id": "uuid-123",
+    "workflow_name": "rag_research",
+    "current_phase": "drafter",
+    "plan": ["task1", "task2"],
+    "worker_results": [...],
+    "context": {...},
+    # ... (18 fields total)
+}
+```
+
+**Fields:**
+- `workflow_id` (str): Unique workflow identifier
+- `workflow_name` (str): Workflow name from config
+- `current_phase` (str): Current execution phase
+- `plan` (list[str]): Task plan
+- `worker_results` (list[dict]): Accumulated worker outputs
+- `context` (dict): Workflow-specific data
+- ... (18 fields total)
+
+---
+
+### WorkerResult
+
+Standardized worker output contract.
+
+```python
+from deep_research_engine.state import WorkerResult
+
+result = WorkerResult(
+    worker_id="web_researcher_0",
+    worker_type="web_researcher",
+    task="Research quantum computing",
+    success=True,
+    output={"findings": [...], "sources": [...]},
+    output_type="findings",
+    confidence=0.85,
+    timing={"start": 0.0, "end": 5.2},
+    sources=[...],
+    source_count=5
+)
+```
+
+**Fields:**
+- `worker_id` (str): Unique worker identifier
+- `worker_type` (str): Worker type name
+- `task` (any): Executed task
+- `success` (bool): Success status
+- `output` (any, optional): Output data
+- `output_type` (str): Output type identifier
+- `confidence` (float): Confidence score (0-1)
+- `timing` (dict, optional): Timing information
+- `sources` (list, optional): Source references
+- `source_count` (int): Number of sources
+- `retry_count` (int): Retry count
+- `error` (str, optional): Error message
+- `error_type` (str, optional): Error type
+
+---
+
+### CriticResult
+
+Standardized critic output contract.
+
+```python
+from deep_research_engine.state import CriticResult
+
+result = CriticResult(
+    decision="pass",  # or "revise"
+    feedback="Findings are complete and accurate",
+    scores={"completeness": 0.9, "accuracy": 0.85}
+)
+```
+
+**Fields:**
+- `decision` (str): `pass` or `revise`
+- `feedback` (str): Evaluation feedback
+- `scores` (dict): Criterion scores
+
+---
+
+## Workers
+
+### BaseWorker
+
+Abstract base class for all workers.
+
+```python
+from deep_research_engine.workers import BaseWorker, WorkerRegistry
+
+@WorkerRegistry.register("my_worker")
+class MyWorker(BaseWorker):
+    worker_type = "my_worker"
+    description = "My custom worker"
+    
+    async def execute(self, state, config) -> WorkerResult:
+        self._start_timing()
+        try:
+            result = await self.do_work()
+            return self._create_result(success=True, output=result)
+        except Exception as e:
+            return self._create_result(success=False, error=str(e))
+```
+
+**Methods:**
+- `execute(state, config) -> WorkerResult`: Abstract method to implement
+- `_start_timing()`: Start execution timing
+- `_create_result(...)`: Create standardized result
+- `_retry(state, config) -> WorkerResult`: Retry execution
+
+---
+
+### WorkerConfig
+
+Configuration passed to workers.
+
+```python
+from deep_research_engine.workers import WorkerConfig
+
+config = WorkerConfig(
+    worker_id="web_researcher_0",
+    worker_type="web_researcher",
+    task="Research quantum computing",
+    tools=["web_search", "web_get"],
+    max_retries=3,
+    timeout=300,
+    enable_critic=True,
+    critic_threshold=0.7,
+    custom={"key": "value"}
+)
+```
+
+**Fields:**
+- `worker_id` (str): Unique identifier
+- `worker_type` (str): Worker type
+- `task` (any): Task to execute
+- `tools` (list[str]): Available tools
+- `max_retries` (int): Maximum retry attempts
+- `timeout` (int): Timeout in seconds
+- `enable_critic` (bool): Enable critic evaluation
+- `critic_threshold` (float): Quality threshold
+- `custom` (dict): Custom configuration
+
+---
+
+### WorkerRegistry
+
+Worker registration and discovery.
+
+```python
+from deep_research_engine.workers import WorkerRegistry
+
+# Register worker
+@WorkerRegistry.register("my_worker")
+class MyWorker(BaseWorker):
+    ...
+
+# Get worker class
+WorkerClass = WorkerRegistry.get("my_worker")
+
+# Check if registered
+if WorkerRegistry.is_registered("my_worker"):
+    ...
+
+# List all workers
+for name, cls in WorkerRegistry.list_all():
+    print(f"{name}: {cls.description}")
+```
+
+**Methods:**
+- `register(name)`: Decorator to register worker
+- `get(name)`: Get worker class by name
+- `is_registered(name)`: Check if worker is registered
+- `list_all()`: List all registered workers
+
+---
+
+## Storage
+
+### StorageManager
+
+Central orchestrator for storage backends.
+
+```python
+from deep_research_engine.storage import StorageManager
+
+storage = StorageManager()
+
+await storage.initialize("postgres", {
+    "connection": "postgresql://localhost:5433/deep_research",
+    "vector_index": "research"
+})
+
+result = await storage.store(data, namespace="research")
+data = await storage.retrieve(result.id, namespace="research")
+results = await storage.query("machine learning", namespace="research", limit=10)
+
+await storage.cleanup()
+```
+
+**Methods:**
+- `initialize(backend, config)`: Initialize backend
+- `get_backend(name)`: Get backend instance
+- `store(data, namespace)`: Store data
+- `retrieve(id, namespace)`: Retrieve data
+- `query(query, namespace, limit)`: Query data
+- `cleanup()`: Cleanup all backends
+
+---
+
+### StorageBackend
+
+Abstract base class for storage backends.
+
+```python
+from deep_research_engine.storage import StorageBackend, StorageRegistry
+
+@StorageRegistry.register("my_backend")
+class MyStorage(StorageBackend):
+    backend_name = "my_backend"
+    
+    async def initialize(self):
+        ...
+    
+    async def store(self, data, namespace) -> StorageResult:
+        ...
+    
+    async def retrieve(self, id, namespace):
+        ...
+    
+    async def query(self, query, namespace, limit):
+        ...
+```
+
+**Methods:**
+- `initialize()`: Initialize backend
+- `cleanup()`: Cleanup resources
+- `health_check()`: Check backend health
+- `store(data, namespace)`: Store data
+- `retrieve(id, namespace)`: Retrieve data
+- `delete(id, namespace)`: Delete data
+- `list_items(namespace, limit)`: List items
+- `query(query, namespace, limit)`: Query data
+
+---
+
+### StorageResult
+
+Standardized storage operation result.
+
+```python
+from deep_research_engine.storage import StorageResult
+
+result = StorageResult(
+    success=True,
+    id="uuid-123",
+    data=None,
+    metadata={"key": "value"},
+    error=None
+)
+```
+
+**Fields:**
+- `success` (bool): Operation success
+- `id` (str, optional): Stored item ID
+- `data` (any, optional): Retrieved data
+- `metadata` (dict, optional): Metadata
+- `error` (str, optional): Error message
+
+---
+
+### StorageRegistry
+
+Storage backend registration.
+
+```python
+from deep_research_engine.storage import StorageRegistry
+
+# Register backend
+@StorageRegistry.register("my_backend")
+class MyStorage(StorageBackend):
+    ...
+
+# Get backend class
+BackendClass = StorageRegistry.get("my_backend")
+
+# Check if registered
+if StorageRegistry.is_registered("my_backend"):
+    ...
+
+# List all backends
+for name, cls in StorageRegistry.list_all():
+    print(f"{name}: {cls.description}")
+```
+
+---
+
+## Errors
+
+### Config Errors
+
+```python
+from deep_research_engine.errors import (
+    ConfigError,
+    ConfigNotFoundError,
+    ConfigValidationError
+)
+
+try:
+    config = load_config("invalid.yaml")
+except ConfigNotFoundError:
+    print("Config file not found")
+except ConfigValidationError as e:
+    print(f"Invalid config: {e}")
+except ConfigError as e:
+    print(f"Config error: {e}")
+```
+
+---
+
+### Graph Errors
+
+```python
+from deep_research_engine.errors import (
+    GraphError,
+    GraphCompilationError,
+    GraphExecutionError,
+    GraphStateError
+)
+
+try:
+    graph = build_workflow_graph(config)
+except GraphCompilationError as e:
+    print(f"Graph compilation failed: {e}")
+except GraphExecutionError as e:
+    print(f"Graph execution failed: {e}")
+```
+
+---
+
+### Worker Errors
+
+```python
+from deep_research_engine.errors import (
+    WorkerError,
+    WorkerExecutionError,
+    WorkerNotFoundError,
+    WorkerSetupError,
+    WorkerTimeoutError
+)
+
+try:
+    result = await worker.execute(state, config)
+except WorkerNotFoundError:
+    print("Worker not found")
+except WorkerTimeoutError:
+    print("Worker timed out")
+except WorkerExecutionError as e:
+    print(f"Worker execution failed: {e}")
+```
+
+---
+
+### Storage Errors
+
+```python
+from deep_research_engine.errors import (
+    StorageError,
+    StorageConnectionError,
+    StorageInitializationError,
+    StorageNotFoundError,
+    StorageQueryError
+)
+
+try:
+    await storage.initialize("postgres", config)
+except StorageInitializationError:
+    print("Storage initialization failed")
+except StorageConnectionError:
+    print("Storage connection failed")
+```
+
+---
+
+## Reference
+
+- **[Workflow Configs](../user-guide/workflows)** - Config reference
+- **[Workers Guide](../user-guide/workers)** - Worker implementation
+- **[Storage Backends](../user-guide/storage)** - Storage configuration
+- **[Examples](../user-guide/examples)** - Usage examples

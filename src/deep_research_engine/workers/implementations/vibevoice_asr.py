@@ -12,7 +12,7 @@ Reference: VibeVoice ASR-7B via LiteLLM OpenAI-compatible endpoint
 import asyncio
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from loguru import logger
 from openai import OpenAI
@@ -49,7 +49,7 @@ class VibeVoiceASRWorker(BaseWorker):
     worker_type = "vibevoice_asr"
     description = "Advanced ASR with built-in speaker diarization via VibeVoice ASR-7B"
 
-    async def execute(self, state: Dict[str, Any], config: WorkerConfig) -> WorkerResult:
+    async def execute(self, state: dict[str, Any], config: WorkerConfig) -> WorkerResult:
         """Execute VibeVoice ASR on audio file.
 
         Args:
@@ -145,7 +145,7 @@ class VibeVoiceASRWorker(BaseWorker):
         result: Any,
         min_speakers: int,
         max_speakers: int
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Parse VibeVoice ASR response into structured format.
 
         VibeVoice returns a response similar to OpenAI's verbose_json format
@@ -181,7 +181,7 @@ class VibeVoiceASRWorker(BaseWorker):
 
         # Extract segments with speaker information
         segments_raw = getattr(result, "segments", [])
-        segments: List[Dict[str, Any]] = []
+        segments: list[dict[str, Any]] = []
 
         speakers_set = set()
 
@@ -240,7 +240,7 @@ class ASRWorker(VibeVoiceASRWorker):
     worker_type = "asr_worker"
     description = "ASR worker (defaults to VibeVoice ASR with diarization)"
 
-    async def execute(self, state: Dict[str, Any], config: WorkerConfig) -> WorkerResult:
+    async def execute(self, state: dict[str, Any], config: WorkerConfig) -> WorkerResult:
         """Execute ASR using configured model (VibeVoice by default)."""
         # Allow model override via config
         custom_model = config.custom.get("model")

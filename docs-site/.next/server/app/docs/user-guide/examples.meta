@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/docs/layout,_N_T_/docs/user-guide/layout,_N_T_/docs/user-guide/examples/layout,_N_T_/docs/user-guide/examples/page,_N_T_/docs/user-guide/examples"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/docs/user-guide/examples/__PAGE__",
+    "/docs/user-guide/examples",
+    "/docs/user-guide",
+    "/docs",
+    "/_index",
+    "/_head"
+  ]
+}

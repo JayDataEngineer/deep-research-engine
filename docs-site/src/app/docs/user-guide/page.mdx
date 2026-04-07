@@ -1,0 +1,80 @@
+# Deep Research Engine Documentation
+
+Welcome to the Deep Research Engine documentation.
+
+## Quick Start
+
+1. **[Installation](./getting-started/installation)** - Install the package
+2. **[Quick Start](./getting-started/quickstart)** - Run your first workflow
+3. **[Configuration](./workflows)** - YAML config reference
+
+## Documentation Sections
+
+### [Getting Started](./getting-started)
+- [Installation](./getting-started/installation)
+- [Quick Start](./getting-started/quickstart)
+- [Infrastructure Requirements](./getting-started/infrastructure)
+
+### [Workflow Configs](./workflows)
+- [Config Schema](./workflows#configuration-schema)
+- [RAG Research](./workflows#rag-research)
+- [PDF Summarizer](./workflows#pdf-summarizer)
+- [Telegram Ingestion](./workflows#telegram-ingestion)
+- [Skill Generator](./workflows#skill-generator)
+
+### [Workers](./workers)
+- [BaseWorker ABC](./workers#baseworker-abc)
+- [Web Researcher](./workers#web-researcher)
+- [Chunk Processor](./workers#chunk-processor)
+- [Multimodal](./workers#multimodal)
+- [Scraper](./workers#scraper)
+- [Custom Workers](./workers#custom-workers)
+
+### [Storage](./storage)
+- [Pluggable Backends](./storage#pluggable-backends)
+- [In-Memory](./storage#in-memory)
+- [PostgreSQL](./storage#postgresql)
+- [MongoDB](./storage#mongodb)
+- [Neo4j](./storage#neo4j)
+- [MinIO/S3](./storage#minios3)
+
+### [API Reference](../api-reference)
+- [run_workflow()](../api-reference#run_workflow)
+- [load_config()](../api-reference#load_config)
+- [EngineState](../api-reference#enginestate)
+- [BaseWorker](../api-reference#baseworker)
+
+### [Examples](./examples)
+- [RAG Research Example](./examples#rag-research)
+- [PDF Summarizer Example](./examples#pdf-summarizer)
+- [FastAPI Integration](./examples#fastapi-integration)
+
+## Infrastructure Integration
+
+This engine integrates with your existing infrastructure:
+
+```bash
+# Start shared infrastructure
+cd ~/Documents/programs/shared-docker-infra
+make core-up
+make db-up
+```
+
+See `shared-docker-infra/docs/` for:
+- LiteLLM setup
+- Database configuration
+- Network topology
+- Security model
+
+## Related Projects
+
+This engine unifies:
+- **unified-llm-interface** - Deep research
+- **pdf-summarizer** - PDF processing
+- **make-llmstxt** - Skill generation
+- **tracer** - Telegram ingestion
+
+---
+
+**Last Updated:** March 2026  
+**Version:** 0.2.0
