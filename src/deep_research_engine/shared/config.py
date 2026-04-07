@@ -24,7 +24,8 @@ LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", ORCHESTRATOR_API_KEY)
 # Default models
 DEFAULT_MODEL = os.getenv("MAIN_MODEL", "qwen35-35b-a3b-vision")
 TOOL_MODEL = os.getenv("TOOL_MODEL", "qwen35-35b-a3b-vision")
-VISION_MODEL = os.getenv("VISION_MODEL", "qwen35-35b-a3b-vision")
+# VLM defaults to the same vision model as INGESTION_MODEL (gemma4-e4b-vision-fast)
+VISION_MODEL = os.getenv("VISION_MODEL", "gemma4-e4b-vision-fast")
 
 # Ingestion-specific model (tiny model for NER, identity resolution)
 # gemma4-e4b-vision-fast is ~6GB VRAM, no thinking mode — fast for text tasks
