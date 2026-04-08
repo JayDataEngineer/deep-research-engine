@@ -73,17 +73,25 @@ async def asr_transcribe(
     language: str | None = None,
     include_diarization: bool = True,
     max_segment_duration_sec: float = 0,
+    max_full_file_sec: float = 600.0,
 ) -> Union[str, dict[str, Any]]:
     """Transcribe audio file using VibeVoice ASR via InfraClient.
 
-    Tries full-file transcription first. Falls back to segmented transcription
-    with retries if the one-shot approach fails (e.g. container OOM).
+    Strategy:
+      - Files shorter than max_full_file_sec (default 10 min) are transcribed
+        as-is, preserving full diarization continuity.
+      - Files longer than max_full_file_sec are split into chunks of that size.
+        Each chunk gets its own diarization, so speaker IDs are per-chunk.
+        The result is annotated with ``diarization: "per-segment"`` so downstream
+        processing knows speakers are not unified across chunks.
 
     Args:
         audio_path: Path to audio file.
         language: Language code (auto-detect if None).
         include_diarization: Enable speaker diarization.
-        max_segment_duration_sec: Max duration per segment in fallback mode (0 = full file).
+        max_segment_duration_sec: Unused (kept for API compatibility).
+        max_full_file_sec: Max duration before splitting (default 600s = 10 min).
+            Set to 0 to never split (may timeout on very long files).
 
     Returns:
         Transcription result (string or dict with segments).
@@ -119,53 +127,81 @@ async def asr_transcribe(
     duration = get_audio_duration(audio_path)
     logger.info(f"Audio duration: {duration:.1f}s ({duration / 60:.1f} min)")
 
-    # For short files (<2 min), try full-file transcription first
-    max_full_file_sec = 120.0  # 2 minutes — longer files timeout on full-file
-    if duration <= max_full_file_sec:
-        logger.info("Attempting full-file transcription (no splitting)...")
-        for attempt in range(2):
-            try:
-                result = await _transcribe_segment(
-                    infra, audio_path, language, include_diarization, time_offset=0.0
-                )
-                # Check for empty/error results
-                if isinstance(result, dict):
-                    text = result.get("text", "")
-                    if text and not text.startswith("[ASR failed"):
-                        logger.info(f"Full-file transcription succeeded: {len(text)} chars")
-                        return result
-                    if attempt < 1:
-                        logger.warning(
-                            f"Full-file attempt {attempt + 1} returned empty, retrying..."
-                        )
-                        await asyncio.sleep(5)
-                        continue
-                elif isinstance(result, str) and result and not result.startswith("[ASR failed"):
-                    return result
-                break
-            except Exception as e:
-                logger.warning(f"Full-file transcription attempt {attempt + 1} failed: {e}")
-                # If timeout, don't retry — go to segment fallback
-                if "timed out" in str(e).lower():
-                    break
-                if attempt < 1:
-                    await asyncio.sleep(5)
-                    with contextlib.suppress(Exception):
-                        infra.load("asr", "vibevoice-asr", wait=True)
-    else:
-        logger.info(
-            f"Audio ({duration:.0f}s) exceeds {max_full_file_sec:.0f}s limit, "
-            f"using segment transcription directly"
+    # Decide: full-file or split
+    if max_full_file_sec <= 0 or duration <= max_full_file_sec:
+        logger.info("Transcribing full file (preserving diarization)...")
+        result = await _transcribe_full_file(
+            infra, audio_path, language, include_diarization
+        )
+        if result is not None:
+            return result
+
+        # Full-file failed — fall through to segmented if file is long enough
+        if max_full_file_sec <= 0:
+            logger.error("Full-file failed and splitting disabled, giving up")
+            if include_diarization:
+                return {"text": "", "segments": [], "speakers": 0}
+            return ""
+        # If file fits in one chunk, splitting won't help — give up
+        if duration <= max_full_file_sec:
+            logger.error(
+                f"Full-file failed for {duration:.0f}s file and splitting won't help, giving up"
+            )
+            if include_diarization:
+                return {"text": "", "segments": [], "speakers": 0}
+            return ""
+        logger.warning(
+            f"Full-file transcription failed for {duration:.0f}s file, "
+            f"falling back to {max_full_file_sec:.0f}s segments"
         )
 
-    # Fallback: split into 2-minute segments and transcribe individually
-    fallback_segment_sec = 120.0  # 2 minutes — safer for ASR container
-    logger.warning(
-        f"Full-file transcription failed. Falling back to {fallback_segment_sec:.0f}s segments..."
-    )
+    # Split into chunks of max_full_file_sec and transcribe each.
+    # Speaker IDs are per-chunk — annotated so downstream is aware.
     return await _transcribe_with_segments(
-        infra, audio_path, duration, language, include_diarization, fallback_segment_sec
+        infra, audio_path, duration, language, include_diarization, max_full_file_sec
     )
+
+
+async def _transcribe_full_file(
+    infra: InfraClient,
+    audio_path: Path,
+    language: str | None,
+    include_diarization: bool,
+) -> Union[str, dict[str, Any], None]:
+    """Attempt full-file transcription with retries. Returns None on failure."""
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            result = await _transcribe_segment(
+                infra, audio_path, language, include_diarization, time_offset=0.0
+            )
+            if isinstance(result, dict):
+                text = result.get("text", "")
+                if text and not text.startswith("[ASR failed"):
+                    logger.info(f"Full-file transcription succeeded: {len(text)} chars")
+                    return result
+                # Server errors (502/503) mean backend crashed — don't retry
+                if text and any(code in text for code in ("HTTP 502", "HTTP 503")):
+                    logger.warning("Server error in result, skipping remaining retries")
+                    return None
+                if attempt < max_retries - 1:
+                    logger.warning(f"Attempt {attempt + 1} returned empty, retrying in 5s...")
+                    await asyncio.sleep(5)
+                    continue
+            elif isinstance(result, str) and result and not result.startswith("[ASR failed"):
+                return result
+        except Exception as e:
+            logger.warning(f"Full-file attempt {attempt + 1}/{max_retries} failed: {e}")
+            error_str = str(e)
+            # Server errors (502/503) mean backend crashed — don't burn retries
+            if any(code in error_str for code in ("HTTP 502", "HTTP 503")):
+                logger.warning("Server error detected, skipping remaining retries")
+                return None
+            if attempt < max_retries - 1:
+                await asyncio.sleep(5)
+                with contextlib.suppress(Exception):
+                    infra.load("asr", "vibevoice-asr", wait=True)
+    return None
 
 
 async def _transcribe_with_segments(
@@ -268,9 +304,9 @@ async def _transcribe_with_segments(
                     f"Segment {seg_idx + 1} attempt {attempt + 1}/2 failed: {e}. "
                     f"{'Retrying...' if attempt < 1 else 'Giving up.'}"
                 )
-                # HTTP 500 means the ASR backend can't handle this audio — don't retry
-                if "HTTP 500" in error_str:
-                    logger.warning(f"Segment {seg_idx + 1} got HTTP 500, skipping retry")
+                # HTTP 500/502/503 means the ASR backend can't handle this audio
+                if any(code in error_str for code in ("HTTP 500", "HTTP 502", "HTTP 503")):
+                    logger.warning(f"Segment {seg_idx + 1} got server error, skipping retry")
                     break
                 if attempt < 1:
                     await asyncio.sleep(5)
@@ -306,7 +342,8 @@ async def _transcribe_with_segments(
             "text": " ".join(all_text_parts),
             "segments": all_segments,
             "speakers": len(speakers),
-            "diarization": "native",
+            "diarization": "per-segment",
+            "diarization_note": "Speaker IDs are per-chunk, not unified across chunks",
             "model": "vibevoice-asr",
         }
     return " ".join(all_text_parts)

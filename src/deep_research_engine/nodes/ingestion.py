@@ -639,15 +639,19 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         # Phase 5: Cross-File Speaker Unification
         if checkpoint_p5 is None and len(file_asr_results) > 1:
             logger.info("Phase 5: Reconciling speaker identities across files...")
-            global_speaker_map = await unify_speakers(file_asr_results, pipeline_dir)
+            try:
+                global_speaker_map = await unify_speakers(file_asr_results, pipeline_dir)
 
-            for segments in audio_results.values():
-                for seg in segments:
-                    mf_id = seg.get("mf_speaker_id")
-                    if mf_id in global_speaker_map:
-                        seg["speaker"] = global_speaker_map[mf_id]
+                for segments in audio_results.values():
+                    for seg in segments:
+                        mf_id = seg.get("mf_speaker_id")
+                        if mf_id in global_speaker_map:
+                            seg["speaker"] = global_speaker_map[mf_id]
 
-            _save_checkpoint(pipeline_dir, "phase5_speaker_map", global_speaker_map)
+                _save_checkpoint(pipeline_dir, "phase5_speaker_map", global_speaker_map)
+            except Exception as e:
+                logger.warning(f"Phase 5 speaker unification failed (non-fatal): {e}")
+                logger.info("Continuing without cross-file speaker unification")
         elif checkpoint_p5 is not None:
             global_speaker_map = checkpoint_p5
             for segments in audio_results.values():

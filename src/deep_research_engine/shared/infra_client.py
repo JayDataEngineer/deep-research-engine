@@ -51,7 +51,7 @@ _DISCOVER_TIMEOUT = 2  # seconds per probe
 _HEALTH_POLL_INTERVAL = 3  # seconds between health checks
 _LOAD_TIMEOUT = 1800  # 30 minutes for model loading
 _REQUEST_TIMEOUT = 300  # 5 min per request (general)
-_ASR_TIMEOUT = 900  # 15 min for ASR (long voice notes need extended processing)
+_ASR_TIMEOUT = 1200  # 20 min for ASR (10-min files with diarization can take a while)
 
 # Valid slot types and their models (from orchestrator config)
 SLOT_TYPES = ("llm", "asr", "tts", "image-gen")

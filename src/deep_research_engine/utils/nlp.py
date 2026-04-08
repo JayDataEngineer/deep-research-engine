@@ -8,7 +8,6 @@ from typing import Any
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from ..shared.config import DEFAULT_MODEL
 from ..shared.infra_client import InfraClient
 
 EXTRACTION_PROMPT = """Extract all named entities from the following text.
