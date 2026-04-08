@@ -129,7 +129,15 @@ class PromptManager:
     def __init__(self, client: Langfuse | None = None):
         self._client = client
         self._cache: dict[str, PromptWrapper] = {}
-        self._source = os.getenv("PROMPT_SOURCE", "langfuse").lower()
+        # Auto-detect source: if LangFuse keys aren't set, use local
+        explicit_source = os.getenv("PROMPT_SOURCE", "").lower()
+        if explicit_source:
+            self._source = explicit_source
+        elif os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"):
+            self._source = "langfuse"
+        else:
+            self._source = "local"
+            logger.info("LangFuse keys not set — using local prompt templates")
 
     @property
     def client(self) -> Langfuse:

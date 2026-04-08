@@ -13,6 +13,7 @@ Centralizes logic for:
 
 import asyncio
 import base64
+import contextlib
 import gc
 import mimetypes
 import os
@@ -71,19 +72,18 @@ async def asr_transcribe(
     audio_path: Path,
     language: str | None = None,
     include_diarization: bool = True,
-    max_segment_duration_sec: float = 120.0,
+    max_segment_duration_sec: float = 0,
 ) -> Union[str, dict[str, Any]]:
     """Transcribe audio file using VibeVoice ASR via InfraClient.
 
-    Large files are split into segments to avoid VRAM OOM during inference.
-    Each segment is transcribed separately, then transcripts are merged
-    with proper timing offsets.
+    Tries full-file transcription first. Falls back to segmented transcription
+    with retries if the one-shot approach fails (e.g. container OOM).
 
     Args:
         audio_path: Path to audio file.
         language: Language code (auto-detect if None).
         include_diarization: Enable speaker diarization.
-        max_segment_duration_sec: Max duration per ASR call in seconds (default 600 = 10 min).
+        max_segment_duration_sec: Max duration per segment in fallback mode (0 = full file).
 
     Returns:
         Transcription result (string or dict with segments).
@@ -95,47 +95,95 @@ async def asr_transcribe(
         return "" if not include_diarization else {"text": "", "segments": [], "speakers": 0}
 
     infra = _get_infra()
-
-    # Check if file needs splitting
     duration = get_audio_duration(audio_path)
-    logger.info(f"Audio duration: {duration:.1f}s ({duration/60:.1f} min)")
+    logger.info(f"Audio duration: {duration:.1f}s ({duration / 60:.1f} min)")
 
-    if duration <= max_segment_duration_sec:
-        # Small enough to transcribe in one shot
-        return await _transcribe_segment(
-            infra, audio_path, language, include_diarization, time_offset=0.0
-        )
+    # Try full-file transcription first (no splitting)
+    logger.info("Attempting full-file transcription (no splitting)...")
+    for attempt in range(2):
+        try:
+            result = await _transcribe_segment(
+                infra, audio_path, language, include_diarization, time_offset=0.0
+            )
+            # Check for empty/error results
+            if isinstance(result, dict):
+                text = result.get("text", "")
+                if text and not text.startswith("[ASR failed"):
+                    logger.info(f"Full-file transcription succeeded: {len(text)} chars")
+                    return result
+                if attempt < 1:
+                    logger.warning(f"Full-file attempt {attempt + 1} returned empty, retrying...")
+                    await asyncio.sleep(5)
+                    continue
+            elif isinstance(result, str) and result and not result.startswith("[ASR failed"):
+                return result
+            break
+        except Exception as e:
+            logger.warning(f"Full-file transcription attempt {attempt + 1} failed: {e}")
+            if attempt < 1:
+                await asyncio.sleep(5)
+                with contextlib.suppress(Exception):
+                    infra.load("asr", "vibevoice-asr", wait=True)
 
-    # Split large file into segments
+    # Fallback: split into 10-minute segments and transcribe individually
+    fallback_segment_sec = 600.0  # 10 minutes
+    logger.warning(
+        f"Full-file transcription failed. Falling back to {fallback_segment_sec:.0f}s segments..."
+    )
+    return await _transcribe_with_segments(
+        infra, audio_path, duration, language, include_diarization, fallback_segment_sec
+    )
+
+
+async def _transcribe_with_segments(
+    infra: InfraClient,
+    audio_path: Path,
+    duration: float,
+    language: str | None,
+    include_diarization: bool,
+    segment_duration: float,
+) -> Union[str, dict[str, Any]]:
+    """Transcribe audio by splitting into segments (fallback mode)."""
     import tempfile
-    logger.info(f"Splitting {audio_path.name} into {max_segment_duration_sec:.0f}s segments...")
 
     all_segments = []
     all_text_parts = []
-    segment_count = int(duration // max_segment_duration_sec) + 1
+    failed_segments = []
+    segment_count = int(duration // segment_duration) + 1
+
+    logger.info(
+        f"Splitting {audio_path.name} into {segment_duration:.0f}s segments ({segment_count} total)"
+    )
 
     for seg_idx in range(segment_count):
-        seg_start = seg_idx * max_segment_duration_sec
-        seg_duration = min(max_segment_duration_sec, duration - seg_start)
-        if seg_duration <= 0:
+        seg_start = seg_idx * segment_duration
+        seg_dur = min(segment_duration, duration - seg_start)
+        if seg_dur <= 0:
             break
 
         logger.info(
-            f"Transcribing segment {seg_idx+1}/{segment_count}: "
-            f"{seg_start:.0f}s - {seg_start+seg_duration:.0f}s ({seg_duration:.0f}s)"
+            f"Transcribing segment {seg_idx + 1}/{segment_count}: "
+            f"{seg_start:.0f}s - {seg_start + seg_dur:.0f}s ({seg_dur:.0f}s)"
         )
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = Path(tmp.name)
 
-        # Use ffmpeg to extract segment
         cmd = [
-            "ffmpeg", "-y", "-i", str(audio_path),
-            "-ss", str(seg_start),
-            "-t", str(seg_duration),
-            "-c:a", "pcm_s16le",
-            "-ar", "16000",
-            "-ac", "1",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(audio_path),
+            "-ss",
+            str(seg_start),
+            "-t",
+            str(seg_dur),
+            "-c:a",
+            "pcm_s16le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
             str(tmp_path),
         ]
         proc = await asyncio.create_subprocess_exec(
@@ -144,24 +192,56 @@ async def asr_transcribe(
         await proc.wait()
 
         if proc.returncode != 0 or not tmp_path.exists():
-            logger.warning(f"Failed to extract segment {seg_idx+1}, skipping")
+            logger.warning(f"Failed to extract segment {seg_idx + 1}, skipping")
+            failed_segments.append(
+                {"start": seg_start, "duration": seg_dur, "error": "ffmpeg failed"}
+            )
             continue
 
-        result = await _transcribe_segment(
-            infra, tmp_path, language, include_diarization, time_offset=seg_start
-        )
+        result = None
+        for attempt in range(3):
+            try:
+                result = await _transcribe_segment(
+                    infra, tmp_path, language, include_diarization, time_offset=seg_start
+                )
+                if isinstance(result, dict):
+                    text = result.get("text", "")
+                    if not text or text.startswith("[ASR failed"):
+                        if attempt < 2:
+                            logger.warning(
+                                f"Segment {seg_idx + 1} returned empty on attempt {attempt + 1}, "
+                                f"retrying in {2**attempt * 5}s..."
+                            )
+                            await asyncio.sleep(2**attempt * 5)
+                            continue
+                break
+            except Exception as e:
+                logger.warning(
+                    f"Segment {seg_idx + 1} attempt {attempt + 1}/3 failed: {e}. "
+                    f"{'Retrying...' if attempt < 2 else 'Giving up.'}"
+                )
+                if attempt < 2:
+                    await asyncio.sleep(2**attempt * 5)
+                    with contextlib.suppress(Exception):
+                        infra.load("asr", "vibevoice-asr", wait=True)
 
-        # Clean up temp file
-        try:
+        with contextlib.suppress(OSError):
             tmp_path.unlink()
-        except OSError:
-            pass
+
+        if result is None:
+            failed_segments.append(
+                {"start": seg_start, "duration": seg_dur, "error": "all retries failed"}
+            )
+            continue
 
         if isinstance(result, dict) and "segments" in result:
             all_segments.extend(result["segments"])
             all_text_parts.append(result.get("text", ""))
         elif isinstance(result, str):
             all_text_parts.append(result)
+
+    if failed_segments:
+        logger.warning(f"ASR completed with {len(failed_segments)}/{segment_count} failed segments")
 
     # Merge results
     if include_diarization:
@@ -217,7 +297,12 @@ async def _transcribe_segment(
             logger.warning(f"ASR model {model} failed: {e}")
             if model == models_to_try[-1]:
                 if include_diarization:
-                    return {"text": f"[ASR failed: {e}]", "segments": [], "speakers": 0, "error": str(e)}
+                    return {
+                        "text": f"[ASR failed: {e}]",
+                        "segments": [],
+                        "speakers": 0,
+                        "error": str(e),
+                    }
                 return f"[ASR failed for {audio_path.name}: {e}]"
             continue
 
@@ -236,14 +321,16 @@ def _parse_vibevoice_response(result: dict) -> dict[str, Any]:
     for seg in segments_raw:
         speaker = seg.get("speaker", "Speaker 0")
         speakers_set.add(speaker)
-        segments.append({
-            "speaker": speaker,
-            "start": float(seg.get("start", 0.0)),
-            "end": float(seg.get("end", 0.0)),
-            "duration": float(seg.get("duration", 0.0)),
-            "text": seg.get("text", ""),
-            "confidence": seg.get("confidence", 1.0),
-        })
+        segments.append(
+            {
+                "speaker": speaker,
+                "start": float(seg.get("start", 0.0)),
+                "end": float(seg.get("end", 0.0)),
+                "duration": float(seg.get("duration", 0.0)),
+                "text": seg.get("text", ""),
+                "confidence": seg.get("confidence", 1.0),
+            }
+        )
 
     num_speakers = len(speakers_set) or 1
     duration = result.get("duration", 0.0)
@@ -291,10 +378,12 @@ async def vlm_analyze(
             if not mime_type:
                 mime_type = "image/jpeg"
 
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
-            })
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
+                }
+            )
 
         if len(content) == 1:
             return "[No valid images found for analysis]"
@@ -362,12 +451,14 @@ async def face_recognize(image_path: Path, min_similarity: float = 0.8) -> list[
             similarity = subjects[0]["similarity"] if subjects else 0.0
 
             if similarity >= min_similarity:
-                results.append({
-                    "name": subject or "Unknown",
-                    "confidence": similarity,
-                    "box": face_data.get("box", {}),
-                    "embedding": face_data.get("embedding"),
-                })
+                results.append(
+                    {
+                        "name": subject or "Unknown",
+                        "confidence": similarity,
+                        "box": face_data.get("box", {}),
+                        "embedding": face_data.get("embedding"),
+                    }
+                )
 
         logger.info(f"Detected {len(results)} faces in {image_path.name}")
         return results
@@ -420,10 +511,12 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
             {"type": "text", "text": "Analyze these video frames and describe what's happening."}
         ]
         for frame_b64 in frames:
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{frame_b64}"},
-            })
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{frame_b64}"},
+                }
+            )
 
         response = await asyncio.to_thread(
             _get_infra().chat,
@@ -502,7 +595,7 @@ def normalize_timestamp(timestamp: Union[float, str]) -> dict[str, str]:
             try:
                 cleaned = timestamp.strip()
                 # Remove "UTC" prefix from timezone offset
-                cleaned = re.sub(r'UTC([+-])', r'\1', cleaned)
+                cleaned = re.sub(r"UTC([+-])", r"\1", cleaned)
                 dt = datetime.strptime(cleaned, "%d.%m.%Y %H:%M:%S %z")
                 original_tz_offset = dt.strftime("%z")
                 if original_tz_offset:
@@ -522,7 +615,9 @@ def normalize_timestamp(timestamp: Union[float, str]) -> dict[str, str]:
 
 
 async def extract_scene_frames(
-    video_path: Path, output_dir: Path, threshold: float = 0.3,
+    video_path: Path,
+    output_dir: Path,
+    threshold: float = 0.3,
     temporal_interval: int = 150,
 ) -> list[dict[str, Any]]:
     """Extract visually distinct frames using FFmpeg scene detection.
@@ -571,10 +666,10 @@ async def extract_scene_frames(
                 for block in blocks:
                     if not block.strip():
                         continue
-                    
+
                     pts_match = re.search(r"pts_time:([\d\.]+)", block)
                     score_match = re.search(r"lavfi\.scene_score=([\d\.]+)", block)
-                    
+
                     if pts_match:
                         pts_times[idx] = {
                             "pts_time": float(pts_match.group(1)),
@@ -601,7 +696,7 @@ async def extract_scene_frames(
 async def batch_vlm_video_analysis(
     frame_items: list[dict[str, Any]],
     prompt: str = "Generate a cohesive narrative for this video segment based on these key frames. Describe the actions, characters, and environment.",
-    batch_size: int = 15
+    batch_size: int = 15,
 ) -> str:
     """Analyze multiple frames using a VLM to generate a cohesive narrative."""
     if not frame_items:
@@ -609,10 +704,10 @@ async def batch_vlm_video_analysis(
 
     # Sort frames by timestamp to ensure chronological narrative
     sorted_frames = sorted(frame_items, key=lambda x: x.get("pts_time", 0))
-    
+
     # If there are too many frames, batch them to avoid context window/token limits
     all_descriptions = []
-    
+
     # Simple batching logic
     vlm_unavailable = False
     for i in range(0, len(sorted_frames), batch_size):
@@ -621,7 +716,7 @@ async def batch_vlm_video_analysis(
             continue
 
         batch = sorted_frames[i : i + batch_size]
-        logger.info(f"Analyzing VLM batch {i//batch_size + 1} ({len(batch)} frames)")
+        logger.info(f"Analyzing VLM batch {i // batch_size + 1} ({len(batch)} frames)")
 
         try:
             content = [{"type": "text", "text": prompt}]
@@ -634,10 +729,12 @@ async def batch_vlm_video_analysis(
                 with open(frame_path, "rb") as f:
                     base64_image = base64.b64encode(f.read()).decode("utf-8")
 
-                content.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{base64_image}"}
-                })
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{base64_image}"},
+                    }
+                )
 
             response = await asyncio.to_thread(
                 _get_infra().chat,
@@ -669,8 +766,10 @@ async def batch_vlm_video_analysis(
     # If multiple batches, synthesize into a final narrative
     if len(all_descriptions) > 1:
         logger.info("Synthesizing multi-batch video narrative...")
-        synth_prompt = "Combine the following sequential segment descriptions into a single, cohesive narrative for the entire video:\n\n" + \
-                       "\n\n---\n\n".join(all_descriptions)
+        synth_prompt = (
+            "Combine the following sequential segment descriptions into a single, cohesive narrative for the entire video:\n\n"
+            + "\n\n---\n\n".join(all_descriptions)
+        )
 
         response = await asyncio.to_thread(
             _get_infra().chat,
@@ -684,9 +783,7 @@ async def batch_vlm_video_analysis(
     return "[VLM analysis returned no results]"
 
 
-def cluster_identities(
-    embeddings: np.ndarray, min_cluster_size: int = 2
-) -> np.ndarray:
+def cluster_identities(embeddings: np.ndarray, min_cluster_size: int = 2) -> np.ndarray:
     """Cluster facial embeddings using HDBSCAN with Cosine similarity.
 
     HDBSCAN handles varying cluster densities better than DBSCAN,
@@ -714,6 +811,7 @@ def cluster_identities(
 
     # Fallback to DBSCAN
     from sklearn.cluster import DBSCAN
+
     dbscan = DBSCAN(eps=0.4, min_samples=min_cluster_size, metric="euclidean")
     return dbscan.fit_predict(normalized)
 
@@ -724,7 +822,9 @@ def cluster_identities(
 
 
 async def create_mega_files(
-    audio_paths: list[Path], output_dir: Path, max_duration_sec: float = 3600.0,
+    audio_paths: list[Path],
+    output_dir: Path,
+    max_duration_sec: float = 3600.0,
     silence_duration: float = 1.5,
 ) -> list[dict[str, Any]]:
     """Concatenate audio fragments into multiple Mega-Files with resampling.
@@ -763,14 +863,22 @@ async def create_mega_files(
         silence_file = output_dir / "_silence_buffer.wav"
         if not silence_file.exists():
             silence_cmd = [
-                "ffmpeg", "-y", "-f", "lavfi",
-                "-i", "anullsrc=r=16000:cl=mono",
-                "-t", str(silence_duration),
-                "-c:a", "pcm_s16le",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=16000:cl=mono",
+                "-t",
+                str(silence_duration),
+                "-c:a",
+                "pcm_s16le",
                 str(silence_file),
             ]
             proc = await asyncio.create_subprocess_exec(
-                *silence_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                *silence_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             await proc.wait()
             if proc.returncode != 0:
@@ -792,12 +900,22 @@ async def create_mega_files(
                 if path.suffix.lower() != ".wav":
                     wav_path = output_dir / f"_conv_{path.stem}.wav"
                     conv_cmd = [
-                        "ffmpeg", "-y", "-i", str(path),
-                        "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1",
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(path),
+                        "-c:a",
+                        "pcm_s16le",
+                        "-ar",
+                        "16000",
+                        "-ac",
+                        "1",
                         str(wav_path),
                     ]
                     conv_proc = await asyncio.create_subprocess_exec(
-                        *conv_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        *conv_cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
                     )
                     await conv_proc.wait()
                     if conv_proc.returncode != 0:
@@ -914,6 +1032,7 @@ async def _enhance_audio(audio_path: Path, output_path: Path) -> bool:
     """
     try:
         from df import enhance, init_df
+
         df_model = init_df()
         enhance(df_model, str(audio_path), str(output_path))
         return True
@@ -926,8 +1045,11 @@ async def _enhance_audio(audio_path: Path, output_path: Path) -> bool:
 
 
 async def _concat_short_segments(
-    audio_path: Path, segments: list[dict[str, Any]], speaker_id: str,
-    output_path: Path, min_duration: float = 10.0,
+    audio_path: Path,
+    segments: list[dict[str, Any]],
+    speaker_id: str,
+    output_path: Path,
+    min_duration: float = 10.0,
 ) -> bool:
     """Concatenate short utterances until we reach min_duration for embedding.
 
@@ -949,7 +1071,10 @@ async def _concat_short_segments(
         for seg in speaker_segs:
             seg_path = output_path.parent / f"_seg_{speaker_id}_{seg['start']:.1f}.wav"
             ok = await extract_audio_snippet(
-                audio_path, seg["start"], min(seg.get("duration", 0), 30.0), seg_path,
+                audio_path,
+                seg["start"],
+                min(seg.get("duration", 0), 30.0),
+                seg_path,
             )
             if ok:
                 f.write(f"file '{seg_path.absolute()}'\n")
@@ -961,13 +1086,26 @@ async def _concat_short_segments(
         return False
 
     cmd = [
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-        "-i", str(concat_list),
-        "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_list),
+        "-c:a",
+        "pcm_s16le",
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
         str(output_path),
     ]
     proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        *cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
     await proc.wait()
     return proc.returncode == 0
@@ -1000,9 +1138,7 @@ async def unify_speakers(
             # Enhancement #1: Extract high-confidence 10-30s snippets
             # Prioritize segments with duration between 10-30s and high confidence
             candidates = [
-                s for s in segments
-                if s["speaker"] == speaker_id
-                and s.get("duration", 0) >= 10.0
+                s for s in segments if s["speaker"] == speaker_id and s.get("duration", 0) >= 10.0
             ]
 
             # Sort by confidence if available, then by duration (favoring 20s-ish)
@@ -1031,14 +1167,21 @@ async def unify_speakers(
             # Short-utterance accumulator: if longest segment < 10s, concatenate
             if target_seg.get("duration", 0) < 10.0:
                 ok = await _concat_short_segments(
-                    audio_path, segments, speaker_id, snippet_path, min_duration=10.0,
+                    audio_path,
+                    segments,
+                    speaker_id,
+                    snippet_path,
+                    min_duration=10.0,
                 )
                 if not ok:
                     continue
             else:
                 snippet_duration = min(target_seg["duration"], 30.0)
                 ok = await extract_audio_snippet(
-                    audio_path, target_seg["start"], snippet_duration, snippet_path,
+                    audio_path,
+                    target_seg["start"],
+                    snippet_duration,
+                    snippet_path,
                 )
                 if not ok:
                     continue
@@ -1140,7 +1283,9 @@ async def resolve_identities(
                         "KNOWN IDENTITIES (already in the graph — match new IDs to these names where possible):\n"
                         + "\n".join(person_lines)
                     )
-                    logger.info(f"Injected {len(rows)} existing persons from Neo4j into identity research")
+                    logger.info(
+                        f"Injected {len(rows)} existing persons from Neo4j into identity research"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to query existing persons from Neo4j: {e}")
 
@@ -1152,8 +1297,9 @@ async def resolve_identities(
         if existing_persons_text:
             compile_kwargs["existing_persons"] = existing_persons_text
         if pre_named_entities:
-            compile_kwargs["pre_named_entities"] = "PRE-NER DETECTED NAMES (detected before identity resolution):\n" + "\n".join(
-                f"- {name}" for name in pre_named_entities
+            compile_kwargs["pre_named_entities"] = (
+                "PRE-NER DETECTED NAMES (detected before identity resolution):\n"
+                + "\n".join(f"- {name}" for name in pre_named_entities)
             )
 
         research_prompt = research_prompt_template.compile(**compile_kwargs)
@@ -1187,7 +1333,7 @@ async def resolve_identities(
                     "name": "IdentityMapping",
                     "schema": IdentityMapping.model_json_schema(),
                     "strict": True,
-                }
+                },
             },
         )
         content = _extract_chat_text(format_response)
@@ -1205,25 +1351,22 @@ async def resolve_identities(
 
 
 async def extract_audio_from_video(
-    video_path: Path,
-    output_path: Path | None = None,
-    sample_rate: int = 16000,
-    channels: int = 1
+    video_path: Path, output_path: Path | None = None, sample_rate: int = 16000, channels: int = 1
 ) -> Path:
     """Extract audio track from video and convert to ASR-compatible format.
-    
+
     Extracts the audio track from a video file and converts it to 16kHz mono
     WAV format, which is compatible with VibeVoice ASR and other speech models.
-    
+
     Args:
         video_path: Path to input video file (.mp4, .mkv, .avi, .mov, etc.)
         output_path: Optional output path (default: same name with .wav extension)
         sample_rate: Target sample rate in Hz (default: 16kHz for ASR)
         channels: Number of audio channels (default: 1 for mono)
-    
+
     Returns:
         Path to extracted audio file
-    
+
     Raises:
         FileNotFoundError: If video file doesn't exist
         subprocess.CalledProcessError: If FFmpeg fails
@@ -1231,84 +1374,82 @@ async def extract_audio_from_video(
     """
     if not video_path.exists():
         raise FileNotFoundError(f"Video file not found: {video_path}")
-    
+
     if output_path is None:
         output_path = video_path.with_suffix(".wav")
-    
+
     # Ensure output directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # FFmpeg command for audio extraction
     cmd = [
         "ffmpeg",
         "-y",  # Overwrite output
-        "-i", str(video_path),  # Input video
+        "-i",
+        str(video_path),  # Input video
         "-vn",  # No video output
-        "-acodec", "pcm_s16le",  # PCM 16-bit codec
-        "-ar", str(sample_rate),  # Sample rate
-        "-ac", str(channels),  # Channels (mono)
-        str(output_path)  # Output file
+        "-acodec",
+        "pcm_s16le",  # PCM 16-bit codec
+        "-ar",
+        str(sample_rate),  # Sample rate
+        "-ac",
+        str(channels),  # Channels (mono)
+        str(output_path),  # Output file
     ]
-    
+
     logger.info(f"Extracting audio from {video_path.name}...")
-    
+
     # Run FFmpeg
     process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
-    
+
     stdout, stderr = await process.communicate()
-    
+
     if process.returncode != 0:
         error_msg = stderr.decode() if stderr else "Unknown FFmpeg error"
         logger.error(f"Audio extraction failed: {error_msg}")
-        raise subprocess.CalledProcessError(
-            process.returncode,
-            cmd,
-            stdout,
-            stderr
-        )
-    
+        raise subprocess.CalledProcessError(process.returncode, cmd, stdout, stderr)
+
     # Verify output
     if not output_path.exists():
         raise RuntimeError("Audio extraction failed: output file not created")
-    
+
     file_size_kb = output_path.stat().st_size / 1024
     logger.info(f"Audio extracted: {output_path} ({file_size_kb:.1f} KB)")
-    
+
     return output_path
 
 
 async def get_video_duration(video_path: Path) -> float:
     """Get video duration in seconds using FFprobe.
-    
+
     Args:
         video_path: Path to video file
-        
+
     Returns:
         Duration in seconds (0.0 if failed)
     """
     cmd = [
         "ffprobe",
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(video_path)
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(video_path),
     ]
-    
+
     process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
-    
+
     stdout, _ = await process.communicate()
-    
+
     if process.returncode != 0:
         return 0.0
-    
+
     try:
         return float(stdout.decode().strip())
     except ValueError:

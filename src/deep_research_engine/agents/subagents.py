@@ -8,7 +8,7 @@ Uses the DeepAgents pattern with LangChain-compatible tool integration.
 
 from typing import Any
 
-from deepagents import SubAgent, create_deep_agent
+from deepagents import create_deep_agent
 from loguru import logger
 
 from ..shared.infra_client import InfraClient
@@ -18,10 +18,10 @@ from ..tools.storage import (
     vector_search_datastore,
 )
 
-
 # ---------------------------------------------------------------------------
 # Deep Agent Tools (shared across all sub-agents)
 # ---------------------------------------------------------------------------
+
 
 def get_deep_agent_tools(config_data: dict[str, Any] | None = None) -> list:
     """Return the full set of Deep Agent tools.
@@ -62,6 +62,15 @@ SORT_AGENT_PROMPT = (
 )
 
 
+def _ensure_llm_loaded(model: str) -> None:
+    """Ensure the LLM is loaded before running a sub-agent."""
+    try:
+        infra = InfraClient()
+        infra.load("llm", model, wait=True)
+    except Exception as e:
+        logger.warning(f"Could not reload LLM {model} for sub-agent (may be cloud): {e}")
+
+
 def create_sort_agent(
     model: str = "gemma4-e4b-vision-fast",
     tools: list | None = None,
@@ -70,13 +79,14 @@ def create_sort_agent(
 
     Args:
         model: Model identifier (passed to LiteLLM/deepagents).
-        tools: Optional list of tools. Defaults to storage tools.
+        tools: Optional list of tools. Defaults to no tools (pure text processing).
 
     Returns:
         A DeepAgent instance that can be invoked with .ainvoke().
     """
+    # Sort agent is pure text processing — no storage tools needed by default
     if tools is None:
-        tools = get_deep_agent_tools()
+        tools = []
 
     return create_deep_agent(
         model=model,
@@ -100,18 +110,69 @@ async def run_sort_agent(
     Returns:
         Sorted and structured content string.
     """
-    tools = get_deep_agent_tools(config_data)
+    # Ensure LLM is loaded (may have been unloaded by ASR)
+    _ensure_llm_loaded(model)
+
+    # Sort agent doesn't need storage tools — pure text processing
+    tools: list = []
     agent = create_sort_agent(model=model, tools=tools)
 
-    result = await agent.ainvoke({
-        "messages": [
-            (
-                "user",
-                f"Sort and organize the following raw content:\n\n{content[:60000]}\n\n"
-                f"Apply the sorting rules from your system prompt.",
-            )
-        ]
-    })
+    # Chunk large content to avoid truncation (process in 50K char chunks)
+    chunk_size = 50_000
+    if len(content) <= chunk_size:
+        chunks = [content]
+    else:
+        # Split at paragraph boundaries to avoid cutting mid-sentence
+        chunks = []
+        pos = 0
+        while pos < len(content):
+            end = min(pos + chunk_size, len(content))
+            if end < len(content):
+                # Find nearest paragraph break
+                para_break = content.rfind("\n\n", pos, end)
+                if para_break > pos:
+                    end = para_break + 2
+            chunks.append(content[pos:end])
+            pos = end
+        logger.info(f"Split sort input into {len(chunks)} chunks ({len(content)} chars total)")
+
+    sorted_parts = []
+    for i, chunk in enumerate(chunks):
+        logger.info(f"Processing sort chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)")
+        result = await agent.ainvoke(
+            {
+                "messages": [
+                    (
+                        "user",
+                        f"Sort and organize the following raw content (part {i + 1} of {len(chunks)}):\n\n{chunk}\n\n"
+                        f"Apply the sorting rules from your system prompt.",
+                    )
+                ]
+            }
+        )
+        sorted_parts.append(result["messages"][-1].content)
+
+    if len(sorted_parts) == 1:
+        sorted_content = sorted_parts[0]
+    else:
+        # Run a final merge pass to deduplicate across chunks
+        merged_input = "\n\n".join(sorted_parts)
+        merge_agent = create_sort_agent(model=model, tools=[])
+        merge_result = await merge_agent.ainvoke(
+            {
+                "messages": [
+                    (
+                        "user",
+                        f"Merge these sorted sections into a single organized document, "
+                        f"deduplicating any overlapping entries:\n\n{merged_input}",
+                    )
+                ]
+            }
+        )
+        sorted_content = merge_result["messages"][-1].content
+
+    logger.info(f"Sort Agent completed: {len(sorted_content)} chars output")
+    return sorted_content
 
     sorted_content = result["messages"][-1].content
     logger.info(f"Sort Agent completed: {len(sorted_content)} chars output")
@@ -163,13 +224,14 @@ def create_entity_extractor_agent(
 
     Args:
         model: Model identifier (passed to LiteLLM/deepagents).
-        tools: Optional list of tools. Defaults to storage tools.
+        tools: Optional list of tools. Defaults to no tools (pure text processing).
 
     Returns:
         A DeepAgent instance that can be invoked with .ainvoke().
     """
+    # Entity extraction is pure text processing — no storage tools needed
     if tools is None:
-        tools = get_deep_agent_tools()
+        tools = []
 
     return create_deep_agent(
         model=model,
@@ -193,20 +255,64 @@ async def run_entity_extractor_agent(
     Returns:
         Structured entity extraction result string.
     """
-    tools = get_deep_agent_tools(config_data)
+    # Ensure LLM is loaded (may have been unloaded by ASR)
+    _ensure_llm_loaded(model)
+
+    # Entity extraction doesn't need storage tools — pure text processing
+    tools: list = []
     agent = create_entity_extractor_agent(model=model, tools=tools)
 
-    result = await agent.ainvoke({
-        "messages": [
-            (
-                "user",
-                f"Extract all named entities from the following text:\n\n{content[:60000]}\n\n"
-                f"Apply the extraction rules from your system prompt.",
-            )
-        ]
-    })
+    # Chunk large content to avoid truncation
+    chunk_size = 50_000
+    if len(content) <= chunk_size:
+        chunks = [content]
+    else:
+        chunks = []
+        pos = 0
+        while pos < len(content):
+            end = min(pos + chunk_size, len(content))
+            if end < len(content):
+                para_break = content.rfind("\n\n", pos, end)
+                if para_break > pos:
+                    end = para_break + 2
+            chunks.append(content[pos:end])
+            pos = end
+        logger.info(f"Split entity extraction into {len(chunks)} chunks")
 
-    entities = result["messages"][-1].content
+    entity_parts = []
+    for i, chunk in enumerate(chunks):
+        logger.info(f"Extracting entities from chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)")
+        result = await agent.ainvoke(
+            {
+                "messages": [
+                    (
+                        "user",
+                        f"Extract all named entities from the following text (part {i + 1} of {len(chunks)}):\n\n{chunk}\n\n"
+                        f"Apply the extraction rules from your system prompt.",
+                    )
+                ]
+            }
+        )
+        entity_parts.append(result["messages"][-1].content)
+
+    if len(entity_parts) == 1:
+        entities = entity_parts[0]
+    else:
+        # Merge and deduplicate entity lists
+        merged = "\n\n".join(entity_parts)
+        merge_agent = create_entity_extractor_agent(model=model, tools=[])
+        merge_result = await merge_agent.ainvoke(
+            {
+                "messages": [
+                    (
+                        "user",
+                        f"Merge and deduplicate these entity lists into a single comprehensive list:\n\n{merged}",
+                    )
+                ]
+            }
+        )
+        entities = merge_result["messages"][-1].content
+
     logger.info(f"Entity Extractor completed: {len(entities)} chars output")
     return entities
 
@@ -214,6 +320,7 @@ async def run_entity_extractor_agent(
 # ---------------------------------------------------------------------------
 # Pipeline Integration: Run both agents sequentially
 # ---------------------------------------------------------------------------
+
 
 async def run_sort_then_extract(
     content: str,
@@ -237,7 +344,9 @@ async def run_sort_then_extract(
     sorted_content = await run_sort_agent(content, model=model, config_data=config_data)
 
     logger.info("Running Entity Extractor Agent...")
-    entities = await run_entity_extractor_agent(sorted_content, model=model, config_data=config_data)
+    entities = await run_entity_extractor_agent(
+        sorted_content, model=model, config_data=config_data
+    )
 
     return {
         "sorted_content": sorted_content,

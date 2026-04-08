@@ -1,14 +1,18 @@
 """Drafter Node - LangGraph node for drafting using subagents.
 
 Spawns flash subagents and specialist sub-sub agents to gather research and write a draft.
+For ingestion data (big_text_dump), uses direct multi-pass synthesis instead.
 """
 
+import asyncio
+from pathlib import Path
 from typing import Any
 
 from deepagents import SubAgent, create_deep_agent
 
 from ..config import get_phase_config
 from ..shared import get_langchain_llm
+from ..shared.infra_client import InfraClient
 from ..state import EngineState
 from ..tools.storage import graph_query, initialize_storage_tools, vector_search_datastore
 from ..utils.logging import get_loguru_logger
@@ -35,6 +39,19 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
     if not node_enabled:
         logger.info("Drafter node disabled. Skipping.")
         return {"__goto__": "critic"}
+
+    # Reload LLM — may have been unloaded by ASR during ingestion
+    king_model_name = phase_config.get("model")
+    if not king_model_name:
+        king_model_name = "gemma4-e4b-vision-fast"
+    try:
+        from ..shared.infra_client import InfraClient
+
+        infra = InfraClient()
+        infra.load("llm", king_model_name, wait=True)
+        logger.info(f"LLM reloaded for drafter: {king_model_name}")
+    except Exception as e:
+        logger.warning(f"Failed to reload LLM for drafter (may use cloud model): {e}")
 
     # Initialize storage tools with current config
     initialize_storage_tools(config_data)
@@ -105,12 +122,14 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
         "1. DELEGATE: You don't do the primary research yourself. You delegate specific tasks to your Flash Subagents.\n"
         "2. SYNTHESIZE: Once subagents return their findings, you must integrate them into a coherent, comprehensive report.\n"
         "3. FORMAT: Ensure the output is well-structured markdown with clear headings, citations, and insights.\n\n"
+        "IMPORTANT OUTPUT RULES:\n"
+        "- Respond with plain text/markdown only\n"
+        "- Do NOT use tool calls for your final response\n"
+        "- When generating JSON arguments, use valid JSON syntax (arrays as [...], not strings)\n\n"
         f"Current Goal: {state.get('input_data', {}).get('query', 'Perform comprehensive research and analysis.')}\n"
     )
 
     # Get model from config or use local LiteLLM
-    king_model_name = phase_config.get("model", None)
-
     if king_model_name:
         # Use model string directly (deepagents format)
         king_model = king_model_name
@@ -135,48 +154,58 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
     # Check for ingestion output (big_text_dump from telegram/pipeline)
     big_dump_path = state.get("context", {}).get("big_text_dump")
     if big_dump_path:
-        from pathlib import Path
-
         dump_file = Path(big_dump_path)
         if dump_file.exists():
             dump_content = dump_file.read_text()
             logger.info(f"Loaded ingestion output: {len(dump_content)} chars from {dump_file.name}")
 
             # Try sort+extract sub-agents first (uses DeepAgents pattern)
+            sorted_content = None
+            entities_content = None
             try:
                 from ..agents.subagents import run_sort_then_extract
+
                 sorted_result = await run_sort_then_extract(
-                    dump_content, model=king_model_name if king_model_name else "gemma4-e4b-vision-fast",
+                    dump_content,
+                    model=king_model_name if king_model_name else "gemma4-e4b-vision-fast",
                     config_data=config_data,
                 )
+                sorted_content = sorted_result["sorted_content"]
+                entities_content = sorted_result["entities"]
                 logger.info(
-                    f"Sort Agent: {len(sorted_result['sorted_content'])} chars, "
-                    f"Entity Extractor: {len(sorted_result['entities'])} chars"
+                    f"Sort Agent: {len(sorted_content)} chars, "
+                    f"Entity Extractor: {len(entities_content)} chars"
                 )
                 # Write sorted output for reference
                 sorted_path = dump_file.parent / "sorted_content.md"
-                sorted_path.write_text(sorted_result["sorted_content"])
+                sorted_path.write_text(sorted_content)
                 entities_path = dump_file.parent / "extracted_entities.md"
-                entities_path.write_text(sorted_result["entities"])
-
-                # Use sorted content for the king (it's organized and often shorter)
-                analysis_content = sorted_result["sorted_content"]
+                entities_path.write_text(entities_content)
             except Exception as e:
                 logger.warning(f"Sort/Extract sub-agents failed, using raw dump: {e}")
-                analysis_content = dump_content
+                logger.exception(e)
 
-            # Truncate to fit context (32K = ~100K chars for gemma4-e4b)
-            max_chars = 90000
-            if len(analysis_content) > max_chars:
-                logger.info(f"Truncating analysis content from {len(analysis_content)} to {max_chars} chars")
-                analysis_content = analysis_content[:max_chars] + "\n\n...[content truncated]..."
-
-            user_message = (
-                f"Execute the research plan for: {user_query}\n\n"
-                f"## INGESTION DATA (from pipeline)\n\n"
-                f"{analysis_content}\n\n"
-                f"Use the above data to produce your analysis."
+            # For ingestion data, use direct synthesis instead of King delegation.
+            # The King pattern works for web research but produces raw dumps for
+            # pre-existing data because the subagents have nothing to fetch.
+            final_message = await _synthesize_ingestion_data(
+                infra_client=InfraClient(),
+                model=king_model_name,
+                dump_content=dump_content,
+                sorted_content=sorted_content,
+                entities_content=entities_content,
+                user_query=user_query,
+                dump_file=dump_file,
             )
+
+            king_result = {
+                "success": True,
+                "output": final_message,
+                "output_type": "markdown",
+                "worker_id": "king_drafter",
+            }
+            logger.info("Ingestion synthesis completed.")
+            return {"worker_results": [king_result], "__goto__": "critic"}
         else:
             logger.warning(f"Ingestion dump file not found: {big_dump_path}")
             user_message = f"Execute the research plan for: {user_query}"
@@ -198,3 +227,147 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
 
     logger.info("King Drafter has completed the orchestration.")
     return {"worker_results": [king_result], "__goto__": "critic"}
+
+
+async def _synthesize_ingestion_data(
+    infra_client: InfraClient,
+    model: str,
+    dump_content: str,
+    sorted_content: str | None,
+    entities_content: str | None,
+    user_query: str,
+    dump_file: Path,
+) -> str:
+    """Synthesize ingestion data into a research report using chunked summarization.
+
+    For large ingestion dumps, does multi-pass summarization:
+    1. Split content into model-context-sized chunks
+    2. Summarize each chunk
+    3. Combine summaries into final synthesis
+    """
+    # Use sorted content if available (more organized), else raw dump
+    analysis_content = sorted_content or dump_content
+
+    # If entities were extracted, prepend them for context
+    if entities_content:
+        analysis_content = (
+            f"## EXTRACTED ENTITIES\n\n{entities_content}\n\n## CONTENT\n\n{analysis_content}"
+        )
+
+    # Chunk size: 80K chars (~20K tokens) leaves room for system prompt + output
+    chunk_size = 80_000
+    max_chars = 80_000
+
+    if len(analysis_content) <= max_chars:
+        # Small enough for single-pass synthesis
+        synthesis_prompt = (
+            "You are a research analyst. Synthesize the following ingested data into a "
+            "comprehensive, well-structured research report.\n\n"
+            "REQUIREMENTS:\n"
+            "1. Create clear sections with headers (##)\n"
+            "2. Summarize key themes, relationships, and patterns\n"
+            "3. Preserve important details and specific facts\n"
+            "4. Include a summary at the top\n"
+            "5. Use markdown formatting\n\n"
+            f"RESEARCH GOAL: {user_query}\n\n"
+            f"DATA:\n{analysis_content}"
+        )
+
+        response = await asyncio.to_thread(
+            infra_client.chat,
+            messages=synthesis_prompt,
+            model=model,
+            max_tokens=16000,
+        )
+        return _extract_text_from_chat(response)
+
+    # Multi-pass: summarize chunks, then synthesize summaries
+    logger.info(f"Large content ({len(analysis_content)} chars) — using multi-pass synthesis")
+
+    chunks = _split_at_paragraphs(analysis_content, chunk_size)
+    logger.info(f"Split into {len(chunks)} chunks for parallel summarization")
+
+    summaries = []
+    for i, chunk in enumerate(chunks):
+        logger.info(f"Summarizing chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)")
+        summary_prompt = (
+            "Summarize the following content, preserving all key facts, names, dates, "
+            "relationships, and important details. Use markdown formatting.\n\n"
+            f"CONTENT (part {i + 1} of {len(chunks)}):\n{chunk}"
+        )
+        try:
+            response = await asyncio.to_thread(
+                infra_client.chat,
+                messages=summary_prompt,
+                model=model,
+                max_tokens=8000,
+            )
+            summaries.append(_extract_text_from_chat(response))
+        except Exception as e:
+            logger.warning(f"Chunk {i + 1} summarization failed: {e}")
+            # Include truncated original as fallback
+            summaries.append(
+                f"[Part {i + 1} summarization failed, first 5000 chars]:\n{chunk[:5000]}"
+            )
+
+    # Final synthesis pass
+    combined_summaries = "\n\n---\n\n".join(
+        f"## Part {i + 1} Summary\n{summary}" for i, summary in enumerate(summaries)
+    )
+
+    # Write intermediate summaries for debugging
+    summaries_path = dump_file.parent / "chunk_summaries.md"
+    summaries_path.write_text(combined_summaries)
+
+    final_prompt = (
+        "You are a research analyst. Combine these partial summaries into a single, "
+        "comprehensive research report.\n\n"
+        "REQUIREMENTS:\n"
+        "1. Merge overlapping information\n"
+        "2. Create a logical structure with clear sections\n"
+        "3. Include an executive summary at the top\n"
+        "4. Preserve specific facts, names, and details\n"
+        "5. Use proper markdown formatting\n\n"
+        f"RESEARCH GOAL: {user_query}\n\n"
+        f"PARTIAL SUMMARIES:\n{combined_summaries}"
+    )
+
+    response = await asyncio.to_thread(
+        infra_client.chat,
+        messages=final_prompt,
+        model=model,
+        max_tokens=16000,
+    )
+    return _extract_text_from_chat(response)
+
+
+def _split_at_paragraphs(text: str, max_chunk_size: int) -> list[str]:
+    """Split text at paragraph boundaries to avoid cutting mid-sentence."""
+    if len(text) <= max_chunk_size:
+        return [text]
+
+    chunks = []
+    pos = 0
+    while pos < len(text):
+        end = min(pos + max_chunk_size, len(text))
+        if end < len(text):
+            # Find nearest paragraph break
+            para_break = text.rfind("\n\n", pos, end)
+            if para_break > pos + max_chunk_size // 2:
+                end = para_break + 2
+            else:
+                # Fall back to newline
+                nl_break = text.rfind("\n", pos, end)
+                if nl_break > pos + max_chunk_size // 2:
+                    end = nl_break + 1
+        chunks.append(text[pos:end])
+        pos = end
+    return chunks
+
+
+def _extract_text_from_chat(response: dict) -> str:
+    """Extract text content from InfraClient chat response."""
+    try:
+        return response["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return str(response)

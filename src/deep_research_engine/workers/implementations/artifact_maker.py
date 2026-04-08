@@ -164,8 +164,10 @@ class ArtifactMakerWorker(BaseWorker):
         for attempt in range(1, self.max_retries + 1):
             try:
                 agent_output = await llm.ainvoke(
-                    [{"role": "system", "content": current_prompt},
-                     {"role": "user", "content": current_prompt}]
+                    [
+                        {"role": "system", "content": current_prompt},
+                        {"role": "user", "content": current_prompt},
+                    ]
                 )
                 agent_output = agent_output.content
 
@@ -297,9 +299,17 @@ class ArtifactMakerWorker(BaseWorker):
     async def _create_llm(self, model_config: dict[str, Any]) -> Any:
         """Create LLM from model configuration."""
         from ...shared import get_chat_llm
+        from ...shared.infra_client import InfraClient
 
-        model_name = model_config.get("name", "qwen-35-35b-a3b-vision-fast")
+        # Config uses "model" key, not "name"
+        model_name = model_config.get("model") or model_config.get(
+            "name", "qwen-35-35b-a3b-vision-fast"
+        )
         enable_thinking = model_config.get("enable_thinking", False)
+
+        # Ensure LLM is loaded (may have been unloaded by ASR)
+        infra = InfraClient()
+        infra.load("llm", model_name, wait=True)
 
         return await get_chat_llm(model=model_name, enable_thinking=enable_thinking)
 
