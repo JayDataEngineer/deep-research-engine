@@ -71,13 +71,15 @@ def build_workflow_graph(config: WorkflowConfig) -> StateGraph:
         if state.get("fatal_error"):
             return END
 
+        # The critic node sets critic_passed and critique_history directly.
+        # Use critique_history length to count iterations (each critic run appends one entry).
+        critique_history = state.get("critique_history", [])
+        iteration = len(critique_history)
+
         # Get critic config for max retries
         config_data = state.get("context", {}).get("config", {})
         phase_config = get_phase_config(config_data, "critic")
         max_retries = phase_config.get("max_retries", 3)
-
-        # Count critic iterations
-        iteration = len([p for p in state.get("phase_history", []) if p == "critic"])
 
         # Check if passed or max retries reached
         if state.get("critic_passed", False) or iteration >= max_retries:

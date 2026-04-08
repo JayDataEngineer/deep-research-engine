@@ -253,7 +253,7 @@ async def _transcribe_with_segments(
                             await asyncio.sleep(5)
                             continue
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     f"Segment {seg_idx + 1} timed out after {seg_timeout:.0f}s, "
                     f"{'retrying...' if attempt < 1 else 'giving up.'}"

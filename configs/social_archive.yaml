@@ -16,9 +16,6 @@ ingestion:
   source: "${EXPORT_PATH}"
 
 phases:
-  # Phase 1: Ingestion (Implicitly handled by engine if enabled)
-
-  # Phase 2: Drafter (Specialist Digestion)
   - name: drafter
     config:
       workers:
@@ -30,36 +27,38 @@ phases:
             extract_profiles: true
             map_relationships: true
             find_memories: true
-        
-        - id: web_researcher_0
-          type: web_researcher
-          enabled: false  # Internet disabled as requested
-          task: "Don't do anything."
 
-  # Phase 3: Critic
   - name: critic
     config:
       max_retries: 2
+      threshold: 0.6
 
-  # Phase 4: Neo4j Builder (Optional)
-  - name: neo4j_builder
-    config:
-      enabled: false # Keep it simple for now
-
-  # Phase 5: Synthesizer
-  - name: synthesizer
+  - name: content_clusterer
     config:
       enabled: true
-      format: markdown
+
+  - name: neo4j_builder
+    config:
+      enabled: true
+
+  - name: artifact_maker
+    config:
+      enabled: true
 
 storage:
   memory:
     enabled: true
+  neo4j:
+    enabled: true
+    uri: "bolt://neo4j.local:7687"
+    username: "neo4j"
+    password: "${NEO4J_PASSWORD:-testpassword}"
+    namespace: "social_archive"
 
 llm:
   models:
-    main: qwen-35-27
-    tool: qwen-35-27-fast
+    main: gemma4-e4b-vision-fast
+    tool: gemma4-e4b-vision-fast
 
 output:
   destination:

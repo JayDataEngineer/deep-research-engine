@@ -86,6 +86,9 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
 
     final_output = "# Final Research Artifact\n\n" + "\n\n".join(content_parts)
 
+    # Write final artifact to disk
+    _write_artifact_to_disk(state, final_output)
+
     logger.info(f"Basic aggregation complete. Output length: {len(final_output)} chars.")
     return {
         "artifact_output": final_output,
@@ -95,3 +98,31 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
         },
         "__goto__": "complete"
     }
+
+
+def _write_artifact_to_disk(state: EngineState, artifact: str) -> None:
+    """Write the final artifact to the output directory."""
+    from pathlib import Path
+
+    # Find output directory from ingestion output or create one
+    big_dump = state.get("context", {}).get("big_text_dump")
+    if big_dump:
+        output_dir = Path(big_dump).parent
+    else:
+        output_dir = Path("output/artifacts")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write the main artifact
+    artifact_path = output_dir / "final_report.md"
+    artifact_path.write_text(artifact, encoding="utf-8")
+    logger.info(f"Wrote final artifact to {artifact_path} ({len(artifact)} chars)")
+
+    # Also write entity profiles if available
+    profiles_path = output_dir / "entity_profiles.md"
+    if profiles_path.exists():
+        logger.info(f"Entity profiles already written at {profiles_path}")
+
+    # Write sorted content if available
+    sorted_path = output_dir / "sorted_content.md"
+    if sorted_path.exists():
+        logger.info(f"Sorted content already written at {sorted_path}")

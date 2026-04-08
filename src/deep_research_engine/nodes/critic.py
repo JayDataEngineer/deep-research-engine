@@ -86,27 +86,81 @@ Output your evaluation in the structured format provided."""
     return prompt
 
 
-def parse_fallback_evaluation(result: Any) -> CriticEvaluation:
-    """Parse fallback evaluation if structured output fails.
-    
-    Args:
-        result: Raw LLM output
-        
-    Returns:
-        CriticEvaluation object
+def _parse_text_evaluation(text: str) -> CriticEvaluation:
+    """Parse evaluation from free-text LLM response.
+
+    Extracts scores and decision from the text. Falls back to a
+    default pass only if no scores can be found at all.
     """
-    # Default fallback - pass with moderate score
+    import re
+
+    # Try to extract overall score
+    score = 0.75
+    score_match = re.search(r'(?:overall\s+)?score[:\s]+(\d+\.?\d*)', text, re.IGNORECASE)
+    if score_match:
+        score = float(score_match.group(1))
+    else:
+        # Try finding "X/10" or "X out of 10" patterns
+        ratio_match = re.search(r'(\d+\.?\d*)\s*/\s*10', text)
+        if ratio_match:
+            score = float(ratio_match.group(1)) / 10.0
+
+    passed = score >= 0.7
+
+    # Try to extract individual dimension scores
+    def _extract_dim(name: str) -> float:
+        pattern = rf'{name}[:\s]+(\d+\.?\d*)'
+        m = re.search(pattern, text, re.IGNORECASE)
+        return float(m.group(1)) if m else score
+
+    # Extract issues and suggestions from bullet points
+    issues = []
+    suggestions = []
+    in_issues = False
+    in_suggestions = False
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if "issue" in stripped.lower() and (":" in stripped or stripped.endswith(":")):
+            in_issues = True
+            in_suggestions = False
+            continue
+        if "suggestion" in stripped.lower() and (":" in stripped or stripped.endswith(":")):
+            in_suggestions = True
+            in_issues = False
+            continue
+        if stripped.startswith("##") or stripped.startswith("#"):
+            in_issues = False
+            in_suggestions = False
+            continue
+        if in_issues and stripped.startswith(("-", "*", "•", "1.", "2.", "3.", "4.", "5.")):
+            issue = stripped.lstrip("-*•0123456789. ").strip()
+            if issue:
+                issues.append(issue)
+        if in_suggestions and stripped.startswith(("-", "*", "•", "1.", "2.", "3.", "4.", "5.")):
+            suggestion = stripped.lstrip("-*•0123456789. ").strip()
+            if suggestion:
+                suggestions.append(suggestion)
+
+    # Limit lists
+    issues = issues[:10]
+    suggestions = suggestions[:10]
+
+    if not issues:
+        issues = ["Auto-evaluated from free-text response"]
+    if not suggestions:
+        suggestions = ["Review output manually for quality assurance"]
+
     return CriticEvaluation(
-        passed=True,
-        score=0.75,
-        completeness=0.75,
-        accuracy=0.75,
-        citation_quality=0.75,
-        coherence=0.75,
-        issues=["Structured output parsing failed - using default evaluation"],
-        suggestions=["Review output manually for quality assurance"],
-        recommendation="pass",
-        feedback_to="artifact_maker"
+        passed=passed,
+        score=score,
+        completeness=_extract_dim("completeness"),
+        accuracy=_extract_dim("accuracy"),
+        citation_quality=_extract_dim("citation"),
+        coherence=_extract_dim("coherence"),
+        issues=issues,
+        suggestions=suggestions,
+        recommendation="pass" if passed else "revise",
+        feedback_to="artifact_maker",
     )
 
 
@@ -149,28 +203,31 @@ async def critic_node(state: EngineState) -> dict[str, Any]:
     try:
         llm = get_langchain_llm(enable_thinking=False, temperature=0.3, config_data=config_data)
 
-        structured_llm = llm.with_structured_output(CriticEvaluation)
-        result = await structured_llm.ainvoke([{"role": "user", "content": eval_prompt}])
+        try:
+            structured_llm = llm.with_structured_output(CriticEvaluation)
+            result = await structured_llm.ainvoke([{"role": "user", "content": eval_prompt}])
 
-        # 5. Parse evaluation
-        if isinstance(result, CriticEvaluation):
-            evaluation = result
-            logger.info(
-                f"Critic evaluation complete: score={evaluation.score:.2f}, "
-                f"passed={evaluation.passed}"
-            )
-        else:
-            logger.warning("Structured output parsing failed, using fallback")
-            evaluation = parse_fallback_evaluation(result)
+            if isinstance(result, CriticEvaluation):
+                evaluation = result
+                logger.info(
+                    f"Critic evaluation complete: score={evaluation.score:.2f}, "
+                    f"passed={evaluation.passed}"
+                )
+            else:
+                logger.warning("Structured output parsing failed, using text fallback")
+                evaluation = _parse_text_evaluation(str(result))
+        except Exception as structured_err:
+            # Structured output not supported by backend (llama.cpp etc.)
+            logger.warning(f"Structured output failed ({structured_err}), using text parsing")
+            raw_response = await llm.ainvoke([{"role": "user", "content": eval_prompt}])
+            evaluation = _parse_text_evaluation(raw_response.content)
 
     except Exception as e:
         logger.error(f"Critic evaluation failed: {e}")
-        evaluation = parse_fallback_evaluation(None)
+        evaluation = _parse_text_evaluation(str(e))
     
-    # 6. Count iterations
-    iteration = len([p for p in state.get("phase_history", []) if p == "critic"])
-    if not any(p == "critic" for p in state.get("phase_history", [])):
-        iteration += 1
+    # 6. Count iterations from critique history
+    iteration = len(state.get("critique_history", []))
     
     max_retries = phase_config.get("max_retries", 3)
     threshold = phase_config.get("threshold", 0.7)
