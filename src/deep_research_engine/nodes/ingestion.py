@@ -784,9 +784,24 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     vlm_cb = VLMBatchCircuitBreaker(pipeline_dir)
 
     # Phase 7a: Run per-item VLM enrichment (I/O-bound, must stay per-item)
-    # VLM calls need actual file access — can't be batched by a text subagent
-    vlm_enriched_items = []
-    for item in items:
+    # Checkpoint every 50 items so we can resume mid-VLM on restart.
+    checkpoint_p7a = _load_checkpoint(pipeline_dir, "phase7_vlm_enriched")
+    if checkpoint_p7a is not None:
+        vlm_enriched_items = checkpoint_p7a.get("items", [])
+        vlm_cb._batch_fail_count = checkpoint_p7a.get("vlm_fail_count", 0)
+        logger.info(
+            f"Phase 7a checkpoint loaded: {len(vlm_enriched_items)}/{len(items)} items enriched, resuming"
+        )
+    else:
+        vlm_enriched_items = []
+
+    _CHECKPOINT_INTERVAL = 50  # save every 50 items
+    start_idx = len(vlm_enriched_items)
+
+    for idx, item in enumerate(items):
+        if idx < start_idx:
+            continue  # already processed
+
         msg_text = item.get("text") or ""
         media_path_rel = item.get("path")
         item_type = item["type"]
@@ -872,7 +887,36 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             "_enriched_content": " ".join(content_parts),
         })
 
+        # Incremental checkpoint every N items
+        if (idx + 1) % _CHECKPOINT_INTERVAL == 0:
+            _save_checkpoint(
+                pipeline_dir,
+                "phase7_vlm_enriched",
+                {
+                    "items": vlm_enriched_items,
+                    "vlm_fail_count": vlm_cb._batch_fail_count,
+                    "processed_count": len(vlm_enriched_items),
+                    "total_count": len(items),
+                },
+            )
+            logger.info(
+                f"Phase 7a checkpoint: {len(vlm_enriched_items)}/{len(items)} items enriched"
+            )
+
     vlm_cb.flush_remaining()
+
+    # Save final Phase 7a checkpoint (complete)
+    _save_checkpoint(
+        pipeline_dir,
+        "phase7_vlm_enriched",
+        {
+            "items": vlm_enriched_items,
+            "vlm_fail_count": vlm_cb._batch_fail_count,
+            "processed_count": len(vlm_enriched_items),
+            "total_count": len(items),
+        },
+    )
+    logger.info(f"Phase 7a complete: {len(vlm_enriched_items)} items enriched")
 
     # Phase 7b: Batch entity extraction via Context Enrichment subagent
     try:
