@@ -50,7 +50,8 @@ _DOCKER_HOSTNAMES = ["orchestrator:8000", "shared-orchestrator-orchestrator-1:80
 _DISCOVER_TIMEOUT = 2  # seconds per probe
 _HEALTH_POLL_INTERVAL = 3  # seconds between health checks
 _LOAD_TIMEOUT = 1800  # 30 minutes for model loading
-_REQUEST_TIMEOUT = 300  # 5 min per request (first ASR segment needs warm-up time)
+_REQUEST_TIMEOUT = 300  # 5 min per request (general)
+_ASR_TIMEOUT = 900  # 15 min for ASR (long voice notes need extended processing)
 
 # Valid slot types and their models (from orchestrator config)
 SLOT_TYPES = ("llm", "asr", "tts", "image-gen")
@@ -229,9 +230,25 @@ class InfraClient:
 
         # Check if already loaded via status API
         current = self._get_slot_info(slot)
-        if current and current.get("current_model", {}).get("key") == model:
-            if not current.get("loading", False):
+        if current:
+            current_key = current.get("current_model", {}).get("key")
+            is_loading = current.get("loading", False)
+
+            # Model is already loaded and healthy
+            if current_key == model and not is_loading:
                 logger.info("Model %s already loaded in slot %s", model, slot)
+                self._loaded_models[slot] = model
+                return {"status": "already_loaded", "slot": slot, "model": model}
+
+            # Slot is currently loading (model key may not be set yet during startup).
+            # Wait for it to finish instead of triggering a duplicate load or unload.
+            if is_loading:
+                logger.info(
+                    "Slot %s is already loading (current_key=%s), waiting for it...",
+                    slot, current_key,
+                )
+                # Wait for loading to finish — poll until model key matches or timeout
+                self._wait_healthy(slot, model, timeout=timeout)
                 self._loaded_models[slot] = model
                 return {"status": "already_loaded", "slot": slot, "model": model}
 
@@ -489,14 +506,14 @@ class InfraClient:
                         "/v1/audio/transcriptions",
                         files={"file": f},
                         data=data,
-                        timeout=_REQUEST_TIMEOUT,
+                        timeout=_ASR_TIMEOUT,
                     )
             elif isinstance(audio, bytes):
                 resp = self._post(
                     "/v1/audio/transcriptions",
                     files={"file": ("audio.wav", io.BytesIO(audio))},
                     data=data,
-                    timeout=_REQUEST_TIMEOUT,
+                    timeout=_ASR_TIMEOUT,
                 )
             else:
                 raise TypeError(f"audio must be str, Path, or bytes, got {type(audio)}")

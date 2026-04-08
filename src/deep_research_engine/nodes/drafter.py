@@ -131,8 +131,10 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
 
     # Get model from config or use local LiteLLM
     if king_model_name:
-        # Use model string directly (deepagents format)
-        king_model = king_model_name
+        # Use ChatOpenAI pointing at the orchestrator (avoids provider resolution errors)
+        from ..agents.subagents import _make_chat_model
+
+        king_model = _make_chat_model(king_model_name)
     else:
         # Use shared DRY method for LiteLLM-backed ChatOpenAI
         king_model = get_langchain_llm(config_data=config_data)
@@ -162,8 +164,13 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
             # Try sort+extract sub-agents first (uses DeepAgents pattern)
             sorted_content = None
             entities_content = None
+            entity_profiles_content = None
             try:
-                from ..agents.subagents import run_sort_then_extract
+                from ..agents.subagents import (
+                    format_entity_profiles,
+                    run_entity_finder_batch,
+                    run_sort_then_extract,
+                )
 
                 sorted_result = await run_sort_then_extract(
                     dump_content,
@@ -181,6 +188,26 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                 sorted_path.write_text(sorted_content)
                 entities_path = dump_file.parent / "extracted_entities.md"
                 entities_path.write_text(entities_content)
+
+                # Phase 3: Entity Finder — build per-entity profiles
+                if entities_content and sorted_content:
+                    try:
+                        profiles = await run_entity_finder_batch(
+                            entities_text=entities_content,
+                            sorted_content=sorted_content,
+                            model=king_model_name if king_model_name else "gemma4-e4b-vision-fast",
+                            max_entities=10,
+                        )
+                        if profiles:
+                            entity_profiles_content = format_entity_profiles(profiles)
+                            profiles_path = dump_file.parent / "entity_profiles.md"
+                            profiles_path.write_text(entity_profiles_content)
+                            logger.info(
+                                f"Entity Finder: {len(profiles)} profiles, "
+                                f"{len(entity_profiles_content)} chars total"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Entity Finder batch failed (non-fatal): {e}")
             except Exception as e:
                 logger.warning(f"Sort/Extract sub-agents failed, using raw dump: {e}")
                 logger.exception(e)
@@ -194,6 +221,7 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                 dump_content=dump_content,
                 sorted_content=sorted_content,
                 entities_content=entities_content,
+                entity_profiles=entity_profiles_content,
                 user_query=user_query,
                 dump_file=dump_file,
             )
@@ -237,6 +265,7 @@ async def _synthesize_ingestion_data(
     entities_content: str | None,
     user_query: str,
     dump_file: Path,
+    entity_profiles: str | None = None,
 ) -> str:
     """Synthesize ingestion data into a research report using chunked summarization.
 
@@ -244,15 +273,22 @@ async def _synthesize_ingestion_data(
     1. Split content into model-context-sized chunks
     2. Summarize each chunk
     3. Combine summaries into final synthesis
+
+    Entity profiles (if available) are included as structured context to help
+    the synthesis LLM produce entity-rich output.
     """
     # Use sorted content if available (more organized), else raw dump
     analysis_content = sorted_content or dump_content
 
-    # If entities were extracted, prepend them for context
+    # Build context header with entities and profiles
+    context_parts: list[str] = []
     if entities_content:
-        analysis_content = (
-            f"## EXTRACTED ENTITIES\n\n{entities_content}\n\n## CONTENT\n\n{analysis_content}"
-        )
+        context_parts.append(f"## EXTRACTED ENTITIES\n\n{entities_content}")
+    if entity_profiles:
+        context_parts.append(f"## ENTITY PROFILES\n\n{entity_profiles}")
+    if context_parts:
+        header = "\n\n".join(context_parts)
+        analysis_content = f"{header}\n\n## CONTENT\n\n{analysis_content}"
 
     # Chunk size: 80K chars (~20K tokens) leaves room for system prompt + output
     chunk_size = 80_000

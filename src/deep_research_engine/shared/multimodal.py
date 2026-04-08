@@ -94,39 +94,72 @@ async def asr_transcribe(
         logger.error(f"Audio file not found: {audio_path}")
         return "" if not include_diarization else {"text": "", "segments": [], "speakers": 0}
 
+    # Pre-convert non-WAV formats to WAV for ASR compatibility.
+    # VibeVoice ASR uses librosa which falls back to slow/unreliable audioread
+    # for AAC (m4a) and other non-WAV codecs. Pre-converting avoids hangs.
+    if audio_path.suffix.lower() not in (".wav", ".pcm"):
+        import tempfile
+
+        wav_path = Path(tempfile.mktemp(suffix=".wav"))
+        conv_cmd = [
+            "ffmpeg", "-y", "-i", str(audio_path),
+            "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1", str(wav_path),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *conv_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        await proc.wait()
+        if proc.returncode == 0 and wav_path.exists():
+            logger.info(f"Pre-converted {audio_path.suffix} to WAV for ASR: {wav_path}")
+            audio_path = wav_path
+        else:
+            logger.warning(f"Failed to pre-convert {audio_path.name}, sending original to ASR")
+
     infra = _get_infra()
     duration = get_audio_duration(audio_path)
     logger.info(f"Audio duration: {duration:.1f}s ({duration / 60:.1f} min)")
 
-    # Try full-file transcription first (no splitting)
-    logger.info("Attempting full-file transcription (no splitting)...")
-    for attempt in range(2):
-        try:
-            result = await _transcribe_segment(
-                infra, audio_path, language, include_diarization, time_offset=0.0
-            )
-            # Check for empty/error results
-            if isinstance(result, dict):
-                text = result.get("text", "")
-                if text and not text.startswith("[ASR failed"):
-                    logger.info(f"Full-file transcription succeeded: {len(text)} chars")
+    # For short files (<2 min), try full-file transcription first
+    max_full_file_sec = 120.0  # 2 minutes — longer files timeout on full-file
+    if duration <= max_full_file_sec:
+        logger.info("Attempting full-file transcription (no splitting)...")
+        for attempt in range(2):
+            try:
+                result = await _transcribe_segment(
+                    infra, audio_path, language, include_diarization, time_offset=0.0
+                )
+                # Check for empty/error results
+                if isinstance(result, dict):
+                    text = result.get("text", "")
+                    if text and not text.startswith("[ASR failed"):
+                        logger.info(f"Full-file transcription succeeded: {len(text)} chars")
+                        return result
+                    if attempt < 1:
+                        logger.warning(
+                            f"Full-file attempt {attempt + 1} returned empty, retrying..."
+                        )
+                        await asyncio.sleep(5)
+                        continue
+                elif isinstance(result, str) and result and not result.startswith("[ASR failed"):
                     return result
+                break
+            except Exception as e:
+                logger.warning(f"Full-file transcription attempt {attempt + 1} failed: {e}")
+                # If timeout, don't retry — go to segment fallback
+                if "timed out" in str(e).lower():
+                    break
                 if attempt < 1:
-                    logger.warning(f"Full-file attempt {attempt + 1} returned empty, retrying...")
                     await asyncio.sleep(5)
-                    continue
-            elif isinstance(result, str) and result and not result.startswith("[ASR failed"):
-                return result
-            break
-        except Exception as e:
-            logger.warning(f"Full-file transcription attempt {attempt + 1} failed: {e}")
-            if attempt < 1:
-                await asyncio.sleep(5)
-                with contextlib.suppress(Exception):
-                    infra.load("asr", "vibevoice-asr", wait=True)
+                    with contextlib.suppress(Exception):
+                        infra.load("asr", "vibevoice-asr", wait=True)
+    else:
+        logger.info(
+            f"Audio ({duration:.0f}s) exceeds {max_full_file_sec:.0f}s limit, "
+            f"using segment transcription directly"
+        )
 
-    # Fallback: split into 10-minute segments and transcribe individually
-    fallback_segment_sec = 600.0  # 10 minutes
+    # Fallback: split into 2-minute segments and transcribe individually
+    fallback_segment_sec = 120.0  # 2 minutes — safer for ASR container
     logger.warning(
         f"Full-file transcription failed. Falling back to {fallback_segment_sec:.0f}s segments..."
     )
@@ -199,29 +232,48 @@ async def _transcribe_with_segments(
             continue
 
         result = None
-        for attempt in range(3):
+        # Per-segment timeout: segment_duration + 120s buffer
+        seg_timeout = seg_dur + 120.0
+        for attempt in range(2):
             try:
-                result = await _transcribe_segment(
-                    infra, tmp_path, language, include_diarization, time_offset=seg_start
+                result = await asyncio.wait_for(
+                    _transcribe_segment(
+                        infra, tmp_path, language, include_diarization, time_offset=seg_start
+                    ),
+                    timeout=seg_timeout,
                 )
                 if isinstance(result, dict):
                     text = result.get("text", "")
                     if not text or text.startswith("[ASR failed"):
-                        if attempt < 2:
+                        if attempt < 1:
                             logger.warning(
                                 f"Segment {seg_idx + 1} returned empty on attempt {attempt + 1}, "
-                                f"retrying in {2**attempt * 5}s..."
+                                f"retrying in 5s..."
                             )
-                            await asyncio.sleep(2**attempt * 5)
+                            await asyncio.sleep(5)
                             continue
                 break
-            except Exception as e:
+            except asyncio.TimeoutError:
                 logger.warning(
-                    f"Segment {seg_idx + 1} attempt {attempt + 1}/3 failed: {e}. "
-                    f"{'Retrying...' if attempt < 2 else 'Giving up.'}"
+                    f"Segment {seg_idx + 1} timed out after {seg_timeout:.0f}s, "
+                    f"{'retrying...' if attempt < 1 else 'giving up.'}"
                 )
-                if attempt < 2:
-                    await asyncio.sleep(2**attempt * 5)
+                if attempt < 1:
+                    await asyncio.sleep(5)
+                    with contextlib.suppress(Exception):
+                        infra.load("asr", "vibevoice-asr", wait=True)
+            except Exception as e:
+                error_str = str(e)
+                logger.warning(
+                    f"Segment {seg_idx + 1} attempt {attempt + 1}/2 failed: {e}. "
+                    f"{'Retrying...' if attempt < 1 else 'Giving up.'}"
+                )
+                # HTTP 500 means the ASR backend can't handle this audio — don't retry
+                if "HTTP 500" in error_str:
+                    logger.warning(f"Segment {seg_idx + 1} got HTTP 500, skipping retry")
+                    break
+                if attempt < 1:
+                    await asyncio.sleep(5)
                     with contextlib.suppress(Exception):
                         infra.load("asr", "vibevoice-asr", wait=True)
 
@@ -1117,12 +1169,15 @@ def calculate_speaker_similarity(emb1: np.ndarray, emb2: np.ndarray) -> float:
 
 
 async def unify_speakers(
-    mega_file_results: list[tuple[Path, dict[str, Any]]], output_dir: Path, threshold: float = 0.8
+    file_results: list[tuple[Path, dict[str, Any]]], output_dir: Path, threshold: float = 0.8
 ) -> dict[str, str]:
-    """Unify Speaker IDs across multiple Mega-Files using acoustic embeddings.
+    """Unify Speaker IDs across multiple audio files using acoustic embeddings.
 
+    Works with per-file ASR results. Each tuple is (audio_path, asr_output_dict).
     Uses short-utterance accumulation for speakers whose longest segment
     is <10s, and applies DeepFilterNet enhancement before embedding extraction.
+
+    Returns a map from ``file{idx}:{speaker_id}`` to global speaker names.
     """
     global_speaker_map: dict[str, str] = {}
     speaker_embeddings: dict[str, np.ndarray] = {}
@@ -1131,7 +1186,7 @@ async def unify_speakers(
     snippet_dir = output_dir / "speaker_snippets"
     snippet_dir.mkdir(parents=True, exist_ok=True)
 
-    for mf_idx, (audio_path, asr_output) in enumerate(mega_file_results):
+    for file_idx, (audio_path, asr_output) in enumerate(file_results):
         segments = asr_output.get("segments", [])
         speakers = asr_output.get("speaker_list", [])
         for speaker_id in speakers:
@@ -1161,8 +1216,8 @@ async def unify_speakers(
             if not target_seg:
                 continue
 
-            snippet_path = snippet_dir / f"mf{mf_idx}_{speaker_id}.wav"
-            enhanced_path = snippet_dir / f"mf{mf_idx}_{speaker_id}_enhanced.wav"
+            snippet_path = snippet_dir / f"file{file_idx}_{speaker_id}.wav"
+            enhanced_path = snippet_dir / f"file{file_idx}_{speaker_id}_enhanced.wav"
 
             # Short-utterance accumulator: if longest segment < 10s, concatenate
             if target_seg.get("duration", 0) < 10.0:
@@ -1199,11 +1254,11 @@ async def unify_speakers(
                     match_id = gid
                     break
             if match_id:
-                global_speaker_map[f"mf{mf_idx}:{speaker_id}"] = match_id
+                global_speaker_map[f"file{file_idx}:{speaker_id}"] = match_id
             else:
                 new_gid = f"Global_Speaker_{next_global_id}"
                 speaker_embeddings[new_gid] = emb
-                global_speaker_map[f"mf{mf_idx}:{speaker_id}"] = new_gid
+                global_speaker_map[f"file{file_idx}:{speaker_id}"] = new_gid
                 next_global_id += 1
     return global_speaker_map
 

@@ -12,9 +12,8 @@ Pipeline phases:
   0. Scan input + route documents through Kreuzberg + parse Telegram
   1.5 NER on text items (entity names fed into Phase 6)
   2. Batch Visual Processing (face recognition + VLM)
-  3. Batch Acoustic Processing (Mega-File concatenation)
-  4. Long-Form ASR (VibeVoice)
-  5. Cross-Mega-File Speaker Clustering
+  3-4. Direct ASR (VibeVoice per-file transcription with diarization)
+  5. Cross-File Speaker Unification
   6. Identity Resolution + NER integration
   7. Enrich + write outputs
 
@@ -35,13 +34,12 @@ except ImportError:
 from ..config import get_phase_config
 from ..ingestion.document_router import DocumentRouter
 from ..ingestion.kreuzberg_extractor import KreuzbergConfig
-from ..shared.config import DEFAULT_MODEL, INGESTION_MODEL, VISION_MODEL
+from ..shared.config import INGESTION_MODEL
 from ..shared.multimodal import (
     _get_infra,
     asr_transcribe,
     batch_vlm_video_analysis,
     cluster_identities,
-    create_mega_files,
     extract_audio_from_video,
     extract_scene_frames,
     face_recognize,
@@ -49,7 +47,6 @@ from ..shared.multimodal import (
     normalize_timestamp,
     resolve_identities,
     unify_speakers,
-    unstitch_transcript,
     video_analyze,
     vlm_analyze,
 )
@@ -338,18 +335,14 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
     if route_result.telegram_detected and route_result.telegram_items:
         items.extend(route_result.telegram_items)
-        logger.info(
-            f"Telegram: {route_result.total_telegram_messages} messages parsed"
-        )
+        logger.info(f"Telegram: {route_result.total_telegram_messages} messages parsed")
 
     if route_result.documents:
         success_docs = [d for d in route_result.documents if d.success]
         failed_docs = [d for d in route_result.documents if not d.success]
         items.extend(route_result.pipeline_items)
         document_chunks = route_result.document_chunks
-        ingested_files.extend(
-            [Path(d.file_path) for d in success_docs if d.file_path]
-        )
+        ingested_files.extend([Path(d.file_path) for d in success_docs if d.file_path])
         logger.info(
             f"Kreuzberg: {len(success_docs)} docs extracted, "
             f"{route_result.total_chunks} chunks, "
@@ -386,7 +379,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     resolved_identity_map: dict[str, str] = {}
     video_descriptions: dict[str, str] = {}
     audio_fragments_for_megafile: list[dict[str, Any]] = []
-    mega_file_results: list[tuple[Path, dict[str, Any]]] = []
+    file_asr_results: list[tuple[Path, dict[str, Any]]] = []
 
     # ================================================================
     # Phase 1.5: Early NER on text items
@@ -424,9 +417,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     if has_visual_work and checkpoint_p2 is None:
         # Models are pre-loaded and managed by the orchestrator's VRAM management.
         # Just log what we're doing and proceed.
-        logger.info(
-            f"Phase 2: Processing {len(photo_items)} photos and {len(video_items)} videos"
-        )
+        logger.info(f"Phase 2: Processing {len(photo_items)} photos and {len(video_items)} videos")
 
         # Collect embeddings from photos
         for it in photo_items:
@@ -551,7 +542,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         audio_fragments_for_megafile: list[dict[str, Any]] = []
 
     # ================================================================
-    # Phase 3: Batch Acoustic Processing (Mega-File Strategy)
+    # Phase 3-4: Direct Per-File ASR (VibeVoice with diarization)
     # ================================================================
     audio_results: dict[str, list[dict[str, Any]]] = {}
 
@@ -568,72 +559,87 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             }
         )
 
-    mega_file_results: list[tuple[Path, dict[str, Any]]] = []
+    # Track per-file ASR results for Phase 5 speaker unification
+    # Format: list of (audio_path, asr_output_dict) — same as old mega_file_results
+    file_asr_results: list[tuple[Path, dict[str, Any]]] = []
 
     if all_audio_items:
         logger.info(
-            f"Phase 3: Creating Mega-Files for {len(all_audio_items)} audio fragments "
-            f"({len(audio_items)} audio + {len(audio_fragments_for_megafile)} from video)"
+            f"Phase 3-4: Running per-file ASR on {len(all_audio_items)} audio files "
+            f"({len(audio_items)} voice notes + {len(audio_fragments_for_megafile)} from video)"
         )
 
         checkpoint_p4 = _load_checkpoint(pipeline_dir, "phase4_transcripts")
         checkpoint_p5 = _load_checkpoint(pipeline_dir, "phase5_speaker_map")
 
         if checkpoint_p4 is None:
-            # Phase 3: Create mega-files from audio fragments
-            audio_paths: list[Path] = []
-            for it in all_audio_items:
+            # Resolve audio paths
+            for idx, it in enumerate(all_audio_items):
                 audio_path = Path(it["path"])
                 if not audio_path.is_absolute():
                     audio_path = input_dir / audio_path
-                if audio_path.exists():
-                    audio_paths.append(audio_path)
-
-            boundary_maps = await create_mega_files(audio_paths, pipeline_dir)
-            logger.info(f"Phase 3: Created {len(boundary_maps)} mega file(s)")
-
-            # Phase 4: VibeVoice ASR with diarization
-            # The orchestrator handles VRAM management - it will unload LLM and load ASR.
-            # Audio is split into 2-min segments to avoid container OOM.
-            for i, boundary_map in enumerate(boundary_maps):
-                mega_file_path = Path(boundary_map["mega_file_path"])
+                if not audio_path.exists():
+                    logger.warning(f"Audio file not found, skipping: {audio_path}")
+                    continue
 
                 logger.info(
-                    f"Phase 4: Running VibeVoice ASR on {mega_file_path.name} "
-                    f"(Batch {i + 1}/{len(boundary_maps)})"
+                    f"Phase 4: ASR on {audio_path.name} (file {idx + 1}/{len(all_audio_items)})"
                 )
 
                 try:
-                    asr_output = await asr_transcribe(mega_file_path, include_diarization=True)
+                    asr_output = await asr_transcribe(audio_path, include_diarization=True)
                 except Exception as e:
-                    logger.error(f"ASR failed for batch {i + 1}: {e}")
-                    asr_output = {"text": f"[ASR failed: {e}]", "segments": [], "speakers": 0, "error": str(e)}
+                    logger.error(f"ASR failed for {audio_path.name}: {e}")
+                    asr_output = {
+                        "text": f"[ASR failed: {e}]",
+                        "segments": [],
+                        "speakers": 0,
+                        "error": str(e),
+                    }
 
                 if isinstance(asr_output, dict):
-                    mega_file_results.append((mega_file_path, asr_output))
+                    file_asr_results.append((audio_path, asr_output))
 
-                    batch_audio_results = unstitch_transcript(asr_output, boundary_map)
+                    # Assign file-scoped speaker IDs (no unstitching needed)
+                    segments = asr_output.get("segments", [])
+                    for seg in segments:
+                        seg["mf_speaker_id"] = f"file{idx}:{seg['speaker']}"
 
-                    for segments in batch_audio_results.values():
-                        for seg in segments:
-                            seg["mf_speaker_id"] = f"mf{i}:{seg['speaker']}"
+                    # Map segments to the original file
+                    audio_results[str(audio_path)] = segments
+                    logger.info(
+                        f"ASR complete for {audio_path.name}: "
+                        f"{len(segments)} segments, {asr_output.get('speakers', 0)} speakers"
+                    )
+                elif isinstance(asr_output, str):
+                    # Plain text result (no diarization) — store as single segment
+                    audio_results[str(audio_path)] = [
+                        {
+                            "speaker": "Speaker_0",
+                            "mf_speaker_id": f"file{idx}:Speaker_0",
+                            "text": asr_output,
+                            "start": 0.0,
+                            "end": 0.0,
+                        }
+                    ]
 
-                    audio_results.update(batch_audio_results)
-                    logger.info(f"Successfully unstitched ASR for batch {i + 1}")
-
-            _save_checkpoint(pipeline_dir, "phase4_transcripts", {
-                "audio_results": dict(audio_results),
-                "mega_file_count": len(mega_file_results),
-            })
+            _save_checkpoint(
+                pipeline_dir,
+                "phase4_transcripts",
+                {
+                    "audio_results": dict(audio_results),
+                    "file_count": len(file_asr_results),
+                },
+            )
         else:
             # Load from checkpoint
             audio_results = checkpoint_p4.get("audio_results", {})
             logger.info(f"Phase 4 checkpoint loaded: {len(audio_results)} transcripts")
 
-        # Phase 5: Cross-Mega-File Acoustic Clustering
-        if checkpoint_p5 is None and len(mega_file_results) > 1:
-            logger.info("Phase 5: Reconciling speaker identities across mega-files...")
-            global_speaker_map = await unify_speakers(mega_file_results, pipeline_dir)
+        # Phase 5: Cross-File Speaker Unification
+        if checkpoint_p5 is None and len(file_asr_results) > 1:
+            logger.info("Phase 5: Reconciling speaker identities across files...")
+            global_speaker_map = await unify_speakers(file_asr_results, pipeline_dir)
 
             for segments in audio_results.values():
                 for seg in segments:
@@ -664,7 +670,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
         # Prepare metadata for LLM resolution
         asr_all_segments: list[dict[str, Any]] = []
-        for _, asr_output in mega_file_results:
+        for _, asr_output in file_asr_results:
             asr_all_segments.extend(asr_output.get("segments", []))
 
         visual_events: list[dict[str, Any]] = []
@@ -873,9 +879,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     s_item["speakers"] = list(
                         {seg.get("resolved_name", seg["speaker"]) for seg in segments}
                     )
-                    s_item["transcript"] = " ".join(
-                        seg.get("text", "") for seg in segments
-                    )
+                    s_item["transcript"] = " ".join(seg.get("text", "") for seg in segments)
             if item_type in ("video", "photo") and media_path_rel in identity_map:
                 s_item["faces"] = identity_map[media_path_rel]
             if item_type == "video" and media_path_rel in video_descriptions:
