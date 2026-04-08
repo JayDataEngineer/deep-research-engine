@@ -35,6 +35,7 @@ from ..config import get_phase_config
 from ..ingestion.document_router import DocumentRouter
 from ..ingestion.kreuzberg_extractor import KreuzbergConfig
 from ..shared.config import INGESTION_MODEL
+from ..agents.subagents import run_context_enrichment, run_identity_resolver
 from ..shared.multimodal import (
     _get_infra,
     asr_transcribe,
@@ -708,15 +709,28 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 f"for identity resolution context"
             )
 
-        resolved_identity_map = await resolve_identities(
-            asr_all_segments,
-            visual_events,
-            text_context,
-            neo4j_storage=await _try_init_neo4j(config_data),
-            namespace=config_data.get("storage", {}).get("neo4j", {}).get("namespace", "default"),
-            pre_named_entities=sorted(pre_named_entities),
-            model=INGESTION_MODEL,
-        )
+        # Phase 6a: Identity Resolver subagent (with graph_query tool)
+        try:
+            logger.info("Phase 6: Using Identity Resolver subagent (DeepAgents)...")
+            resolved_identity_map = await run_identity_resolver(
+                asr_segments=asr_all_segments,
+                visual_events=visual_events,
+                text_messages=text_context,
+                pre_named_entities=sorted(pre_named_entities),
+                model=INGESTION_MODEL,
+                config_data=config_data,
+            )
+        except Exception as e:
+            logger.warning(f"Identity Resolver subagent failed ({e}), falling back to direct resolution")
+            resolved_identity_map = await resolve_identities(
+                asr_all_segments,
+                visual_events,
+                text_context,
+                neo4j_storage=await _try_init_neo4j(config_data),
+                namespace=config_data.get("storage", {}).get("neo4j", {}).get("namespace", "default"),
+                pre_named_entities=sorted(pre_named_entities),
+                model=INGESTION_MODEL,
+            )
 
         # Batch VLM Video Analysis with circuit breaker
         cb = VLMBatchCircuitBreaker(pipeline_dir)
@@ -763,12 +777,15 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     # Phase 7: Enrich items + write outputs
     # ================================================================
     processed_messages: list[str] = []
-    entity_extractions = []
-    structured_media_items = []
+    entity_extractions: list[dict[str, Any]] = []
+    structured_media_items: list[dict[str, Any]] = []
 
     # VLM circuit breaker for per-item VLM calls
     vlm_cb = VLMBatchCircuitBreaker(pipeline_dir)
 
+    # Phase 7a: Run per-item VLM enrichment (I/O-bound, must stay per-item)
+    # VLM calls need actual file access — can't be batched by a text subagent
+    vlm_enriched_items = []
     for item in items:
         msg_text = item.get("text") or ""
         media_path_rel = item.get("path")
@@ -850,49 +867,84 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
                 content_parts.append(f"[Video Summary: {video_desc}]")
 
-        item_combined = " ".join(content_parts)
-        entities: dict[str, Any] = {}
-        if item_combined:
-            entities = await extract_entities(item_combined, model=INGESTION_MODEL)
-            if entities.get("people"):
-                content_parts.append(f"[Entities - People: {', '.join(entities['people'])}]")
+        vlm_enriched_items.append({
+            **item,
+            "_enriched_content": " ".join(content_parts),
+        })
 
-            has_structure = bool(entities.get("people")) or bool(entities.get("locations"))
-            if has_structure:
-                entity_extractions.append(entities)
+    vlm_cb.flush_remaining()
 
-        # Track structured items
-        is_media_with_data = (
-            item_type in ("voice", "video", "photo")
-            or item.get("forwarded")
-            or bool(entities.get("people"))
-            if item_combined
-            else False
+    # Phase 7b: Batch entity extraction via Context Enrichment subagent
+    try:
+        logger.info("Phase 7: Running Context Enrichment subagent for batch NER...")
+        enrichment_result = await run_context_enrichment(
+            items=vlm_enriched_items,
+            resolved_identity_map=resolved_identity_map,
+            audio_results=audio_results,
+            video_descriptions=video_descriptions,
+            identity_map=identity_map,
+            model=INGESTION_MODEL,
+            batch_size=20,
         )
-        if is_media_with_data:
-            s_item: dict[str, Any] = {
-                "type": item_type,
-                "path": media_path_rel,
-                "timestamp": timestamp,
-                "sender": sender,
-            }
-            if item_type == "voice" and media_path_rel:
-                abs_media = str(input_dir / media_path_rel)
-                segments = audio_results.get(abs_media, [])
-                if segments:
-                    s_item["speakers"] = list(
-                        {seg.get("resolved_name", seg["speaker"]) for seg in segments}
-                    )
-                    s_item["transcript"] = " ".join(seg.get("text", "") for seg in segments)
-            if item_type in ("video", "photo") and media_path_rel in identity_map:
-                s_item["faces"] = identity_map[media_path_rel]
-            if item_type == "video" and media_path_rel in video_descriptions:
-                s_item["description"] = video_descriptions[media_path_rel]
-            structured_media_items.append(s_item)
+        processed_messages = enrichment_result["processed_messages"]
+        entity_extractions = enrichment_result["entity_extractions"]
+        structured_media_items = enrichment_result["structured_media_items"]
+        logger.info(
+            f"Context Enrichment: {len(processed_messages)} messages, "
+            f"{len(entity_extractions)} entity batches, "
+            f"{len(structured_media_items)} structured items"
+        )
+    except Exception as e:
+        logger.warning(f"Context Enrichment subagent failed ({e}), falling back to per-item NER")
+        # Fallback: per-item NER (original Phase 7 behavior)
+        for item in vlm_enriched_items:
+            item_combined = item.get("_enriched_content", "")
+            sender = item.get("sender", "Unknown")
+            timestamp = item.get("timestamp", "Unknown")
+            media_path_rel = item.get("path")
+            item_type = item.get("type", "text")
 
-        final_combined = " ".join(content_parts)
-        if final_combined:
-            processed_messages.append(f"**{sender}** [{timestamp}]: {final_combined}")
+            entities: dict[str, Any] = {}
+            content_parts = [item_combined] if item_combined else []
+            if item_combined:
+                entities = await extract_entities(item_combined, model=INGESTION_MODEL)
+                if entities.get("people"):
+                    content_parts.append(f"[Entities - People: {', '.join(entities['people'])}]")
+                has_structure = bool(entities.get("people")) or bool(entities.get("locations"))
+                if has_structure:
+                    entity_extractions.append(entities)
+
+            is_media_with_data = (
+                item_type in ("voice", "video", "photo")
+                or item.get("forwarded")
+                or bool(entities.get("people"))
+                if item_combined
+                else False
+            )
+            if is_media_with_data:
+                s_item: dict[str, Any] = {
+                    "type": item_type,
+                    "path": media_path_rel,
+                    "timestamp": timestamp,
+                    "sender": sender,
+                }
+                if item_type == "voice" and media_path_rel:
+                    abs_media = str(input_dir / media_path_rel)
+                    segments = audio_results.get(abs_media, [])
+                    if segments:
+                        s_item["speakers"] = list(
+                            {seg.get("resolved_name", seg["speaker"]) for seg in segments}
+                        )
+                        s_item["transcript"] = " ".join(seg.get("text", "") for seg in segments)
+                if item_type in ("video", "photo") and media_path_rel in identity_map:
+                    s_item["faces"] = identity_map[media_path_rel]
+                if item_type == "video" and media_path_rel in video_descriptions:
+                    s_item["description"] = video_descriptions[media_path_rel]
+                structured_media_items.append(s_item)
+
+            final_combined = " ".join(content_parts)
+            if final_combined:
+                processed_messages.append(f"**{sender}** [{timestamp}]: {final_combined}")
 
     vlm_cb.flush_remaining()
 
