@@ -178,7 +178,7 @@ class GraphQueryInput(BaseModel):
     )
     search_type: str = Field(
         default="text",
-        description="Search mode: 'text' (CONTAINS search), 'vector' (semantic similarity), 'entity' (neighbor traversal), 'relationship' (filter by rel type)",
+        description="Search mode: 'text' (CONTAINS search), 'vector' (entity similarity — Neo4j entity nodes only, not chunks), 'entity' (neighbor traversal), 'relationship' (filter by rel type)",
     )
 
 
@@ -279,7 +279,7 @@ async def graph_query(
 
             return "\n".join(output)
 
-        # Route 3: Vector similarity search
+        # Route 3: Entity vector similarity search (Neo4j entity nodes only)
         if search_type == "vector":
             try:
                 from ..shared.embeddings import get_embeddings
@@ -296,9 +296,9 @@ async def graph_query(
                     k=5,
                 )
                 if not results:
-                    return f"No vector search results for: '{query}'"
+                    return f"No entity vector results for: '{query}'"
 
-                output = [f"Vector search results for '{query}':\n"]
+                output = [f"Entity similarity search results for '{query}':\n"]
                 for i, res in enumerate(results, 1):
                     score = res.get("score", 0)
                     text = res.get("text", "")

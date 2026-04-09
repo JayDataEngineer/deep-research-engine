@@ -15,7 +15,7 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Self
 
 from ...utils.logging import get_loguru_logger
 
@@ -125,7 +125,7 @@ class Neo4jConnection:
 
         logger.debug("Neo4j connections closed")
 
-    async def __aenter__(self) -> Neo4jConnection:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *args: object) -> None:

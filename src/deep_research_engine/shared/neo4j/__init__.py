@@ -2,7 +2,7 @@
 
 Provides:
 - Neo4jConnection: Factory for Neo4jGraph + async driver from config
-- Neo4jVectorStore: Hybrid vector+graph search via langchain-neo4j
+- Neo4jVectorStore: Entity-only vector search via langchain-neo4j
 - ResearchGraphTransformer: LLM-based knowledge graph extraction
 - NaturalLanguageGraphQuery: NL-to-Cypher query chain
 """
@@ -25,13 +25,11 @@ from .qa_chain import (
 )
 from .vector_store import (
     DEFAULT_ENTITY_RETRIEVAL_QUERY,
-    DEFAULT_FINDING_RETRIEVAL_QUERY,
     Neo4jVectorStore,
 )
 
 __all__ = [
     "DEFAULT_ENTITY_RETRIEVAL_QUERY",
-    "DEFAULT_FINDING_RETRIEVAL_QUERY",
     "DynamicGraphSchema",
     "ExtractedDocument",
     "ExtractedEntity",

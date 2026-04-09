@@ -184,7 +184,10 @@ class Neo4jStorage(StorageBackend):
         text_node_property: str = "description",
         embedding_node_property: str = "embedding",
     ) -> list[dict[str, Any]]:
-        """Vector similarity search via ``Neo4jVector``.
+        """Vector similarity search on **entity nodes** via ``Neo4jVector``.
+
+        Postgres/pgvector is the primary vector store for all document chunks.
+        This method searches Entity nodes only (Person, Organization, etc.).
 
         Requires an ``embedding_model`` (LangChain Embeddings) on first call.
         """

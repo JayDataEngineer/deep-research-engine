@@ -1,7 +1,12 @@
-"""Neo4j Vector Store — Hybrid Vector + Graph Search.
+"""Neo4j Vector Store — Entity-Only Vector Search.
 
-Adds semantic vector search to Neo4j with graph traversal.
-Complements Postgres/pgvector — doesn't replace it.
+Provides vector similarity search **only for Entity nodes** (Person,
+Organization, etc.) with graph traversal to recover provenance
+(Entity → Chunk → Document).
+
+Postgres/pgvector is the primary vector store for all document chunks.
+Neo4j vectors are used exclusively for entities — a much smaller set —
+enabling entity-aware graph queries that Postgres cannot do.
 
 Uses ``langchain-neo4j.Neo4jVector`` for the heavy lifting.
 """
@@ -40,28 +45,12 @@ RETURN node {.name, .type, .description} AS text,
        } AS metadata
 """
 
-DEFAULT_FINDING_RETRIEVAL_QUERY = """
-// Vector search on findings/chunks
-WITH node, score
-// If node is a Chunk, get its document
-MATCH (node)-[:FROM_DOCUMENT]->(doc:Document)
-// Get entities mentioned in this chunk
-MATCH (entity)-[:MENTIONED_IN]->(node)
-RETURN node {.text} AS text,
-       score,
-       {
-         chunk_text: node.text,
-         chunk_index: node.chunk_index,
-         entities: collect(DISTINCT entity.name),
-         doc_id: doc.doc_id,
-         doc_title: doc.title,
-         doc_url: doc.url
-       } AS metadata
-"""
-
-
 class Neo4jVectorStore:
-    """Neo4j vector store with hybrid vector+graph search.
+    """Neo4j vector store for **entity nodes only**.
+
+    Postgres/pgvector handles all document chunk embeddings.  This class
+    stores and searches embeddings on Entity nodes (Person, Organization,
+    etc.) only, using graph traversal to recover source provenance.
 
     Usage::
 
