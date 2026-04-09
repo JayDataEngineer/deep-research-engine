@@ -637,9 +637,24 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             audio_results = checkpoint_p4.get("audio_results", {})
             logger.info(f"Phase 4 checkpoint loaded: {len(audio_results)} transcripts")
 
+            # Rebuild file_asr_results for Phase 5 speaker unification
+            for path_str, segments in audio_results.items():
+                if isinstance(segments, list) and segments:
+                    speakers_set = {seg.get("speaker", "") for seg in segments if seg.get("speaker")}
+                    asr_dict = {
+                        "segments": segments,
+                        "speakers": len(speakers_set),
+                        "speaker_list": sorted(speakers_set),
+                    }
+                    file_asr_results.append((Path(path_str), asr_dict))
+
         # Phase 5: Cross-File Speaker Unification
         if checkpoint_p5 is None and len(file_asr_results) > 1:
             logger.info("Phase 5: Reconciling speaker identities across files...")
+            # Unload all models to free VRAM for ECAPA-TDNN speaker embeddings
+            infra = _get_infra()
+            infra.unload_all()
+            logger.info("All models unloaded — VRAM free for speaker embedding extraction")
             try:
                 global_speaker_map = await unify_speakers(file_asr_results, pipeline_dir)
 

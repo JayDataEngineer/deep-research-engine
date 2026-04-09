@@ -1080,6 +1080,11 @@ async def extract_audio_snippet(
     input_audio: Path, start_sec: float, duration_sec: float, output_path: Path
 ) -> bool:
     """Extract a snippet of audio using FFmpeg."""
+    # When output is WAV, must re-encode (can't codec-copy OGG→WAV)
+    if output_path.suffix.lower() == ".wav":
+        audio_args = ["-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le"]
+    else:
+        audio_args = ["-c", "copy"]
     cmd = [
         "ffmpeg",
         "-y",
@@ -1089,8 +1094,7 @@ async def extract_audio_snippet(
         str(duration_sec),
         "-i",
         str(input_audio),
-        "-c",
-        "copy",
+        *audio_args,
         str(output_path),
     ]
     process = await asyncio.create_subprocess_exec(
@@ -1101,16 +1105,46 @@ async def extract_audio_snippet(
 
 
 async def extract_speaker_embedding(audio_segment_path: Path) -> np.ndarray:
-    """Extract ECAPA-TDNN speaker embedding using SpeechBrain."""
+    """Extract ECAPA-TDNN speaker embedding using SpeechBrain.
+
+    For long audio (>30s), splits into overlapping 30s windows, embeds each,
+    and returns the averaged embedding.  This avoids CUDA OOM on long tracks.
+    """
     from speechbrain.inference.speaker import EncoderClassifier
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     classifier = EncoderClassifier.from_hparams(
         source="speechbrain/spkrec-ecapa-voxceleb",
-        run_opts={"device": "cuda" if torch.cuda.is_available() else "cpu"},
+        run_opts={"device": device},
     )
-    signal, _fs = classifier.load_audio(str(audio_segment_path))
-    embeddings = classifier.encode_batch(signal)
-    return embeddings.squeeze().cpu().numpy()
+    signal = classifier.load_audio(str(audio_segment_path))
+
+    # SpeechBrain loads at 16kHz — 30s = 480000 samples
+    chunk_samples = 30 * 16000
+    if signal.shape[0] <= chunk_samples:
+        embeddings = classifier.encode_batch(signal)
+        return embeddings.squeeze().cpu().numpy()
+
+    # Chunk + average for long tracks
+    all_embs: list[np.ndarray] = []
+    for start in range(0, signal.shape[0], chunk_samples):
+        chunk = signal[start : start + chunk_samples]
+        if chunk.shape[0] < 8000:  # skip tiny trailing chunks (<0.5s)
+            continue
+        emb = classifier.encode_batch(chunk)
+        all_embs.append(emb.squeeze().cpu().numpy())
+
+    if not all_embs:
+        embeddings = classifier.encode_batch(signal[:chunk_samples])
+        return embeddings.squeeze().cpu().numpy()
+
+    # Average embeddings
+    avg = np.mean(all_embs, axis=0)
+    # Re-normalize to unit vector (cosine similarity expects this)
+    norm = np.linalg.norm(avg)
+    if norm > 0:
+        avg = avg / norm
+    return avg
 
 
 async def _enhance_audio(audio_path: Path, output_path: Path) -> bool:
@@ -1205,98 +1239,156 @@ def calculate_speaker_similarity(emb1: np.ndarray, emb2: np.ndarray) -> float:
     return np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
 
 
+async def _extract_speaker_track(
+    audio_path: Path,
+    segments: list[dict[str, Any]],
+    speaker_id: str,
+    output_path: Path,
+) -> bool:
+    """Extract ALL speech segments for one speaker from one file into a single WAV.
+
+    Uses the ASR diarization timestamps to pull out every utterance by this
+    speaker, then concatenates them into one continuous audio clip.  Longer
+    audio → better speaker embeddings.
+    """
+    speaker_segs = [s for s in segments if s["speaker"] == speaker_id]
+    if not speaker_segs:
+        return False
+
+    # Sort chronologically
+    speaker_segs.sort(key=lambda s: s.get("start", 0))
+
+    # Cap each segment at 30s to avoid excessively long tracks
+    concat_list = output_path.with_suffix(".txt")
+    with open(concat_list, "w") as f:
+        for seg in speaker_segs:
+            seg_path = output_path.parent / f"_seg_{output_path.stem}_{seg['start']:.1f}.wav"
+            dur = min(seg.get("duration", 0), 30.0)
+            ok = await extract_audio_snippet(
+                audio_path, seg["start"], dur, seg_path,
+            )
+            if ok and seg_path.exists():
+                f.write(f"file '{seg_path.absolute()}'\n")
+
+    # Concatenate all segments
+    cmd = [
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+        "-i", str(concat_list),
+        "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1",
+        str(output_path),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    await proc.wait()
+
+    # Clean up temp segment files
+    with contextlib.suppress(OSError):
+        concat_list.unlink()
+    for seg in speaker_segs:
+        seg_path = output_path.parent / f"_seg_{output_path.stem}_{seg['start']:.1f}.wav"
+        with contextlib.suppress(OSError):
+            seg_path.unlink()
+
+    return proc.returncode == 0 and output_path.exists()
+
+
 async def unify_speakers(
-    file_results: list[tuple[Path, dict[str, Any]]], output_dir: Path, threshold: float = 0.8
+    file_results: list[tuple[Path, dict[str, Any]]], output_dir: Path, threshold: float = 0.55
 ) -> dict[str, str]:
     """Unify Speaker IDs across multiple audio files using acoustic embeddings.
 
-    Works with per-file ASR results. Each tuple is (audio_path, asr_output_dict).
-    Uses short-utterance accumulation for speakers whose longest segment
-    is <10s, and applies DeepFilterNet enhancement before embedding extraction.
+    Strategy: for each local speaker (file_idx:SPEAKER_N), extract ALL their
+    speech from that file using ASR timestamps, concatenate into one track,
+    then compute ECAPA-TDNN embeddings.  Compare all embeddings pairwise and
+    cluster using union-find at the given cosine-similarity threshold.
 
     Returns a map from ``file{idx}:{speaker_id}`` to global speaker names.
     """
-    global_speaker_map: dict[str, str] = {}
-    speaker_embeddings: dict[str, np.ndarray] = {}
-    next_global_id = 0
-
     snippet_dir = output_dir / "speaker_snippets"
     snippet_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- Pass 1: Extract speaker tracks + embeddings ---
+    local_ids: list[str] = []
+    embeddings: list[np.ndarray] = []
 
     for file_idx, (audio_path, asr_output) in enumerate(file_results):
         segments = asr_output.get("segments", [])
         speakers = asr_output.get("speaker_list", [])
+        total_dur = sum(s.get("duration", 0) for s in segments)
+        logger.info(
+            f"File {file_idx}: {len(speakers)} speakers, "
+            f"{len(segments)} segments, {total_dur:.0f}s total"
+        )
+
         for speaker_id in speakers:
-            # Enhancement #1: Extract high-confidence 10-30s snippets
-            # Prioritize segments with duration between 10-30s and high confidence
-            candidates = [
-                s for s in segments if s["speaker"] == speaker_id and s.get("duration", 0) >= 10.0
-            ]
-
-            # Sort by confidence if available, then by duration (favoring 20s-ish)
-            if candidates:
-                # Prefer confidence > 0.9 if possible, then duration closest to 20s
-                candidates.sort(
-                    key=lambda x: (
-                        x.get("confidence", 1.0),
-                        -abs(x.get("duration", 20) - 20),
-                    ),
-                    reverse=True,
-                )
-                target_seg = candidates[0]
-            else:
-                # Fallback to longest segment
-                candidates = [s for s in segments if s["speaker"] == speaker_id]
-                candidates.sort(key=lambda x: x.get("duration", 0), reverse=True)
-                target_seg = candidates[0] if candidates else None
-
-            if not target_seg:
+            speaker_segs = [s for s in segments if s["speaker"] == speaker_id]
+            speaker_dur = sum(s.get("duration", 0) for s in speaker_segs)
+            if speaker_dur < 3.0:
+                logger.debug(f"  Skipping {speaker_id}: only {speaker_dur:.1f}s speech")
                 continue
 
-            snippet_path = snippet_dir / f"file{file_idx}_{speaker_id}.wav"
-            enhanced_path = snippet_dir / f"file{file_idx}_{speaker_id}_enhanced.wav"
+            track_path = snippet_dir / f"file{file_idx}_{speaker_id}.wav"
+            ok = await _extract_speaker_track(audio_path, segments, speaker_id, track_path)
+            if not ok:
+                logger.warning(f"  Failed to extract track for file{file_idx}:{speaker_id}")
+                continue
 
-            # Short-utterance accumulator: if longest segment < 10s, concatenate
-            if target_seg.get("duration", 0) < 10.0:
-                ok = await _concat_short_segments(
-                    audio_path,
-                    segments,
-                    speaker_id,
-                    snippet_path,
-                    min_duration=10.0,
-                )
-                if not ok:
-                    continue
-            else:
-                snippet_duration = min(target_seg["duration"], 30.0)
-                ok = await extract_audio_snippet(
-                    audio_path,
-                    target_seg["start"],
-                    snippet_duration,
-                    snippet_path,
-                )
-                if not ok:
-                    continue
+            emb = await extract_speaker_embedding(track_path)
+            local_id = f"file{file_idx}:{speaker_id}"
+            local_ids.append(local_id)
+            embeddings.append(emb)
+            logger.info(f"  Embedded {local_id}: {speaker_dur:.1f}s speech track")
 
-            # Speech enhancement before embedding extraction
-            if await _enhance_audio(snippet_path, enhanced_path):
-                embedding_source = enhanced_path
-            else:
-                embedding_source = snippet_path
+    if not embeddings:
+        logger.warning("No speaker embeddings extracted")
+        return {}
 
-            emb = await extract_speaker_embedding(embedding_source)
-            match_id = None
-            for gid, gemb in speaker_embeddings.items():
-                if calculate_speaker_similarity(emb, gemb) >= threshold:
-                    match_id = gid
-                    break
-            if match_id:
-                global_speaker_map[f"file{file_idx}:{speaker_id}"] = match_id
-            else:
-                new_gid = f"Global_Speaker_{next_global_id}"
-                speaker_embeddings[new_gid] = emb
-                global_speaker_map[f"file{file_idx}:{speaker_id}"] = new_gid
-                next_global_id += 1
+    logger.info(f"Extracted {len(embeddings)} speaker embeddings")
+
+    # --- Pass 2: Similarity matrix + union-find clustering ---
+    n = len(embeddings)
+    sim_matrix = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            sim_matrix[i, j] = calculate_speaker_similarity(embeddings[i], embeddings[j])
+
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if sim_matrix[i, j] >= threshold:
+                union(i, j)
+
+    # Assign global IDs
+    cluster_to_global: dict[int, str] = {}
+    global_speaker_map: dict[str, str] = {}
+    next_id = 0
+
+    for i in range(n):
+        root = find(i)
+        if root not in cluster_to_global:
+            cluster_to_global[root] = f"Global_Speaker_{next_id}"
+            next_id += 1
+        global_speaker_map[local_ids[i]] = cluster_to_global[root]
+
+    unique = set(global_speaker_map.values())
+    logger.info(f"Speaker unification: {n} local → {len(unique)} global (threshold={threshold})")
+    for gs in sorted(unique):
+        members = [lid for lid, g in global_speaker_map.items() if g == gs]
+        logger.info(f"  {gs}: {members}")
+
     return global_speaker_map
 
 
