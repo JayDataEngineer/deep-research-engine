@@ -67,8 +67,23 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
     # 2. Detective Report (ingestion workflows with structured data)
     if state.get("context", {}).get("ingestion_structured"):
         try:
-            from ..artifacts.detective_report import build_detective_report
+            from pathlib import Path
 
+            from ..artifacts.detective_report import build_detective_report
+            from ..artifacts.file_organizer import organize_files
+
+            structured = state["context"]["ingestion_structured"]
+            media_items = structured.get("media_items", [])
+
+            # 2a. Organize media files into browsable directories
+            big_dump = state.get("context", {}).get("big_text_dump")
+            output_dir = Path(big_dump).parent if big_dump else Path("output/artifacts")
+            input_dir = Path(state.get("input_data", {}).get("path", "."))
+
+            org_stats = organize_files(output_dir, media_items, input_dir)
+            logger.info(f"File organization: {org_stats}")
+
+            # 2b. Build detective report
             report = await build_detective_report(state)
             _write_artifact_to_disk(state, report)
             _write_report_sections(state, report)
@@ -78,6 +93,7 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
                 "artifact_output": report,
                 "artifact_metadata": {
                     "format": "detective_report",
+                    "organized_files": org_stats,
                     "worker_count": len(state.get("worker_results", [])),
                 },
                 "__goto__": "complete",

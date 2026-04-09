@@ -350,6 +350,21 @@ def build_media_inventory(data: ReportData) -> str:
     voice_items = [m for m in data.media_items if m.get("type") == "voice"]
     photo_items = [m for m in data.media_items if m.get("type") == "photo"]
     video_items = [m for m in data.media_items if m.get("type") == "video"]
+    text_items = [m for m in data.media_items if m.get("type") in ("text", "message")]
+
+    # Text messages
+    if text_items:
+        lines.append(f"### Text Messages ({len(text_items)})\n")
+        lines.append("| # | Timestamp | Sender | Text |")
+        lines.append("|---|-----------|--------|------|")
+        for i, item in enumerate(text_items, 1):
+            ts = item.get("timestamp", "")[:19]
+            sender = item.get("sender", "Unknown")
+            text = (item.get("text", "") or "")[:150].replace("|", "/").replace("\n", " ")
+            if len(item.get("text", "") or "") > 150:
+                text += "..."
+            lines.append(f"| {i} | {ts} | {sender} | {text} |")
+        lines.append("")
 
     # Voice messages
     lines.append(f"### Voice Messages ({len(voice_items)})\n")

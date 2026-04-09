@@ -42,6 +42,15 @@ def merge_errors(left: list[dict], right: list[dict]) -> list[dict]:
     return left + right
 
 
+def merge_context(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    """Merge context dicts — right wins on key conflicts."""
+    if not right:
+        return left
+    if not left:
+        return right
+    return {**left, **right}
+
+
 # =============================================================================
 # CRITIC EVALUATION SCHEMA (Pydantic for Structured Output)
 # =============================================================================
@@ -127,7 +136,7 @@ class EngineState(TypedDict, total=False):
 
     # ===== Context (Extensible - Workflow-Specific) =====
     # This is where workflow-specific data lives WITHOUT bloating core state
-    context: dict[str, Any]  # Workflow-specific context
+    context: Annotated[dict[str, Any], merge_context]  # Workflow-specific context
 
     # ===== Observability =====
     start_time: str

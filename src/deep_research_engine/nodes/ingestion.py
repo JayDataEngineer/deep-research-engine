@@ -809,6 +809,8 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         timestamp = item.get("timestamp", "Unknown")
 
         content_parts: list[str] = []
+        enriched: dict[str, Any] = {}  # Structured fields for detective report / file organizer
+
         if msg_text:
             content_parts.append(msg_text)
 
@@ -840,23 +842,31 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 if len(unique_speakers) > 1:
                     content_parts.append(f"[Speakers in snippet: {', '.join(unique_speakers)}]")
 
+                # Store structured fields
+                enriched["speakers"] = list(unique_speakers)
+                enriched["transcript"] = " ".join(seg.get("text", "") for seg in segments)
+
             elif item_type == "photo":
                 if media_path_rel in identity_map:
                     faces = identity_map[media_path_rel]
                     resolved_faces = [resolved_identity_map.get(f, f) for f in faces]
                     faces_str = ", ".join(set(resolved_faces))
                     content_parts.append(f"[People in Photo: {faces_str}]")
+                    enriched["faces"] = list(set(resolved_faces))
 
+                photo_desc = None
                 if not vlm_cb.is_tripped() and media_path.exists():
                     try:
-                        desc = await vlm_analyze(media_path)
-                        content_parts.append(f"[Photo Description: {desc}]")
+                        photo_desc = await vlm_analyze(media_path)
+                        content_parts.append(f"[Photo Description: {photo_desc}]")
                         vlm_cb.record_success()
                     except RuntimeError:
                         vlm_cb.record_failure(item, "VLM unavailable for photo")
                         logger.warning("VLM unavailable - skipping photo descriptions")
                     except Exception as e:
                         vlm_cb.record_failure(item, str(e))
+                if photo_desc:
+                    enriched["description"] = photo_desc
 
             elif item_type == "video":
                 if media_path_rel in identity_map:
@@ -864,7 +874,9 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     resolved_faces = [resolved_identity_map.get(f, f) for f in faces]
                     faces_str = ", ".join(set(resolved_faces))
                     content_parts.append(f"[People in Video: {faces_str}]")
+                    enriched["faces"] = list(set(resolved_faces))
 
+                video_desc = None
                 if media_path_rel in video_descriptions:
                     video_desc = video_descriptions[media_path_rel]
                 elif not vlm_cb.is_tripped() and media_path.exists():
@@ -873,17 +885,18 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                         vlm_cb.record_success()
                     except RuntimeError:
                         vlm_cb.record_failure(item, "VLM unavailable for video")
-                        video_desc = "[Video analysis unavailable - VLM circuit breaker active]"
+                        video_desc = None
                     except Exception as e:
                         vlm_cb.record_failure(item, str(e))
-                        video_desc = "[Video analysis unavailable]"
-                else:
-                    video_desc = "[Video analysis unavailable]"
+                        video_desc = None
 
-                content_parts.append(f"[Video Summary: {video_desc}]")
+                if video_desc:
+                    content_parts.append(f"[Video Summary: {video_desc}]")
+                    enriched["description"] = video_desc
 
         vlm_enriched_items.append({
             **item,
+            **enriched,
             "_enriched_content": " ".join(content_parts),
         })
 
@@ -958,21 +971,20 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 if has_structure:
                     entity_extractions.append(entities)
 
-            is_media_with_data = (
-                item_type in ("voice", "video", "photo")
-                or item.get("forwarded")
-                or bool(entities.get("people"))
-                if item_combined
-                else False
-            )
-            if is_media_with_data:
+            if item_type in ("voice", "video", "photo", "message") or item_combined:
                 s_item: dict[str, Any] = {
                     "type": item_type,
                     "path": media_path_rel,
                     "timestamp": timestamp,
                     "sender": sender,
+                    "text": item.get("text"),
                 }
-                if item_type == "voice" and media_path_rel:
+                # Copy structured fields from Phase 7a enrichment
+                for field in ("speakers", "transcript", "faces", "description"):
+                    if field in item:
+                        s_item[field] = item[field]
+                # Fallback: re-derive from audio_results if not in enriched fields
+                if item_type == "voice" and "transcript" not in s_item and media_path_rel:
                     abs_media = str(input_dir / media_path_rel)
                     segments = audio_results.get(abs_media, [])
                     if segments:
@@ -980,10 +992,6 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                             {seg.get("resolved_name", seg["speaker"]) for seg in segments}
                         )
                         s_item["transcript"] = " ".join(seg.get("text", "") for seg in segments)
-                if item_type in ("video", "photo") and media_path_rel in identity_map:
-                    s_item["faces"] = identity_map[media_path_rel]
-                if item_type == "video" and media_path_rel in video_descriptions:
-                    s_item["description"] = video_descriptions[media_path_rel]
                 structured_media_items.append(s_item)
 
             final_combined = " ".join(content_parts)

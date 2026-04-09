@@ -1001,6 +1001,10 @@ async def run_context_enrichment(
                 "timestamp": timestamp,
                 "sender": sender,
             }
+            # Copy structured fields from Phase 7a enrichment
+            for field in ("speakers", "transcript", "faces", "description"):
+                if field in item:
+                    s_item[field] = item[field]
             structured_media_items.append(s_item)
 
     return {
