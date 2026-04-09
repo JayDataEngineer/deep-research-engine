@@ -74,29 +74,34 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                 # Use WorkerRegistry to get worker class and its metadata
                 worker_class = WorkerRegistry.get(w_type)
 
-                # Convert our generic worker config to deepagents SubAgent spec
-                subagents.append(
-                    {
-                        "name": w_type,
-                        "description": f"{worker_class.description}. Task: {w_cfg.get('task')}",
-                        "system_prompt": (
-                            f"You are a specialist in {w_type}. "
-                            f"Your goal is: {w_cfg.get('task')}. "
-                            f"Be thorough but concise."
-                        ),
-                        "model": w_cfg.get("model"),
-                        "tools": worker_class.required_tools,
-                    }
-                )
+                # Convert our generic worker config to deepagents SubAgent spec.
+                # Only include "model" if the config specifies one — otherwise
+                # deepagents inherits the king model (BaseChatModel).  Passing
+                # model=None causes resolve_model(None) to crash.
+                spec: dict[str, Any] = {
+                    "name": w_type,
+                    "description": f"{worker_class.description}. Task: {w_cfg.get('task')}",
+                    "system_prompt": (
+                        f"You are a specialist in {w_type}. "
+                        f"Your goal is: {w_cfg.get('task')}. "
+                        f"Be thorough but concise."
+                    ),
+                    "tools": worker_class.required_tools,
+                }
+                w_model = w_cfg.get("model")
+                if w_model:
+                    spec["model"] = w_model
+                subagents.append(spec)
             except Exception as e:
                 logger.warning(f"Failed to register subagent for worker type '{w_type}': {e}")
-                # Fallback to a generic subagent if registry fails
+                # Fallback to a generic subagent if registry fails.
+                # NOTE: omit "model" key so deepagents falls back to the king model.
+                # Passing model=None causes resolve_model(None) to crash.
                 subagents.append(
                     {
                         "name": w_type,
                         "description": f"Specialist worker for {w_type}. Task: {w_cfg.get('task')}",
                         "system_prompt": f"You are a specialist in {w_type}. Your goal is: {w_cfg.get('task')}. Be thorough but concise.",
-                        "model": None,
                     }
                 )
 
