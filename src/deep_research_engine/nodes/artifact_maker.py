@@ -64,7 +64,29 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
         except Exception as e:
             logger.error(f"Error executing artifact maker worker: {e}. Falling back.")
 
-    # 2. Basic fallback aggregation
+    # 2. Detective Report (ingestion workflows with structured data)
+    if state.get("context", {}).get("ingestion_structured"):
+        try:
+            from ..artifacts.detective_report import build_detective_report
+
+            report = await build_detective_report(state)
+            _write_artifact_to_disk(state, report)
+            _write_report_sections(state, report)
+
+            logger.info(f"Detective report generated ({len(report)} chars).")
+            return {
+                "artifact_output": report,
+                "artifact_metadata": {
+                    "format": "detective_report",
+                    "worker_count": len(state.get("worker_results", [])),
+                },
+                "__goto__": "complete",
+            }
+        except Exception as e:
+            logger.error(f"Detective report failed: {e}", exc_info=True)
+            # Fall through to basic aggregation
+
+    # 3. Basic fallback aggregation
     worker_results = state.get("worker_results", [])
     successful_results = [r for r in worker_results if r.get("success")]
 
@@ -117,12 +139,34 @@ def _write_artifact_to_disk(state: EngineState, artifact: str) -> None:
     artifact_path.write_text(artifact, encoding="utf-8")
     logger.info(f"Wrote final artifact to {artifact_path} ({len(artifact)} chars)")
 
-    # Also write entity profiles if available
-    profiles_path = output_dir / "entity_profiles.md"
-    if profiles_path.exists():
-        logger.info(f"Entity profiles already written at {profiles_path}")
 
-    # Write sorted content if available
-    sorted_path = output_dir / "sorted_content.md"
-    if sorted_path.exists():
-        logger.info(f"Sorted content already written at {sorted_path}")
+def _write_report_sections(state: EngineState, report: str) -> None:
+    """Split report into section files for RAG retrievability."""
+    import re
+    from pathlib import Path
+
+    big_dump = state.get("context", {}).get("big_text_dump")
+    if big_dump:
+        output_dir = Path(big_dump).parent
+    else:
+        output_dir = Path("output/artifacts")
+
+    sections_dir = output_dir / "report_sections"
+    sections_dir.mkdir(parents=True, exist_ok=True)
+
+    # Split on ## headers (but not # main title)
+    parts = re.split(r"(?=^## )", report, flags=re.MULTILINE)
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        # Extract section name from ## header
+        match = re.match(r"^## (.+)$", part, re.MULTILINE)
+        if not match:
+            continue
+        section_name = match.group(1).lower().replace(" ", "_")[:40]
+        section_path = sections_dir / f"{section_name}.md"
+        section_path.write_text(part, encoding="utf-8")
+
+    logger.info(f"Wrote {len(list(sections_dir.glob('*.md')))} report sections to {sections_dir}")

@@ -73,12 +73,12 @@ async def asr_transcribe(
     language: str | None = None,
     include_diarization: bool = True,
     max_segment_duration_sec: float = 0,
-    max_full_file_sec: float = 600.0,
+    max_full_file_sec: float = 1800.0,
 ) -> Union[str, dict[str, Any]]:
     """Transcribe audio file using VibeVoice ASR via InfraClient.
 
     Strategy:
-      - Files shorter than max_full_file_sec (default 10 min) are transcribed
+      - Files shorter than max_full_file_sec (default 30 min) are transcribed
         as-is, preserving full diarization continuity.
       - Files longer than max_full_file_sec are split into chunks of that size.
         Each chunk gets its own diarization, so speaker IDs are per-chunk.
@@ -90,7 +90,7 @@ async def asr_transcribe(
         language: Language code (auto-detect if None).
         include_diarization: Enable speaker diarization.
         max_segment_duration_sec: Unused (kept for API compatibility).
-        max_full_file_sec: Max duration before splitting (default 600s = 10 min).
+        max_full_file_sec: Max duration before splitting (default 1800s = 30 min).
             Set to 0 to never split (may timeout on very long files).
 
     Returns:
