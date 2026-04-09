@@ -197,6 +197,7 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                             sorted_content=sorted_content,
                             model=king_model_name if king_model_name else "gemma4-e4b-vision-fast",
                             max_entities=10,
+                            config_data=config_data,
                         )
                         if profiles:
                             entity_profiles_content = format_entity_profiles(profiles)

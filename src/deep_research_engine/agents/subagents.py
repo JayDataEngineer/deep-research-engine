@@ -45,17 +45,22 @@ def get_deep_agent_tools(config_data: dict[str, Any] | None = None) -> list:
 SORT_AGENT_PROMPT = (
     "You are a Content Sort Agent. Your job is to analyze raw ingested content "
     "and organize it into clear, structured categories.\n\n"
+    "IMPORTANT: Use the graph_query tool to look up existing entities in the knowledge graph "
+    "BEFORE sorting. This helps you understand known people, their relationships, and how "
+    "to group content around them. Query common names from the text to see what's already known.\n\n"
     "SORTING RULES:\n"
     "1. GROUP by content type: messages, voice transcripts, photo descriptions, video summaries\n"
     "2. ORDER chronologically within each group using timestamps\n"
     "3. MERGE duplicate or near-duplicate entries\n"
     "4. FLAG low-confidence or incomplete items with [?] markers\n"
-    "5. EXTRACT key metadata: sender, timestamp, media type, entity mentions\n\n"
+    "5. EXTRACT key metadata: sender, timestamp, media type, entity mentions\n"
+    "6. CROSS-REFERENCE entities with the knowledge graph — annotate known entities with "
+    "their graph relationships (e.g., [KNOWN: works_at X, related_to Y])\n\n"
     "OUTPUT FORMAT:\n"
     "## Messages\n"
-    "- [timestamp] **sender**: content [entities]\n\n"
+    "- [timestamp] **sender**: content [entities] [graph context if available]\n\n"
     "## Voice Transcripts\n"
-    "- [timestamp] **speaker**: transcript [entities]\n\n"
+    "- [timestamp] **speaker**: transcript [entities] [graph context if available]\n\n"
     "## Photo Descriptions\n"
     "- [timestamp] **description** [entities]\n\n"
     "## Video Summaries\n"
@@ -109,19 +114,20 @@ def _make_chat_model(model: str = "gemma4-e4b-vision-fast") -> ChatOpenAI:
 def create_sort_agent(
     model: str = "gemma4-e4b-vision-fast",
     tools: list | None = None,
+    config_data: dict[str, Any] | None = None,
 ) -> Any:
     """Create a Sort SubAgent using DeepAgents pattern.
 
     Args:
         model: Model identifier (passed to LiteLLM/deepagents).
-        tools: Optional list of tools. Defaults to no tools (pure text processing).
+        tools: Optional list of tools. Defaults to graph_query for entity lookup.
+        config_data: Config for initializing storage tools.
 
     Returns:
         A DeepAgent instance that can be invoked with .ainvoke().
     """
-    # Sort agent is pure text processing — no storage tools needed by default
     if tools is None:
-        tools = []
+        tools = get_deep_agent_tools(config_data)
 
     return create_deep_agent(
         model=_make_chat_model(model),
@@ -148,9 +154,7 @@ async def run_sort_agent(
     # Ensure LLM is loaded (may have been unloaded by ASR)
     _ensure_llm_loaded(model)
 
-    # Sort agent doesn't need storage tools — pure text processing
-    tools: list = []
-    agent = create_sort_agent(model=model, tools=tools)
+    agent = create_sort_agent(model=model, config_data=config_data)
 
     # Chunk large content to avoid truncation (process in 50K char chunks)
     chunk_size = 50_000
@@ -192,7 +196,7 @@ async def run_sort_agent(
     else:
         # Run a final merge pass to deduplicate across chunks
         merged_input = "\n\n".join(sorted_parts)
-        merge_agent = create_sort_agent(model=model, tools=[])
+        merge_agent = create_sort_agent(model=model, config_data=config_data)
         merge_result = await merge_agent.ainvoke(
             {
                 "messages": [
@@ -217,6 +221,10 @@ async def run_sort_agent(
 ENTITY_EXTRACTOR_PROMPT = (
     "You are an Entity Extraction Agent. Your job is to analyze text and extract "
     "all named entities into a structured, deduplicated format.\n\n"
+    "IMPORTANT: Use the graph_query tool to look up existing entities in the knowledge graph. "
+    "This helps you resolve ambiguous names and understand entity relationships. "
+    "When you find a name, query the graph to see if it's already known and what "
+    "relationships it has. This ensures extracted entities align with existing graph data.\n\n"
     "ENTITY TYPES TO EXTRACT:\n"
     "1. **People**: Full names, aliases, usernames, handles\n"
     "2. **Locations**: Cities, states, countries, addresses, landmarks\n"
@@ -228,11 +236,13 @@ ENTITY_EXTRACTOR_PROMPT = (
     "1. EXTRACT every entity mentioned, even in passing\n"
     "2. DEDUPLICATE — merge variations (e.g., 'WLM Montana' = 'White Lives Matter Montana')\n"
     "3. PRESERVE context — note what the entity was mentioned in relation to\n"
-    "4. FLAG uncertain entities with [?]\n"
-    "5. DO NOT infer or hallucinate entities not present in the text\n\n"
+    "4. CROSS-REFERENCE with the knowledge graph — annotate known entities with "
+    "[KNOWN_IN_GRAPH] and include their relationships\n"
+    "5. FLAG uncertain entities with [?]\n"
+    "6. DO NOT infer or hallucinate entities not present in the text\n\n"
     "OUTPUT FORMAT:\n"
     "## People\n"
-    "- Name: [context/relation]\n\n"
+    "- Name: [context/relation] [KNOWN_IN_GRAPH: relationships if applicable]\n\n"
     "## Locations\n"
     "- Location: [context/relation]\n\n"
     "## Organizations\n"
@@ -250,19 +260,20 @@ ENTITY_EXTRACTOR_PROMPT = (
 def create_entity_extractor_agent(
     model: str = "gemma4-e4b-vision-fast",
     tools: list | None = None,
+    config_data: dict[str, Any] | None = None,
 ) -> Any:
     """Create an Entity Extractor SubAgent using DeepAgents pattern.
 
     Args:
         model: Model identifier (passed to LiteLLM/deepagents).
-        tools: Optional list of tools. Defaults to no tools (pure text processing).
+        tools: Optional list of tools. Defaults to graph_query for entity lookup.
+        config_data: Config for initializing storage tools.
 
     Returns:
         A DeepAgent instance that can be invoked with .ainvoke().
     """
-    # Entity extraction is pure text processing — no storage tools needed
     if tools is None:
-        tools = []
+        tools = get_deep_agent_tools(config_data)
 
     return create_deep_agent(
         model=_make_chat_model(model),
@@ -289,9 +300,7 @@ async def run_entity_extractor_agent(
     # Ensure LLM is loaded (may have been unloaded by ASR)
     _ensure_llm_loaded(model)
 
-    # Entity extraction doesn't need storage tools — pure text processing
-    tools: list = []
-    agent = create_entity_extractor_agent(model=model, tools=tools)
+    agent = create_entity_extractor_agent(model=model, config_data=config_data)
 
     # Chunk large content to avoid truncation
     chunk_size = 50_000
@@ -331,7 +340,7 @@ async def run_entity_extractor_agent(
     else:
         # Merge and deduplicate entity lists
         merged = "\n\n".join(entity_parts)
-        merge_agent = create_entity_extractor_agent(model=model, tools=[])
+        merge_agent = create_entity_extractor_agent(model=model, config_data=config_data)
         merge_result = await merge_agent.ainvoke(
             {
                 "messages": [
@@ -394,19 +403,24 @@ ENTITY_FINDER_PROMPT = (
     "You are an Entity Profile Agent. You receive a single entity (person or event) "
     "and a body of text. Your job is to find EVERY mention of that entity in the text "
     "and build a comprehensive profile.\n\n"
+    "IMPORTANT: Use the graph_query tool to look up this entity in the knowledge graph. "
+    "Query their name to find existing relationships, known aliases, and connected entities. "
+    "This context enriches the profile and connects new mentions to existing knowledge.\n\n"
     "PROFILE STRUCTURE:\n"
     "1. **Name/Alias**: All names, nicknames, handles used for this entity\n"
     "2. **Timeline**: Chronological list of every mention with date + context\n"
-    "3. **Relationships**: People connected to this entity and how\n"
+    "3. **Relationships**: People connected to this entity and how (cross-reference with graph)\n"
     "4. **Key Facts**: Specific details — locations, roles, events, affiliations\n"
     "5. **Sentiment/Tone**: How the entity is discussed (positive, negative, neutral)\n"
-    "6. **Open Questions**: Things mentioned but unclear or incomplete\n\n"
+    "6. **Open Questions**: Things mentioned but unclear or incomplete\n"
+    "7. **Graph Context**: Any existing knowledge graph relationships found\n\n"
     "RULES:\n"
-    "- Include ONLY information found in the provided text\n"
+    "- Include ONLY information found in the provided text or knowledge graph\n"
     "- Quote directly when possible\n"
     "- Note contradictions or changes over time\n"
     "- If the entity is barely mentioned, report what little exists\n"
-    "- Be thorough — a single passing mention still has context\n\n"
+    "- Be thorough — a single passing mention still has context\n"
+    "- Mark graph-sourced info with [FROM_GRAPH] so downstream knows the origin\n\n"
     "OUTPUT: A structured markdown profile for this entity."
 )
 
@@ -438,18 +452,20 @@ def _extract_entity_names(entities_text: str) -> list[str]:
 def create_entity_finder_agent(
     model: str = "gemma4-e4b-vision-fast",
     tools: list | None = None,
+    config_data: dict[str, Any] | None = None,
 ) -> Any:
     """Create an Entity Finder SubAgent using DeepAgents pattern.
 
     Args:
         model: Model identifier.
-        tools: Optional tools. Defaults to none.
+        tools: Optional tools. Defaults to graph_query for entity lookup.
+        config_data: Config for initializing storage tools.
 
     Returns:
         A DeepAgent instance that can be invoked with .ainvoke().
     """
     if tools is None:
-        tools = []
+        tools = get_deep_agent_tools(config_data)
     return create_deep_agent(
         model=_make_chat_model(model),
         system_prompt=ENTITY_FINDER_PROMPT,
@@ -461,23 +477,25 @@ async def run_entity_finder(
     entity_name: str,
     content: str,
     model: str = "gemma4-e4b-vision-fast",
+    config_data: dict[str, Any] | None = None,
 ) -> str:
     """Run the Entity Finder Agent for a single entity.
 
     Searches through content for all mentions of the given entity
-    and produces a structured profile.
+    and produces a structured profile enriched with graph context.
 
     Args:
         entity_name: Name of the entity to profile.
         content: Sorted content to search through.
         model: Model to use.
+        config_data: Config for initializing storage tools.
 
     Returns:
         Structured markdown profile for the entity.
     """
     _ensure_llm_loaded(model)
 
-    agent = create_entity_finder_agent(model=model)
+    agent = create_entity_finder_agent(model=model, config_data=config_data)
 
     # For very large content, search for relevant chunks containing the entity
     # to avoid sending the entire document for each entity
@@ -568,17 +586,19 @@ async def run_entity_finder_batch(
     sorted_content: str,
     model: str = "gemma4-e4b-vision-fast",
     max_entities: int = 10,
+    config_data: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Run the Entity Finder Agent for all extracted entities.
 
     Takes the output of the Entity Extractor Agent and builds profiles
-    for each person found.
+    for each person found, enriched with knowledge graph context.
 
     Args:
         entities_text: Entity Extractor Agent output (## People section).
         sorted_content: Sorted content from the Sort Agent.
         model: Model to use.
         max_entities: Maximum number of entities to profile.
+        config_data: Config for initializing storage tools.
 
     Returns:
         Dict mapping entity names to their profiles.
@@ -598,7 +618,9 @@ async def run_entity_finder_batch(
     for i, name in enumerate(names):
         logger.info(f"Profiling entity {i + 1}/{len(names)}: {name}")
         try:
-            profile = await run_entity_finder(name, sorted_content, model=model)
+            profile = await run_entity_finder(
+                name, sorted_content, model=model, config_data=config_data,
+            )
             profiles[name] = profile
         except Exception as e:
             logger.warning(f"Entity Finder failed for '{name}': {e}")
