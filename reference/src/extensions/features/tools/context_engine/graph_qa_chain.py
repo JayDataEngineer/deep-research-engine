@@ -1,6 +1,13 @@
 """
 Natural Language to Cypher Query Chain.
 
+NOTE: The canonical implementation of this module has been extracted to
+``deep_research_engine.shared.neo4j.qa_chain.NaturalLanguageGraphQuery``.
+This file is kept for reference but should import from the shared module
+when both projects are installed together:
+
+    from deep_research_engine.shared.neo4j import NaturalLanguageGraphQuery
+
 This module implements natural language querying for Neo4j knowledge graphs:
 - Converts natural language questions to Cypher queries
 - Executes queries against Neo4j

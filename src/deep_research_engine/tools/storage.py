@@ -59,6 +59,29 @@ async def _get_neo4j_storage() -> Neo4jStorage | None:
     return _neo4j_storage
 
 
+# ---------------------------------------------------------------------------
+# Shared helper (replaces duplicated _try_init_neo4j across nodes)
+# ---------------------------------------------------------------------------
+
+
+async def get_neo4j_from_config(config_data: dict[str, Any]) -> Neo4jStorage | None:
+    """Create, initialize, and return a ``Neo4jStorage`` from workflow config.
+
+    Returns *None* if Neo4j is disabled or initialization fails.
+    Nodes should call this instead of duplicating the init pattern.
+    """
+    neo4j_config = config_data.get("storage", {}).get("neo4j", {})
+    if not neo4j_config.get("enabled"):
+        return None
+    try:
+        storage = Neo4jStorage(neo4j_config)
+        await storage.initialize()
+        return storage
+    except Exception as e:
+        logger.warning(f"Neo4j init failed (non-fatal): {e}")
+        return None
+
+
 class VectorSearchInput(BaseModel):
     """Input for vector search tool."""
 
@@ -153,6 +176,10 @@ class GraphQueryInput(BaseModel):
     depth: int = Field(
         default=2, ge=1, le=4, description="Traversal depth for neighbor queries (1-4, default 2)"
     )
+    search_type: str = Field(
+        default="text",
+        description="Search mode: 'text' (CONTAINS search), 'vector' (semantic similarity), 'entity' (neighbor traversal), 'relationship' (filter by rel type)",
+    )
 
 
 @tool(args_schema=GraphQueryInput)
@@ -161,17 +188,20 @@ async def graph_query(
     entity_name: str | None = None,
     relationship_type: str | None = None,
     depth: int = 2,
+    search_type: str = "text",
 ) -> str:
     """Query the knowledge graph to find entities and relationships.
 
     Use this tool to explore the knowledge graph built from ingested data.
-    You can look up specific entities, find relationships, or search by text.
+    You can look up specific entities, find relationships, search by text,
+    or perform semantic vector search.
 
     Args:
         query: What to find in the knowledge graph.
         entity_name: Specific entity to look up (traverses neighbors).
         relationship_type: Filter by relationship type.
         depth: Traversal depth (1-4).
+        search_type: Search mode - 'text', 'vector', 'entity', or 'relationship'.
 
     Returns:
         Formatted string with graph query results.
@@ -186,22 +216,22 @@ async def graph_query(
 
     try:
         # Route 1: Entity name lookup with neighbor traversal
-        if entity_name:
+        if entity_name or search_type == "entity":
+            name = entity_name or query
             neighbors = await storage.get_neighbors_by_name(
-                name=entity_name, namespace=namespace, depth=depth
+                name=name, namespace=namespace, depth=depth
             )
             if not neighbors:
-                return f"No entity named '{entity_name}' found in the knowledge graph."
+                return f"No entity named '{name}' found in the knowledge graph."
 
-            output = [f"Neighbors of '{entity_name}' (depth={depth}):\n"]
+            output = [f"Neighbors of '{name}' (depth={depth}):\n"]
             for i, neighbor in enumerate(neighbors, 1):
                 labels = neighbor.get("labels", [])
-                name = neighbor.get("name", "Unknown")
+                n_name = neighbor.get("name", "Unknown")
                 rel_types = neighbor.get("relationship_types", [])
-                output.append(f"[{i}] {':'.join(labels)} - {name}")
+                output.append(f"[{i}] {':'.join(labels)} - {n_name}")
                 if rel_types:
                     output.append(f"    via: {', '.join(rel_types)}")
-                # Include key properties
                 for k, v in neighbor.items():
                     if (
                         k
@@ -223,8 +253,9 @@ async def graph_query(
             return "\n".join(output)
 
         # Route 2: Relationship type filter
-        if relationship_type:
-            safe_rel = Neo4jStorage._sanitize_label(relationship_type)
+        if relationship_type or search_type == "relationship":
+            rel = relationship_type or query
+            safe_rel = Neo4jStorage._sanitize_label(rel)
             results = await storage.execute_cypher(
                 f"MATCH (n)-[r:{safe_rel}]-(m) "
                 f"WHERE n.namespace = $namespace "
@@ -234,21 +265,59 @@ async def graph_query(
                 {"namespace": namespace},
             )
             if not results or (len(results) == 1 and "error" in results[0]):
-                return f"No relationships of type '{relationship_type}' found."
+                return f"No relationships of type '{rel}' found."
 
-            output = [f"Relationships of type '{relationship_type}':\n"]
+            output = [f"Relationships of type '{rel}':\n"]
             for i, rec in enumerate(results, 1):
                 src = rec.get("source", "?")
                 tgt = rec.get("target", "?")
                 src_labels = rec.get("source_labels", [])
                 tgt_labels = rec.get("target_labels", [])
                 output.append(
-                    f"[{i}] ({':'.join(src_labels)}) {src} --[{relationship_type}]--> ({':'.join(tgt_labels)}) {tgt}"
+                    f"[{i}] ({':'.join(src_labels)}) {src} --[{rel}]--> ({':'.join(tgt_labels)}) {tgt}"
                 )
 
             return "\n".join(output)
 
-        # Route 3: Text search across node properties
+        # Route 3: Vector similarity search
+        if search_type == "vector":
+            try:
+                from ..shared.embeddings import get_embeddings
+
+                embed_config = {}
+                if _storage_config:
+                    embed_config = _storage_config.get("llm", {})
+                model_name = embed_config.get("models", {}).get("embedding", "text-embedding-3-small")
+                embeddings = get_embeddings(model=model_name)
+
+                results = await storage.search_similar(
+                    query=query,
+                    embedding_model=embeddings,
+                    k=5,
+                )
+                if not results:
+                    return f"No vector search results for: '{query}'"
+
+                output = [f"Vector search results for '{query}':\n"]
+                for i, res in enumerate(results, 1):
+                    score = res.get("score", 0)
+                    text = res.get("text", "")
+                    metadata = res.get("metadata", {})
+                    if len(text) > 500:
+                        text = text[:500] + "..."
+                    output.append(f"[{i}] Score: {score:.3f}")
+                    output.append(f"    {text}")
+                    if metadata:
+                        for k, v in metadata.items():
+                            if v and k not in ("namespace", "updated_at"):
+                                output.append(f"    {k}: {v}")
+                    output.append("")
+
+                return "\n".join(output)
+            except Exception as e:
+                logger.warning(f"Vector search failed, falling back to text search: {e}")
+
+        # Route 4: Text search across node properties (default)
         results = await storage.execute_cypher(
             "MATCH (n {namespace: $namespace}) "
             "WHERE ANY(k IN keys(n) WHERE toString(n[k]) CONTAINS $query) "

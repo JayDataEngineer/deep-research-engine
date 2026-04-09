@@ -63,6 +63,7 @@ dependencies = [
     "lxml>=6.0.2",
     "whisper-ctranslate2>=0.5.7",
     "neo4j>=6.1.0",
+    "langchain-neo4j>=0.9.0",
     "openai>=1.61.0",
     "opencv-python>=4.11.0.86",
     "streamlit>=1.55.0",
@@ -92,12 +93,12 @@ mongodb = [
     "pymongo>=4.10.1",
     "motor>=3.7.0",
 ]
-# Speech enhancement (requires Rust/Cargo toolchain)
-audio-enhance = [
-    "deepfilternet>=0.5.6",
-]
 neo4j = [
     "neo4j>=5.27.0",
+    "langchain-neo4j>=0.9.0",
+]
+graph-transformer = [
+    "langchain-experimental>=0.4.0",
 ]
 minio = [
     "boto3>=1.36.0",
@@ -109,6 +110,7 @@ all-storage = [
     "pymongo>=4.10.1",
     "motor>=3.7.0",
     "neo4j>=5.27.0",
+    "langchain-neo4j>=0.9.0",
     "boto3>=1.36.0",
     "botocore>=1.36.0",
 ]
@@ -218,6 +220,10 @@ packages = ["src/deep_research_engine"]
 # Note: Use [project].requires-python for Python version requirement
 # [tool.uv] section is for other UV-specific settings
 
+# Limit resolution to Linux only.
+[tool.uv]
+environments = ["sys_platform == 'linux'"]
+
 # =============================================================================
 # RUFF (Linting + Formatting)
 # =============================================================================
@@ -316,6 +322,8 @@ pretty = true
 [[tool.mypy.overrides]]
 module = [
     "langchain.*",
+    "langchain_neo4j.*",
+    "langchain_experimental.*",
     "langgraph.*",
     "langfuse.*",
     "litellm.*",

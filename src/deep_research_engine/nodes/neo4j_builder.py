@@ -112,16 +112,9 @@ async def neo4j_builder_node(state: EngineState) -> dict[str, Any]:
 
 async def _get_neo4j_storage(config_data: dict[str, Any]) -> Neo4jStorage | None:
     """Create and initialize Neo4jStorage from workflow config."""
-    neo4j_config = config_data.get("storage", {}).get("neo4j", {})
-    if not neo4j_config.get("enabled"):
-        return None
-    try:
-        storage = Neo4jStorage(neo4j_config)
-        await storage.initialize()
-        return storage
-    except Exception as e:
-        logger.error(f"Failed to initialize Neo4jStorage: {e}")
-        return None
+    from ..tools.storage import get_neo4j_from_config
+
+    return await get_neo4j_from_config(config_data)
 
 
 async def _write_structured_data(
@@ -249,11 +242,60 @@ async def _extract_triplets_dynamic(
     config: dict[str, Any],
     existing_labels: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Extract triplets using LLM with dynamic schema.
+    """Extract triplets using LLMGraphTransformer with dynamic schema.
 
-    The LLM invents appropriate labels based on content domain.
-    Provides existing_labels so the LLM reuses existing types.
+    Uses ``langchain-experimental.LLMGraphTransformer`` for structured
+    entity/relationship extraction. Falls back to the legacy DeepAgents
+    approach if the optional dependency is not installed.
     """
+    llm = get_langchain_llm(enable_thinking=False, temperature=0.3, config_data=config)
+
+    # Try LLMGraphTransformer first (cleaner, structured output)
+    try:
+        from langchain_core.documents import Document
+        from langchain_experimental.graph_transformers import LLMGraphTransformer
+
+        transformer = LLMGraphTransformer(llm=llm)
+        doc = Document(page_content=text[:8000])
+        graph_docs = await transformer.aconvert_to_graph_documents([doc])
+
+        if not graph_docs:
+            return []
+
+        triplets: list[dict[str, Any]] = []
+        for rel in graph_docs[0].relationships:
+            subj_name = rel.source.id if hasattr(rel.source, "id") else str(rel.source)
+            subj_label = rel.source.type if hasattr(rel.source, "type") else "Entity"
+            obj_name = rel.target.id if hasattr(rel.target, "id") else str(rel.target)
+            obj_label = rel.target.type if hasattr(rel.target, "type") else "Entity"
+            predicate = rel.type
+
+            triplets.append(
+                {
+                    "subject": {"name": subj_name, "label": subj_label},
+                    "predicate": predicate,
+                    "object": {"name": obj_name, "label": obj_label},
+                }
+            )
+
+        logger.info(f"LLMGraphTransformer extracted {len(triplets)} triplets")
+        return triplets
+
+    except ImportError:
+        logger.info("langchain-experimental not installed, using fallback extraction")
+    except Exception as e:
+        logger.warning(f"LLMGraphTransformer failed ({e}), using fallback extraction")
+
+    # Fallback: legacy DeepAgents approach
+    return await _extract_triplets_legacy(text, config, existing_labels)
+
+
+async def _extract_triplets_legacy(
+    text: str,
+    config: dict[str, Any],
+    existing_labels: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Legacy triplet extraction via DeepAgents (fallback)."""
     llm = get_langchain_llm(enable_thinking=False, temperature=0.3, config_data=config)
 
     labels_hint = ""
@@ -317,7 +359,6 @@ async def _extract_triplets_dynamic(
         )
         final_output = result["messages"][-1].content
 
-        # Parse JSON
         if "```json" in final_output:
             final_output = final_output.split("```json")[1].split("```")[0].strip()
         elif "```" in final_output:
@@ -328,7 +369,7 @@ async def _extract_triplets_dynamic(
             return parsed["triplets"]
         return parsed if isinstance(parsed, list) else []
     except Exception as e:
-        logger.error(f"Failed to extract triplets: {e}")
+        logger.error(f"Failed to extract triplets (legacy): {e}")
         return []
 
 

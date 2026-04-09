@@ -31,11 +31,11 @@ try:
 except ImportError:
     pymupdf = None
 
+from ..agents.subagents import run_context_enrichment, run_identity_resolver
 from ..config import get_phase_config
 from ..ingestion.document_router import DocumentRouter
 from ..ingestion.kreuzberg_extractor import KreuzbergConfig
 from ..shared.config import INGESTION_MODEL
-from ..agents.subagents import run_context_enrichment, run_identity_resolver
 from ..shared.multimodal import (
     _get_infra,
     asr_transcribe,
@@ -1046,13 +1046,6 @@ async def _try_init_neo4j(config_data: dict[str, Any]) -> Neo4jStorage | None:
 
     Returns None if Neo4j is disabled or initialization fails.
     """
-    neo4j_config = config_data.get("storage", {}).get("neo4j", {})
-    if not neo4j_config.get("enabled"):
-        return None
-    try:
-        storage = Neo4jStorage(neo4j_config)
-        await storage.initialize()
-        return storage
-    except Exception as e:
-        logger.warning(f"Neo4j init failed for identity resolution (non-fatal): {e}")
-        return None
+    from ..tools.storage import get_neo4j_from_config
+
+    return await get_neo4j_from_config(config_data)

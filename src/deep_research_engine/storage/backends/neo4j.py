@@ -1,4 +1,9 @@
-"""Neo4j storage backend for knowledge graph."""
+"""Neo4j storage backend for knowledge graph.
+
+Uses the async ``neo4j`` driver for all read/write operations.
+Optionally integrates ``langchain-neo4j.Neo4jGraph`` for schema-aware
+queries and ``Neo4jVector`` for vector similarity search.
+"""
 
 import re
 import uuid
@@ -19,6 +24,8 @@ class Neo4jStorage(StorageBackend):
     - Cypher query support
     - Automatic indexing
     - Knowledge graph construction
+    - Vector similarity search via Neo4jVector (optional)
+    - Schema introspection via Neo4jGraph (optional)
 
     Configuration:
     ```yaml
@@ -29,11 +36,6 @@ class Neo4jStorage(StorageBackend):
         password: "your-password"
         database: "neo4j"
     ```
-
-    Data Model:
-    - Nodes: Generic "Item" nodes with labels for types
-    - Relationships: Generic "RELATED_TO" with types for semantics
-    - Properties: All stored as node/relationship properties
     """
 
     backend_name = "neo4j"
@@ -46,6 +48,7 @@ class Neo4jStorage(StorageBackend):
         self.password = config.get("password", "password")
         self.database = config.get("database", "neo4j")
         self.driver = None
+        self._neo4j_graph: Any | None = None
 
     async def initialize(self) -> None:
         """Initialize Neo4j driver and create constraints."""
@@ -112,7 +115,13 @@ class Neo4jStorage(StorageBackend):
             self._log("Constraints and indexes created")
 
     async def cleanup(self) -> None:
-        """Close Neo4j driver."""
+        """Close Neo4j driver and Neo4jGraph connection."""
+        import contextlib
+
+        if self._neo4j_graph is not None:
+            with contextlib.suppress(Exception):
+                self._neo4j_graph.close()
+            self._neo4j_graph = None
         if self.driver:
             await self.driver.close()
             self.initialized = False
@@ -130,6 +139,91 @@ class Neo4jStorage(StorageBackend):
         except Exception:
             self.health_status = "unhealthy"
             return False
+
+    @property
+    def neo4j_graph(self) -> Any:
+        """Lazy ``Neo4jGraph`` instance for schema-aware queries.
+
+        Uses the sync driver internally (from langchain-neo4j).
+        Provides ``query()``, ``refresh_schema()``, ``structured_schema``.
+        """
+        if self._neo4j_graph is None:
+            try:
+                from langchain_neo4j import Neo4jGraph
+
+                self._neo4j_graph = Neo4jGraph(
+                    url=self.uri,
+                    username=self.username,
+                    password=self.password,
+                    database=self.database,
+                    refresh_schema=False,
+                )
+                self._log("Neo4jGraph initialized (schema-aware wrapper)")
+            except Exception as e:
+                self._log(f"Neo4jGraph init failed (non-fatal): {e}")
+        return self._neo4j_graph
+
+    def refresh_schema(self) -> dict[str, Any]:
+        """Refresh schema via Neo4jGraph and return structured schema."""
+        graph = self.neo4j_graph
+        if graph is None:
+            return {}
+        try:
+            graph.refresh_schema()
+            return graph.structured_schema
+        except Exception as e:
+            self._log(f"Schema refresh failed: {e}")
+            return {}
+
+    async def search_similar(
+        self,
+        query: str,
+        embedding_model: Any = None,
+        k: int = 5,
+        index_name: str = "entity_vector",
+        text_node_property: str = "description",
+        embedding_node_property: str = "embedding",
+    ) -> list[dict[str, Any]]:
+        """Vector similarity search via ``Neo4jVector``.
+
+        Requires an ``embedding_model`` (LangChain Embeddings) on first call.
+        """
+        if embedding_model is None:
+            self._log("search_similar requires an embedding_model")
+            return []
+
+        try:
+            from langchain_neo4j import Neo4jVector
+        except ImportError:
+            self._log("langchain-neo4j required for vector search")
+            return []
+
+        try:
+            vector_store = Neo4jVector.from_existing_index(
+                embedding=embedding_model,
+                url=self.uri,
+                username=self.username,
+                password=self.password,
+                database=self.database,
+                index_name=index_name,
+                text_node_property=text_node_property,
+                embedding_node_property=embedding_node_property,
+            )
+            docs_with_score = vector_store.similarity_search_with_score(query, k=k)
+            results = []
+            for doc, score in docs_with_score:
+                results.append(
+                    {
+                        "text": doc.page_content,
+                        "score": score,
+                        "metadata": getattr(doc, "metadata", {}),
+                    }
+                )
+            self._log(f"Vector search returned {len(results)} results")
+            return results
+        except Exception as e:
+            self._log(f"Vector search failed: {e}")
+            return []
 
     async def store(
         self,

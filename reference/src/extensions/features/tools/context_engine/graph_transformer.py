@@ -1,6 +1,13 @@
 """
 ResearchGraphTransformer - Local LLM-based Knowledge Graph Extraction.
 
+NOTE: The canonical implementation of this module has been extracted to
+``deep_research_engine.shared.neo4j.graph_transformer.ResearchGraphTransformer``.
+This file is kept for reference but should import from the shared module
+when both projects are installed together:
+
+    from deep_research_engine.shared.neo4j import ResearchGraphTransformer
+
 This is our own "Diffbot" that runs entirely locally using your LLM.
 No external APIs - uses LangChain's LLMGraphTransformer with your configured LLM.
 

@@ -168,13 +168,6 @@ def _parse_clusters(raw: str) -> list[dict[str, Any]]:
 
 async def _try_init_neo4j(config_data: dict[str, Any]) -> Neo4jStorage | None:
     """Try to create and initialize Neo4jStorage from config."""
-    neo4j_config = config_data.get("storage", {}).get("neo4j", {})
-    if not neo4j_config.get("enabled"):
-        return None
-    try:
-        storage = Neo4jStorage(neo4j_config)
-        await storage.initialize()
-        return storage
-    except Exception as e:
-        logger.warning(f"Neo4j init for clusterer failed (non-fatal): {e}")
-        return None
+    from ..tools.storage import get_neo4j_from_config
+
+    return await get_neo4j_from_config(config_data)

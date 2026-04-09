@@ -1,6 +1,13 @@
 """
 Neo4j Vector Store - Hybrid Vector + Graph Search.
 
+NOTE: The canonical implementation of this module has been extracted to
+``deep_research_engine.shared.neo4j.vector_store.Neo4jVectorStore``.
+This file is kept for reference but should import from the shared module
+when both projects are installed together:
+
+    from deep_research_engine.shared.neo4j import Neo4jVectorStore
+
 This module adds semantic vector search to Neo4j with graph traversal.
 Complements Postgres/pgvector - doesn't replace it.
 
