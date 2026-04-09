@@ -16,7 +16,30 @@ try:
 except ImportError:
     # Fallback if pydantic not available
     BaseModel = object
-    Field = lambda **kwargs: None
+
+    # ruff: noqa: N802
+    def Field(*_args, **_kwargs):  # noqa: D103
+        return None
+
+
+# =============================================================================
+# STATE REDUCERS (For LangGraph Annotated Fields)
+# =============================================================================
+
+
+def overwrite_reducer(left: Any, right: Any) -> Any:
+    """Reducer that keeps the last value."""
+    return right if right is not None else left
+
+
+def merge_worker_results(left: list[dict], right: list[dict]) -> list[dict]:
+    """Merge worker results from parallel execution."""
+    return left + right
+
+
+def merge_errors(left: list[dict], right: list[dict]) -> list[dict]:
+    """Merge errors from parallel execution."""
+    return left + right
 
 
 # =============================================================================
@@ -26,24 +49,24 @@ except ImportError:
 
 class CriticEvaluation(BaseModel):
     """Structured critic evaluation output.
-    
+
     Used by the critic node to evaluate worker results with LLM-based assessment.
     """
-    
+
     # ===== Decision =====
     passed: bool = Field(description="Overall pass/fail decision")
     score: float = Field(ge=0, le=1, description="Overall quality score 0-1")
-    
+
     # ===== Per-criteria scores =====
     completeness: float = Field(ge=0, le=1, description="How complete is the output?")
     accuracy: float = Field(ge=0, le=1, description="Factual accuracy score")
     citation_quality: float = Field(ge=0, le=1, description="Quality of citations/sources")
     coherence: float = Field(ge=0, le=1, description="Logical flow and organization")
-    
+
     # ===== Qualitative feedback =====
     issues: list[str] = Field(default_factory=list, description="Specific problems found")
     suggestions: list[str] = Field(default_factory=list, description="Actionable improvements")
-    
+
     # ===== Routing =====
     recommendation: Literal["pass", "revise", "terminate"] = Field(
         description="Routing recommendation"
@@ -72,8 +95,9 @@ class EngineState(TypedDict, total=False):
     workflow_type: str  # "research" | "ingestion" | "generation"
 
     # ===== Current Phase =====
-    current_phase: str  # "ingestion" | "drafter" | "critic" | "neo4j_builder" | "artifact_maker"
-    phase_history: list[str]  # Track phase transitions
+    # Use overwrite_reducer so Command + conditional edges can both update without LastValue conflict
+    current_phase: Annotated[str, overwrite_reducer]  # "ingestion" | "drafter" | "critic" | "neo4j_builder" | "artifact_maker"
+    phase_history: Annotated[list[str], overwrite_reducer]  # Track phase transitions
 
     # ===== Input (Generic) =====
     input_data: dict[str, Any]  # Workflow input (query, pdf_path, etc.)
@@ -246,26 +270,6 @@ def create_initial_state(
         "errors": [],
         "fatal_error": None,
     }
-
-
-# =============================================================================
-# STATE REDUCERS (For LangGraph Annotated Fields)
-# =============================================================================
-
-
-def merge_worker_results(left: list[dict], right: list[dict]) -> list[dict]:
-    """Merge worker results from parallel execution."""
-    return left + right
-
-
-def merge_errors(left: list[dict], right: list[dict]) -> list[dict]:
-    """Merge errors from parallel execution."""
-    return left + right
-
-
-def overwrite_reducer(left: Any, right: Any) -> Any:
-    """Reducer that keeps the last value."""
-    return right if right is not None else left
 
 
 # =============================================================================

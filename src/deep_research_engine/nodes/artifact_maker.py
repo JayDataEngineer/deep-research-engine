@@ -60,7 +60,7 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
                     "__goto__": "complete"
                 }
             else:
-                logger.warning(f"Artifact maker worker failed: {worker_result.error}. Falling back to basic aggregation.")
+                logger.warning(f"Artifact maker worker failed: {worker_result.get('error', 'unknown')}. Falling back to basic aggregation.")
         except Exception as e:
             logger.error(f"Error executing artifact maker worker: {e}. Falling back.")
 

@@ -211,7 +211,7 @@ def build_executive_summary(data: ReportData) -> str:
     n_voice = sum(1 for m in data.media_items if m.get("type") == "voice")
     n_photo = sum(1 for m in data.media_items if m.get("type") == "photo")
     n_video = sum(1 for m in data.media_items if m.get("type") == "video")
-    n_text = sum(1 for m in data.media_items if m.get("type") == "text")
+    n_text = sum(1 for m in data.media_items if m.get("type") in ("text", "message"))
     n_people = len(data.all_people)
     n_locations = len(data.all_locations)
     n_clusters = len(data.content_clusters)
@@ -249,7 +249,7 @@ def build_people_directory(data: ReportData) -> str:
 
     # Compute per-person stats
     person_stats: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"voice": 0, "photo": 0, "video": 0, "text": 0}
+        lambda: defaultdict(int)
     )
     for item in data.media_items:
         for person in item.get("speakers", []):
@@ -296,6 +296,8 @@ def build_people_directory(data: ReportData) -> str:
             parts.append(f"{stats['video']} videos")
         if stats.get("text"):
             parts.append(f"{stats['text']} messages")
+        if stats.get("message"):
+            parts.append(f"{stats['message']} messages")
         if parts:
             lines.append(f"- Appearances: {', '.join(parts)} ({total} total)")
 
@@ -430,7 +432,7 @@ def build_timeline(data: ReportData) -> str:
         lines.append(", ".join(parts))
 
         # Show notable media (not text)
-        notable = [m for m in items if m.get("type") != "text" and (m.get("transcript") or m.get("description"))]
+        notable = [m for m in items if m.get("type") not in ("text", "message") and (m.get("transcript") or m.get("description"))]
         if notable:
             lines.append("")
             for m in notable[:5]:
