@@ -86,7 +86,9 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                         f"Your goal is: {w_cfg.get('task')}. "
                         f"Be thorough but concise."
                     ),
-                    "tools": worker_class.required_tools,
+                    # Don't pass worker_class.required_tools here — those are
+                    # string names meant for the old BaseWorker.execute() pattern.
+                    # DeepAgents will inherit the king's tools instead.
                 }
                 w_model = w_cfg.get("model")
                 if w_model:
@@ -144,21 +146,11 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
         # Use shared DRY method for LiteLLM-backed ChatOpenAI
         king_model = get_langchain_llm(config_data=config_data)
 
-    king = create_deep_agent(
-        model=king_model,
-        system_prompt=king_prompt,
-        subagents=subagents,
-        tools=[vector_search_datastore, graph_query],
-        debug=True,
-    )
-
-    # 4. Invoke the King
-    logger.info(f"Invoking King Drafter with {len(subagents)} subagents...")
-
     # Build user message from ingestion output or original query
     user_query = state.get("input_data", {}).get("query", "Start the research process.")
 
     # Check for ingestion output (big_text_dump from telegram/pipeline)
+    # For ingestion data, use direct synthesis — skip the King agent entirely.
     big_dump_path = state.get("context", {}).get("big_text_dump")
     if big_dump_path:
         dump_file = Path(big_dump_path)
@@ -245,6 +237,16 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
             user_message = f"Execute the research plan for: {user_query}"
     else:
         user_message = f"Execute the research plan for: {user_query}"
+
+    # 4. Create and invoke the King (only reached for non-ingestion workflows)
+    king = create_deep_agent(
+        model=king_model,
+        system_prompt=king_prompt,
+        subagents=subagents,
+        tools=[vector_search_datastore, graph_query],
+        debug=True,
+    )
+    logger.info(f"Invoking King Drafter with {len(subagents)} subagents...")
 
     result = await king.ainvoke({"messages": [("user", user_message)]})
 
