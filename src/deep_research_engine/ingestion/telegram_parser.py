@@ -231,6 +231,9 @@ class TelegramParser:
                 from_elem = div.find("div", class_="from_name")
                 if from_elem:
                     sender = from_elem.text.strip()
+                    # Telegram HTML sometimes appends "  DD.MM.YYYY HH:MM:SS" to sender names
+                    import re as _re
+                    sender = _re.sub(r"\s+\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}:\d{2}$", "", sender)
 
                 # Text
                 text = None

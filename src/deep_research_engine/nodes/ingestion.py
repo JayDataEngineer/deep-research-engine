@@ -122,15 +122,12 @@ def _is_valid_vlm_description(text: str | None, item_type: str = "") -> bool:
     if not text or len(text.strip()) < 20:
         return False
     lower = text.lower().strip()
-    for phrase in _VLM_GARBAGE_PHRASES:
-        if phrase in lower:
-            return False
-    # Reject AI narrative roleplay (common in video descriptions)
-    if item_type == "video" and (
-        "## narrative" in lower or "**setting:**" in lower or "**overall tone:**" in lower
-    ):
+    if any(phrase in lower for phrase in _VLM_GARBAGE_PHRASES):
         return False
-    return True
+    return not (
+        item_type == "video"
+        and ("## narrative" in lower or "**setting:**" in lower or "**overall tone:**" in lower)
+    )
 
 
 def _load_checkpoint(pipeline_dir: Path, name: str) -> Any | None:
@@ -418,6 +415,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     video_descriptions: dict[str, str] = {}
     audio_fragments_for_megafile: list[dict[str, Any]] = []
     file_asr_results: list[tuple[Path, dict[str, Any]]] = []
+    global_speaker_map: dict[str, str] = {}
 
     # ================================================================
     # Phase 1.5: Early NER on text items
@@ -847,8 +845,48 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     else:
         vlm_enriched_items = []
 
-    _CHECKPOINT_INTERVAL = 50  # save every 50 items
+    checkpoint_interval = 50  # save every 50 items
     start_idx = len(vlm_enriched_items)
+
+    # Build a robust lookup for voice items → audio_results.
+    # audio_results keys are absolute paths from Phase 4; item paths may be relative.
+    # We build a filename → (abs_path, segments) map for fuzzy matching.
+    _audio_by_filename: dict[str, tuple[str, list[dict[str, Any]]]] = {}
+    for _apath, _segs in audio_results.items():
+        _fname = Path(_apath).name
+        _audio_by_filename[_fname] = (_apath, _segs)
+        # Also index by stem (without extension) for cross-format matches (.ogg vs .wav)
+        _stem = Path(_apath).stem
+        if _stem not in _audio_by_filename:
+            _audio_by_filename[_stem] = (_apath, _segs)
+
+    # Build the full speaker name resolver: file{idx}:SPEAKER_N → real name
+    # Combines phase5_speaker_map + phase6_identity_map into a single lookup.
+    _mf_id_to_name: dict[str, str] = {
+        _mf_id: resolved_identity_map.get(_global_id, _global_id)
+        for _mf_id, _global_id in global_speaker_map.items()
+    }
+    # Also add global IDs directly
+    _mf_id_to_name.update(resolved_identity_map)
+
+    def _resolve_voice_segments(
+        item_path_rel: str, segments: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Resolve speaker names in segments using the full mapping chain."""
+        # Find the file index for this item
+        _abs_path = str(input_dir / item_path_rel) if not Path(item_path_rel).is_absolute() else item_path_rel
+        _resolved_segments: list[dict[str, Any]] = []
+        for seg in segments:
+            name = seg.get("resolved_name") or seg.get("speaker", "Unknown")
+            # Try resolved_name first (already set by Phase 5/6), then mf_speaker_id
+            if not seg.get("resolved_name"):
+                _mf_id = seg.get("mf_speaker_id", "")
+                if _mf_id in _mf_id_to_name:
+                    name = _mf_id_to_name[_mf_id]
+                elif seg.get("speaker", "") in _mf_id_to_name:
+                    name = _mf_id_to_name[seg["speaker"]]
+            _resolved_segments.append({**seg, "resolved_name": name})
+        return _resolved_segments
 
     for idx, item in enumerate(items):
         if idx < start_idx:
@@ -871,32 +909,40 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             if not media_path.is_absolute():
                 media_path = input_dir / media_path_rel
 
-            if item_type == "voice" and str(media_path) in audio_results:
-                segments = audio_results[str(media_path)]
+            if item_type == "voice":
+                # Robust lookup: try exact path, then filename, then stem
+                segments: list[dict[str, Any]] | None = None
+                abs_key = str(media_path)
+                if abs_key in audio_results:
+                    segments = audio_results[abs_key]
+                else:
+                    fname = media_path.name
+                    if fname in _audio_by_filename:
+                        segments = _audio_by_filename[fname][1]
+                    else:
+                        stem = media_path.stem
+                        if stem in _audio_by_filename:
+                            segments = _audio_by_filename[stem][1]
 
-                # Apply resolved names
-                for seg in segments:
-                    raw_spk = seg["speaker"]
-                    if raw_spk in resolved_identity_map:
-                        seg["resolved_name"] = resolved_identity_map[raw_spk]
-                    elif seg.get("mf_speaker_id") in resolved_identity_map:
-                        seg["resolved_name"] = resolved_identity_map[seg["mf_speaker_id"]]
+                if segments:
+                    # Resolve speaker names via full chain
+                    segments = _resolve_voice_segments(media_path_rel, segments)
 
-                transcript_parts = []
-                for seg in segments:
-                    name = seg.get("resolved_name", seg["speaker"])
-                    transcript_parts.append(f"{name}: {seg['text']}")
+                    transcript_parts = []
+                    for seg in segments:
+                        name = seg.get("resolved_name", seg["speaker"])
+                        transcript_parts.append(f"{name}: {seg['text']}")
 
-                transcript = " ".join(transcript_parts)
-                content_parts.append(f"[Voice Message Transcript: {transcript}]")
+                    transcript = " ".join(transcript_parts)
+                    content_parts.append(f"[Voice Message Transcript: {transcript}]")
 
-                unique_speakers = {seg.get("resolved_name", seg["speaker"]) for seg in segments}
-                if len(unique_speakers) > 1:
-                    content_parts.append(f"[Speakers in snippet: {', '.join(unique_speakers)}]")
+                    unique_speakers = {seg.get("resolved_name", seg["speaker"]) for seg in segments}
+                    if len(unique_speakers) > 1:
+                        content_parts.append(f"[Speakers in snippet: {', '.join(unique_speakers)}]")
 
-                # Store structured fields
-                enriched["speakers"] = list(unique_speakers)
-                enriched["transcript"] = " ".join(seg.get("text", "") for seg in segments)
+                    # Store structured fields
+                    enriched["speakers"] = list(unique_speakers)
+                    enriched["transcript"] = " ".join(seg.get("text", "") for seg in segments)
 
             elif item_type == "photo":
                 if media_path_rel in identity_map:
@@ -958,7 +1004,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         })
 
         # Incremental checkpoint every N items
-        if (idx + 1) % _CHECKPOINT_INTERVAL == 0:
+        if (idx + 1) % checkpoint_interval == 0:
             _save_checkpoint(
                 pipeline_dir,
                 "phase7_vlm_enriched",
