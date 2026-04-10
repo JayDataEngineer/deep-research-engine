@@ -96,6 +96,43 @@ def _save_checkpoint(pipeline_dir: Path, name: str, data: Any) -> None:
     logger.info(f"Checkpoint saved: {path}")
 
 
+_VLM_GARBAGE_PHRASES = (
+    "i am sorry",
+    "i am a large language model",
+    "i cannot describe",
+    "i cannot view",
+    "i cannot process",
+    "please provide the image",
+    "you have not provided an image",
+    "unable to view",
+    "unable to process",
+    "safety guidelines",
+    "violates my",
+    "cannot be described",
+    "as a large language model",
+    "as an ai",
+    "i'm unable to",
+    "i am unable to",
+    "i don't see any image",
+)
+
+
+def _is_valid_vlm_description(text: str | None, item_type: str = "") -> bool:
+    """Sanity-check a VLM description. Returns False for garbage/refusals/roleplay."""
+    if not text or len(text.strip()) < 20:
+        return False
+    lower = text.lower().strip()
+    for phrase in _VLM_GARBAGE_PHRASES:
+        if phrase in lower:
+            return False
+    # Reject AI narrative roleplay (common in video descriptions)
+    if item_type == "video" and (
+        "## narrative" in lower or "**setting:**" in lower or "**overall tone:**" in lower
+    ):
+        return False
+    return True
+
+
 def _load_checkpoint(pipeline_dir: Path, name: str) -> Any | None:
     """Load a phase checkpoint artifact. Returns None if not found."""
     path = pipeline_dir / f"{name}.json"
@@ -880,8 +917,10 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                         logger.warning("VLM unavailable - skipping photo descriptions")
                     except Exception as e:
                         vlm_cb.record_failure(item, str(e))
-                if photo_desc:
+                if _is_valid_vlm_description(photo_desc, "photo"):
                     enriched["description"] = photo_desc
+                else:
+                    photo_desc = None  # Don't include garbage in content_parts either
 
             elif item_type == "video":
                 if media_path_rel in identity_map:
@@ -905,9 +944,12 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                         vlm_cb.record_failure(item, str(e))
                         video_desc = None
 
-                if video_desc:
+                if _is_valid_vlm_description(video_desc, "video"):
                     content_parts.append(f"[Video Summary: {video_desc}]")
                     enriched["description"] = video_desc
+                elif video_desc:
+                    logger.debug(f"Rejected invalid video description for {media_path_rel}")
+                    video_desc = None
 
         vlm_enriched_items.append({
             **item,
