@@ -50,7 +50,7 @@ _DOCKER_HOSTNAMES = ["orchestrator:8000", "shared-orchestrator-orchestrator-1:80
 _DISCOVER_TIMEOUT = 2  # seconds per probe
 _HEALTH_POLL_INTERVAL = 3  # seconds between health checks
 _LOAD_TIMEOUT = 1800  # 30 minutes for model loading
-_REQUEST_TIMEOUT = 300  # 5 min per request (general)
+_REQUEST_TIMEOUT = 600  # 10 min per request (large context synthesis needs time)
 _ASR_TIMEOUT = 1800  # 30 min for ASR (up to 30-min files with diarization)
 
 # Valid slot types and their models (from orchestrator config)

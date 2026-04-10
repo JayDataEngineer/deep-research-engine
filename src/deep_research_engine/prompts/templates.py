@@ -34,7 +34,7 @@ Return a JSON object with:
 
 Create a research plan that will guide worker agents to gather comprehensive information.""",
         "config": {
-            "model": "qwen-35-27",
+            "model": "qwen35-35b-a3b-vision",
             "temperature": 0.7,
         },
     },
@@ -65,7 +65,7 @@ Return a JSON object with:
 
 Be objective and thorough in your evaluation.""",
         "config": {
-            "model": "qwen-35-27",
+            "model": "qwen35-35b-a3b-vision",
             "temperature": 0.7,
         },
     },
@@ -117,7 +117,7 @@ The following research findings have been gathered from {{ worker_count }} resea
 Synthesize these findings into a structured research report following the schema exactly.
 Focus on clarity, accuracy, and proper attribution.""",
         "config": {
-            "model": "qwen-35-27",
+            "model": "qwen35-35b-a3b-vision",
             "temperature": 0.7,
             "enable_thinking": True,
         },
@@ -170,7 +170,7 @@ The following research findings have been gathered from {{ worker_count }} resea
 Transform these findings into a polished markdown document following the schema exactly.
 Focus on readability, proper formatting, and accurate attribution.""",
         "config": {
-            "model": "qwen-35-27",
+            "model": "qwen35-35b-a3b-vision",
             "temperature": 0.7,
         },
     },
@@ -218,7 +218,7 @@ The following research findings have been gathered from {{ worker_count }} resea
 Transform these findings into structured JSON following the schema exactly.
 Focus on clarity, proper structure, and accurate attribution.""",
         "config": {
-            "model": "qwen-35-27",
+            "model": "qwen35-35b-a3b-vision",
             "temperature": 0.7,
         },
     },
@@ -227,23 +227,28 @@ Focus on clarity, proper structure, and accurate attribution.""",
     # IDENTITY RESOLUTION - Multimodal Binding
     # ==========================================================================
     "identity-research": {
-        "prompt": """You are a master identity resolution researcher. Your task is to cross-reference temporal metadata from audio, visual, and text sources to deduce the real names of participants.
+        "prompt": """Cross-reference temporal metadata from audio, visual, and text sources to map Speaker IDs and Visual Cluster IDs to real names.
 
 **INPUT DATA**:
 - ACOUSTIC DIARIZATION: {{ asr_summary }}
 - VISUAL CLUSTERS: {{ visual_summary }}
 - CONTEXTUAL TEXT: {{ text_summary }}
 
-**DEDUCTION STEPS**:
+**ANALYSIS STEPS**:
 1. Identify when specific Speaker IDs are active.
 2. Cross-reference with Visual Cluster IDs active at the same time.
 3. Analyze contextual text where individuals are addressed by name (e.g., "Hi John") and see which IDs are active immediately after.
 4. Bind these IDs to the likely real name based on temporal overlap.
 
+**CONSTRAINTS**:
+- Only use evidence present in the input data
+- If a mapping is uncertain, mark it as uncertain with reasoning
+- Do not guess names that do not appear in the text data
+
 **OUTPUT**:
 Provide a detailed report of your findings. Clearly list which Speaker IDs and Visual Cluster IDs map to which real names. Explain your reasoning for each mapping.""",
         "config": {
-            "model": "openai:gpt-4o",
+            "model": "qwen35-35b-a3b-vision",
             "temperature": 0.0,
         },
     },
@@ -257,25 +262,25 @@ Provide a detailed report of your findings. Clearly list which Speaker IDs and V
 **REQUIRED OUTPUT**:
 A JSON mapping from Speaker IDs (e.g., "Speaker 0") or Visual Cluster IDs (e.g., "Identity_Cluster_1") to their resolved real names.""",
         "config": {
-            "model": "openai:gpt-4o-mini",
+            "model": "qwen35-35b-a3b-vision",
             "temperature": 0.0,
         },
     },
 
     "video-batch-analysis": {
-        "prompt": """Generate a cohesive narrative for this video segment based on these key frames. Describe the actions, characters, and environment.""",
+        "prompt": """These are key frames from a video in chronological order. State what is visible in each frame: who is present, what they are doing, and where they are. Do not invent dialogue, emotions, or details not visible in the frames.""",
         "config": {
-            "model": "openai:gpt-4o-mini",
+            "model": "gemma4-e4b-vision-fast",
             "temperature": 0.0,
         },
     },
 
     "video-synthesis": {
-        "prompt": """Combine the following sequential segment descriptions into a single, cohesive narrative for the entire video:
+        "prompt": """Combine the following sequential frame descriptions into a single factual summary of the video. State only what is visually confirmed across the segments. Do not add narrative embellishment.
 
 {{ descriptions }}""",
         "config": {
-            "model": "openai:gpt-4o-mini",
+            "model": "qwen35-35b-a3b-vision",
             "temperature": 0.3,
         },
     },
@@ -311,7 +316,7 @@ A JSON mapping from Speaker IDs (e.g., "Speaker 0") or Visual Cluster IDs (e.g.,
 
 {{ combined }}""",
         "config": {
-            "model": "qwen-35-27",
+            "model": "qwen35-35b-a3b-vision",
             "temperature": 0.3,
         },
     },

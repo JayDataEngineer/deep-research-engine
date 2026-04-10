@@ -187,7 +187,13 @@ async def critic_node(state: EngineState) -> dict[str, Any]:
     if not phase_config.get("enabled", True):
         logger.info("Critic node disabled. Skipping.")
         return {"__goto__": "neo4j_builder"}
-    
+
+    # Skip critic for ingestion workflows — the drafter output is synthesis,
+    # not research, and the critic prompt doesn't match ingestion context.
+    if state.get("context", {}).get("big_text_dump"):
+        logger.info("Critic skipped for ingestion workflow (big_text_dump present)")
+        return {"__goto__": "neo4j_builder", "critic_passed": True}
+
     # 2. Gather evaluation context
     worker_results = state.get("worker_results", [])
     plan = state.get("plan", [])

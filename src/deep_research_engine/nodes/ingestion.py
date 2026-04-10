@@ -956,7 +956,6 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 if not vlm_cb.is_tripped() and media_path.exists():
                     try:
                         photo_desc = await vlm_analyze(media_path)
-                        content_parts.append(f"[Photo Description: {photo_desc}]")
                         vlm_cb.record_success()
                     except RuntimeError:
                         vlm_cb.record_failure(item, "VLM unavailable for photo")
@@ -964,9 +963,10 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     except Exception as e:
                         vlm_cb.record_failure(item, str(e))
                 if _is_valid_vlm_description(photo_desc, "photo"):
+                    content_parts.append(f"[Photo Description: {photo_desc}]")
                     enriched["description"] = photo_desc
                 else:
-                    photo_desc = None  # Don't include garbage in content_parts either
+                    photo_desc = None
 
             elif item_type == "video":
                 if media_path_rel in identity_map:
@@ -1055,7 +1055,9 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             f"{len(structured_media_items)} structured items"
         )
     except Exception as e:
+        import traceback
         logger.warning(f"Context Enrichment subagent failed ({e}), falling back to per-item NER")
+        logger.warning(f"Traceback: {traceback.format_exc()}")
         # Fallback: per-item NER (original Phase 7 behavior)
         for item in vlm_enriched_items:
             item_combined = item.get("_enriched_content", "")

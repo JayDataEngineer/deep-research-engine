@@ -141,7 +141,10 @@ async def run_sort_agent(
     model: str = "gemma4-e4b-vision-fast",
     config_data: dict[str, Any] | None = None,
 ) -> str:
-    """Run the Sort Agent on raw content.
+    """Run the Sort Agent on raw content using direct InfraClient.chat().
+
+    Uses simple direct calls instead of DeepAgents to avoid retry loops
+    on the sorting task, which doesn't need tool access.
 
     Args:
         content: Raw ingested text to sort.
@@ -154,10 +157,33 @@ async def run_sort_agent(
     # Ensure LLM is loaded (may have been unloaded by ASR)
     _ensure_llm_loaded(model)
 
-    agent = create_sort_agent(model=model, config_data=config_data)
+    import asyncio
 
-    # Chunk large content to avoid truncation (process in 50K char chunks)
-    chunk_size = 50_000
+    infra = InfraClient()
+
+    # Simplified sort prompt (no tool references — direct call)
+    sort_system = (
+        "Organize the raw content into structured categories.\n\n"
+        "SORTING RULES:\n"
+        "1. GROUP by content type: messages, voice transcripts, photo descriptions, video summaries\n"
+        "2. ORDER chronologically within each group using timestamps\n"
+        "3. MERGE duplicate or near-duplicate entries\n"
+        "4. FLAG low-confidence or incomplete items with [?] markers\n"
+        "5. EXTRACT key metadata: sender, timestamp, media type, entity mentions\n\n"
+        "OUTPUT FORMAT:\n"
+        "## Messages\n"
+        "- [timestamp] **sender**: content [entities]\n\n"
+        "## Voice Transcripts\n"
+        "- [timestamp] **speaker**: transcript [entities]\n\n"
+        "## Photo Descriptions\n"
+        "- [timestamp] **description** [entities]\n\n"
+        "## Video Summaries\n"
+        "- [timestamp] **summary** [entities]\n\n"
+        "Be thorough but concise. Preserve all original information — only reorganize it."
+    )
+
+    # Chunk large content to avoid truncation (process in 40K char chunks)
+    chunk_size = 40_000
     if len(content) <= chunk_size:
         chunks = [content]
     else:
@@ -178,37 +204,31 @@ async def run_sort_agent(
     sorted_parts = []
     for i, chunk in enumerate(chunks):
         logger.info(f"Processing sort chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)")
-        result = await agent.ainvoke(
-            {
-                "messages": [
-                    (
-                        "user",
-                        f"Sort and organize the following raw content (part {i + 1} of {len(chunks)}):\n\n{chunk}\n\n"
-                        f"Apply the sorting rules from your system prompt.",
-                    )
-                ]
-            }
-        )
-        sorted_parts.append(result["messages"][-1].content)
+        try:
+            response = await asyncio.to_thread(
+                infra.chat,
+                messages=[
+                    {"role": "system", "content": sort_system},
+                    {"role": "user", "content": f"Sort and organize the following raw content (part {i + 1} of {len(chunks)}):\n\n{chunk}"},
+                ],
+                model=model,
+                max_tokens=16000,
+            )
+            text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if text:
+                sorted_parts.append(text)
+            else:
+                logger.warning(f"Sort chunk {i + 1} returned empty response")
+                sorted_parts.append(chunk[:5000])
+        except Exception as e:
+            logger.warning(f"Sort chunk {i + 1} failed: {e}")
+            sorted_parts.append(chunk[:5000])
 
     if len(sorted_parts) == 1:
         sorted_content = sorted_parts[0]
     else:
-        # Run a final merge pass to deduplicate across chunks
-        merged_input = "\n\n".join(sorted_parts)
-        merge_agent = create_sort_agent(model=model, config_data=config_data)
-        merge_result = await merge_agent.ainvoke(
-            {
-                "messages": [
-                    (
-                        "user",
-                        f"Merge these sorted sections into a single organized document, "
-                        f"deduplicating any overlapping entries:\n\n{merged_input}",
-                    )
-                ]
-            }
-        )
-        sorted_content = merge_result["messages"][-1].content
+        # Simple concatenation for multi-chunk (avoids DeepAgents retry loops)
+        sorted_content = "\n\n".join(sorted_parts)
 
     logger.info(f"Sort Agent completed: {len(sorted_content)} chars output")
     return sorted_content
@@ -287,7 +307,7 @@ async def run_entity_extractor_agent(
     model: str = "gemma4-e4b-vision-fast",
     config_data: dict[str, Any] | None = None,
 ) -> str:
-    """Run the Entity Extractor Agent on text content.
+    """Run the Entity Extractor Agent on text content using direct InfraClient.chat().
 
     Args:
         content: Text to extract entities from.
@@ -300,7 +320,29 @@ async def run_entity_extractor_agent(
     # Ensure LLM is loaded (may have been unloaded by ASR)
     _ensure_llm_loaded(model)
 
-    agent = create_entity_extractor_agent(model=model, config_data=config_data)
+    import asyncio
+
+    infra = InfraClient()
+
+    entity_system = (
+        "Extract all named entities from the provided text.\n\n"
+        "CATEGORIES:\n"
+        "- People (full names, nicknames, handles)\n"
+        "- Organizations (groups, companies, movements)\n"
+        "- Locations (cities, states, countries, addresses)\n"
+        "- Events (specific incidents, gatherings)\n"
+        "- Dates/Times (specific dates or time ranges)\n"
+        "- Contact Info (phone numbers, emails, URLs, social media)\n"
+        "- Vehicles (make, model, license plates)\n"
+        "- Other notable entities\n\n"
+        "OUTPUT FORMAT:\n"
+        "## People\n- Name: brief context\n\n"
+        "## Organizations\n- Name: brief context\n\n"
+        "## Locations\n- Name: brief context\n\n"
+        "## Events\n- Name: brief context\n\n"
+        "## Other\n- Name: brief context\n\n"
+        "Be thorough — include EVERY entity mentioned, even in passing."
+    )
 
     # Chunk large content to avoid truncation
     chunk_size = 50_000
@@ -322,36 +364,31 @@ async def run_entity_extractor_agent(
     entity_parts = []
     for i, chunk in enumerate(chunks):
         logger.info(f"Extracting entities from chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)")
-        result = await agent.ainvoke(
-            {
-                "messages": [
-                    (
-                        "user",
-                        f"Extract all named entities from the following text (part {i + 1} of {len(chunks)}):\n\n{chunk}\n\n"
-                        f"Apply the extraction rules from your system prompt.",
-                    )
-                ]
-            }
-        )
-        entity_parts.append(result["messages"][-1].content)
+        try:
+            response = await asyncio.to_thread(
+                infra.chat,
+                messages=[
+                    {"role": "system", "content": entity_system},
+                    {"role": "user", "content": f"Extract all named entities from the following text (part {i + 1} of {len(chunks)}):\n\n{chunk}"},
+                ],
+                model=model,
+                max_tokens=16000,
+            )
+            text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if text:
+                entity_parts.append(text)
+            else:
+                logger.warning(f"Entity extraction chunk {i + 1} returned empty response")
+        except Exception as e:
+            logger.warning(f"Entity extraction chunk {i + 1} failed: {e}")
 
     if len(entity_parts) == 1:
         entities = entity_parts[0]
+    elif entity_parts:
+        # Simple concatenation for merge (avoids another LLM call)
+        entities = "\n\n".join(entity_parts)
     else:
-        # Merge and deduplicate entity lists
-        merged = "\n\n".join(entity_parts)
-        merge_agent = create_entity_extractor_agent(model=model, config_data=config_data)
-        merge_result = await merge_agent.ainvoke(
-            {
-                "messages": [
-                    (
-                        "user",
-                        f"Merge and deduplicate these entity lists into a single comprehensive list:\n\n{merged}",
-                    )
-                ]
-            }
-        )
-        entities = merge_result["messages"][-1].content
+        entities = ""
 
     logger.info(f"Entity Extractor completed: {len(entities)} chars output")
     return entities
@@ -482,7 +519,7 @@ async def run_entity_finder(
     """Run the Entity Finder Agent for a single entity.
 
     Searches through content for all mentions of the given entity
-    and produces a structured profile enriched with graph context.
+    and produces a structured profile using direct InfraClient.chat().
 
     Args:
         entity_name: Name of the entity to profile.
@@ -495,11 +532,13 @@ async def run_entity_finder(
     """
     _ensure_llm_loaded(model)
 
-    agent = create_entity_finder_agent(model=model, config_data=config_data)
+    import asyncio
+
+    infra = InfraClient()
 
     # For very large content, search for relevant chunks containing the entity
     # to avoid sending the entire document for each entity
-    relevant_chunks = _find_relevant_chunks(entity_name, content, chunk_size=60_000)
+    relevant_chunks = _find_relevant_chunks(entity_name, content, chunk_size=40_000)
 
     if not relevant_chunks:
         return f"## {entity_name}\n\nNo mentions found in the content.\n"
@@ -510,24 +549,55 @@ async def run_entity_finder(
         f"({len(relevant_chunks)} chunks)"
     )
 
-    result = await agent.ainvoke(
-        {
-            "messages": [
-                (
-                    "user",
-                    f"Build a comprehensive profile for the entity: **{entity_name}**\n\n"
-                    f"Search through the following text for every mention:\n\n{relevant_text}",
-                )
-            ]
-        }
+    profile_system = (
+        "You are an Entity Profile Agent. You receive a single entity name and a body of text.\n"
+        "Find EVERY mention of that entity in the text and build a comprehensive profile.\n\n"
+        "PROFILE STRUCTURE:\n"
+        "1. **Name/Alias**: All names, nicknames, handles used for this entity\n"
+        "2. **Timeline**: Chronological list of every mention with date + context\n"
+        "3. **Relationships**: People connected to this entity and how\n"
+        "4. **Key Facts**: Specific details — locations, roles, events, affiliations\n"
+        "5. **Sentiment/Tone**: How the entity is discussed (positive, negative, neutral)\n"
+        "6. **Open Questions**: Things mentioned but unclear or incomplete\n\n"
+        "RULES:\n"
+        "- Include ONLY information found in the provided text\n"
+        "- Quote directly when possible\n"
+        "- Note contradictions or changes over time\n"
+        "- If the entity is barely mentioned, report what little exists\n"
+        "- Be thorough — a single passing mention still has context\n\n"
+        "OUTPUT: A structured markdown profile for this entity."
     )
 
-    profile = result["messages"][-1].content
+    try:
+        response = await asyncio.to_thread(
+            infra.chat,
+            messages=[
+                {"role": "system", "content": profile_system},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Build a comprehensive profile for the entity: **{entity_name}**\n\n"
+                        f"Search through the following text for every mention:\n\n{relevant_text}"
+                    ),
+                },
+            ],
+            model=model,
+            max_tokens=8000,
+        )
+        text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if text:
+            profile = text
+        else:
+            profile = f"## {entity_name}\n\nProfile extraction returned empty response.\n"
+    except Exception as e:
+        logger.warning(f"Entity Finder failed for '{entity_name}': {e}")
+        profile = f"## {entity_name}\n\nProfile extraction failed: {e}\n"
+
     logger.info(f"Entity Finder: profile for '{entity_name}' — {len(profile)} chars")
     return profile
 
 
-def _find_relevant_chunks(entity_name: str, content: str, chunk_size: int = 60_000) -> list[str]:
+def _find_relevant_chunks(entity_name: str, content: str, chunk_size: int = 40_000) -> list[str]:
     """Find content chunks that mention the entity.
 
     Uses case-insensitive substring matching to locate relevant sections.
@@ -646,10 +716,9 @@ def format_entity_profiles(profiles: dict[str, str]) -> str:
 
 
 IDENTITY_RESOLVER_PROMPT = (
-    "You are an Identity Resolution Agent. Your job is to analyze multimodal data "
-    "and produce a unified identity mapping that links speaker IDs, face clusters, "
-    "and entity names to real people.\n\n"
-    "INPUT DATA YOU RECEIVE:\n"
+    "Analyze multimodal data and produce a unified identity mapping that links "
+    "speaker IDs, face clusters, and entity names to real people.\n\n"
+    "INPUT DATA:\n"
     "- ASR transcript segments with speaker labels and timestamps\n"
     "- Visual face cluster events from photos/videos\n"
     "- Text messages with sender names and timestamps\n"
@@ -658,17 +727,24 @@ IDENTITY_RESOLVER_PROMPT = (
     "RESOLUTION STRATEGY:\n"
     "1. FIRST, use the graph_query tool to look up any existing persons in the "
     "knowledge graph. Match new speaker/cluster IDs to known names.\n"
-    "2. Cross-reference speaker IDs across files — speakers with similar context "
-    "(discussing same people, places, events) are likely the same person.\n"
-    "3. Match face clusters to entity names when the timestamp and context align.\n"
-    "4. Use text message senders as anchor identities — if a sender name appears "
-    "in the same temporal context as a speaker ID, they are likely the same person.\n"
+    "2. SENDER-SPEAKER CORRELATION: When text messages and voice recordings come "
+    "from the same conversation, the sender of a message is often the same person "
+    "as the speaker in nearby voice recordings. Use timestamp proximity and "
+    "conversational flow (greetings, references to shared context) to link them.\n"
+    "3. Cross-reference speaker IDs across files — speakers discussing the same "
+    "people, places, and events with similar vocabulary are likely the same person.\n"
+    "4. Match face clusters to entity names when the timestamp and context align.\n"
     "5. Pre-NER names are high-confidence — prioritize matching to these.\n\n"
-    "RULES:\n"
-    "- Only map IDs to names when you have reasonable confidence\n"
-    "- Flag uncertain mappings with [?] suffix\n"
-    "- Unmapped IDs keep their raw form (Speaker_0, Identity_Cluster_1, etc.)\n"
-    "- Multiple raw IDs can map to the same resolved name\n\n"
+    "CRITICAL RULES:\n"
+    "- Map IDs to PERSON names only — individual human beings.\n"
+    "- NEVER map a speaker ID to an organization name, group name, or movement. "
+    "If a person mentions an organization they belong to, the speaker is still the "
+    "PERSON, not the organization.\n"
+    "- Only map IDs to names when you have reasonable confidence.\n"
+    "- Flag uncertain mappings with [?] suffix.\n"
+    "- Unmapped IDs keep their raw form (Speaker_0, Identity_Cluster_1, etc.).\n"
+    "- Multiple raw IDs can map to the same resolved name.\n"
+    "- Resolved names must come from the provided text data — do not invent names.\n\n"
     "OUTPUT: A JSON object mapping raw IDs to resolved names.\n"
     "Example: {\"Speaker_0\": \"Alice\", \"Speaker_1\": \"Bob\", "
     "\"Identity_Cluster_2\": \"Alice\", \"file0:Speaker_0\": \"Alice\"}\n"
@@ -754,8 +830,9 @@ async def run_identity_resolver(
 ) -> dict[str, str]:
     """Run the Identity Resolver Agent for Phase 6.
 
-    Uses DeepAgents with graph_query tool to iteratively resolve speaker IDs,
-    face clusters, and entity names to real people.
+    Uses direct InfraClient.chat() to resolve speaker IDs, face clusters,
+    and entity names to real people. Two-pass: research (with graph context
+    fetched first), then format.
 
     Args:
         asr_segments: ASR transcript segments with speaker labels.
@@ -770,13 +847,37 @@ async def run_identity_resolver(
     """
     _ensure_llm_loaded(model)
 
-    tools = get_deep_agent_tools(config_data)
-    agent = create_identity_resolver_agent(model=model, tools=tools)
+    import asyncio
+
+    infra = InfraClient()
 
     # Build context with smart chunking
     asr_summary = _format_asr_summary(asr_segments)
     visual_summary = _format_visual_summary(visual_events)
     text_summary = _format_text_summary(text_messages)
+
+    # Pre-fetch graph context for known entities (replaces tool-based lookup)
+    graph_context = ""
+    if config_data:
+        try:
+            from ..tools.storage import get_neo4j_from_config
+
+            neo4j = await get_neo4j_from_config(config_data)
+            if neo4j:
+                try:
+                    result = await neo4j.execute_cypher(
+                        "MATCH (p:Person) RETURN p.name AS name LIMIT 50"
+                    )
+                    if result:
+                        names = [r["name"] for r in result if r.get("name")]
+                        if names:
+                            graph_context = "KNOWN PERSONS IN GRAPH:\n" + "\n".join(
+                                f"- {n}" for n in names
+                            )
+                finally:
+                    await neo4j.cleanup()
+        except Exception as e:
+            logger.warning(f"Graph lookup for identity resolver failed (non-fatal): {e}")
 
     # Build entity names section
     entity_section = ""
@@ -788,11 +889,13 @@ async def run_identity_resolver(
 
     # Build user message
     parts = [
-        "Resolve the following identities. Use graph_query to look up existing persons first.\n",
+        "Resolve the following identities to real person names.\n",
         f"## ASR Segments ({len(asr_segments)} total)\n{asr_summary}\n",
         f"## Visual Events ({len(visual_events)} total)\n{visual_summary}\n",
         f"## Text Messages ({len(text_messages)} total)\n{text_summary}\n",
     ]
+    if graph_context:
+        parts.append(f"## Knowledge Graph Context\n{graph_context}\n")
     if entity_section:
         parts.append(f"## Pre-NER Names\n{entity_section}\n")
     parts.append(
@@ -802,11 +905,25 @@ async def run_identity_resolver(
 
     user_message = "\n\n".join(parts)
 
-    result = await agent.ainvoke({"messages": [("user", user_message)]})
-    response_text = result["messages"][-1].content
+    resolver_system = IDENTITY_RESOLVER_PROMPT
+
+    try:
+        response = await asyncio.to_thread(
+            infra.chat,
+            messages=[
+                {"role": "system", "content": resolver_system},
+                {"role": "user", "content": user_message},
+            ],
+            model=model,
+            max_tokens=16000,
+        )
+        response_text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+    except Exception as e:
+        logger.warning(f"Identity resolver direct call failed: {e}")
+        response_text = ""
 
     # Parse JSON mapping from response
-    mapping = _parse_identity_mapping(response_text)
+    mapping = _parse_identity_mapping(response_text) if response_text else {}
     logger.info(f"Identity Resolver: {len(mapping)} identities resolved")
     return mapping
 
@@ -927,6 +1044,10 @@ async def run_context_enrichment(
     """
     _ensure_llm_loaded(model)
 
+    import asyncio
+
+    infra = InfraClient()
+
     processed_messages: list[str] = []
     entity_extractions: list[dict[str, Any]] = []
     structured_media_items: list[dict[str, Any]] = []
@@ -938,31 +1059,56 @@ async def run_context_enrichment(
     )
 
     # Process in batches for entity extraction
+    max_batch_chars = 80_000  # ~20K tokens, leaves room for system prompt + output in 72K context
     for batch_start in range(0, len(item_contents), batch_size):
         batch = item_contents[batch_start: batch_start + batch_size]
         batch_text = "\n\n---\n\n".join(
             f"ITEM {i}:\n{content}"
             for i, content in enumerate(batch)
         )
+        # If batch is too large, truncate individual items to fit
+        if len(batch_text) > max_batch_chars:
+            truncated = []
+            remaining = max_batch_chars
+            for i, content in enumerate(batch):
+                budget = max(500, remaining // (len(batch) - i))
+                item_text = content[:budget]
+                truncated.append(f"ITEM {i}:\n{item_text}")
+                remaining -= len(item_text) + 20
+                if remaining <= 0:
+                    break
+            batch_text = "\n\n---\n\n".join(truncated)
 
         logger.info(
             f"Context Enrichment: batch {batch_start // batch_size + 1}, "
             f"{len(batch)} items, {len(batch_text)} chars"
         )
 
-        agent = create_context_enrichment_agent(model=model)
-        result = await agent.ainvoke(
-            {
-                "messages": [
-                    (
-                        "user",
-                        f"Extract entities from these {len(batch)} items. "
-                        f"Return JSON with 'entities' and 'item_entities' keys.\n\n{batch_text}",
-                    )
-                ]
-            }
-        )
-        batch_result = _parse_batch_entities(result["messages"][-1].content)
+        try:
+            response = await asyncio.to_thread(
+                infra.chat,
+                messages=[
+                    {"role": "system", "content": CONTEXT_ENRICHMENT_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Extract entities from these {len(batch)} items. "
+                            f"Return JSON with 'entities' and 'item_entities' keys.\n\n{batch_text}"
+                        ),
+                    },
+                ],
+                model=model,
+                max_tokens=8000,
+            )
+            response_text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            batch_result = _parse_batch_entities(response_text)
+        except Exception as e:
+            logger.warning(f"Context Enrichment batch {batch_start // batch_size + 1} failed: {e}")
+            batch_result = {"entities": {}, "item_entities": {}}
+
+        # Normalize: if LLM returned a list, wrap in expected dict structure
+        if isinstance(batch_result, list):
+            batch_result = {"entities": batch_result, "item_entities": {}}
         entity_extractions.append(batch_result)
 
     # Build processed messages from enriched items
@@ -981,7 +1127,14 @@ async def run_context_enrichment(
         item_idx = idx % batch_size
         if batch_idx < len(entity_extractions):
             batch_ents = entity_extractions[batch_idx]
-            item_ents = batch_ents.get("item_entities", {}).get(str(item_idx), {})
+            if not isinstance(batch_ents, dict):
+                batch_ents = {"entities": batch_ents, "item_entities": {}}
+            item_entities_val = batch_ents.get("item_entities", {})
+            if not isinstance(item_entities_val, dict):
+                item_entities_val = {}
+            item_ents = item_entities_val.get(str(item_idx), {})
+            if not isinstance(item_ents, dict):
+                item_ents = {}
             people = item_ents.get("people", [])
             if people:
                 content += f" [Entities - People: {', '.join(people)}]"

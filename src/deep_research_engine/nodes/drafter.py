@@ -82,8 +82,8 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                     "name": w_type,
                     "description": f"{worker_class.description}. Task: {w_cfg.get('task')}",
                     "system_prompt": (
-                        f"You are a specialist in {w_type}. "
-                        f"Your goal is: {w_cfg.get('task')}. "
+                        f"Task: {w_cfg.get('task')}. "
+                        f"Only use information provided in the input data. "
                         f"Be thorough but concise."
                     ),
                     # Don't pass worker_class.required_tools here — those are
@@ -116,20 +116,23 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
             {
                 "name": "social_archive",
                 "description": "Expert at analyzing social archive data dumps to extract relationship profiles and key memories.",
-                "system_prompt": "You are a Social Archive Flash Agent. Your job is to analyze the social data to extract friend profiles, relationship vibes, and key memories.",
-                "model": "openai:gpt-4o-mini",
+                "system_prompt": "Analyze the social archive data to extract relationship profiles and key memories. Only state facts supported by the data. Do not invent personality traits or relationships not evidenced in the messages.",
+                "model": "qwen35-35b-a3b-vision",
             }
         )
 
     # 3. Create the King Drafter
     king_prompt = (
-        "You are the King Drafter, a master orchestrator of research and drafting.\n"
-        "Your goal is to oversee a complex research task and produce a high-quality initial draft.\n\n"
+        "You are the lead drafter responsible for coordinating subagent research and producing the final report.\n\n"
         "CORE RESPONSIBILITIES:\n"
         "1. DELEGATE: You don't do the primary research yourself. You delegate specific tasks to your Flash Subagents.\n"
-        "2. SYNTHESIZE: Once subagents return their findings, you must integrate them into a coherent, comprehensive report.\n"
+        "2. SYNTHESIZE: Once subagents return their findings, integrate them into a coherent, comprehensive report.\n"
         "3. FORMAT: Ensure the output is well-structured markdown with clear headings, citations, and insights.\n\n"
-        "IMPORTANT OUTPUT RULES:\n"
+        "CONSTRAINTS:\n"
+        "- Only include information from subagent results and provided data\n"
+        "- Do not add facts, conclusions, or context not present in the source material\n"
+        "- If information is missing or uncertain, say so explicitly\n\n"
+        "OUTPUT RULES:\n"
         "- Respond with plain text/markdown only\n"
         "- Do NOT use tool calls for your final response\n"
         "- When generating JSON arguments, use valid JSON syntax (arrays as [...], not strings)\n\n"
@@ -298,21 +301,22 @@ async def _synthesize_ingestion_data(
         header = "\n\n".join(context_parts)
         analysis_content = f"{header}\n\n## CONTENT\n\n{analysis_content}"
 
-    # Chunk size: 80K chars (~20K tokens) leaves room for system prompt + output
-    chunk_size = 80_000
-    max_chars = 80_000
+    # Chunk size: 100K chars (~25K tokens) leaves room for system prompt + output in 72K context
+    chunk_size = 100_000
+    max_chars = 100_000
 
     if len(analysis_content) <= max_chars:
         # Small enough for single-pass synthesis
         synthesis_prompt = (
-            "You are a research analyst. Synthesize the following ingested data into a "
+            "Synthesize the following ingested data into a "
             "comprehensive, well-structured research report.\n\n"
             "REQUIREMENTS:\n"
             "1. Create clear sections with headers (##)\n"
             "2. Summarize key themes, relationships, and patterns\n"
-            "3. Preserve important details and specific facts\n"
+            "3. Preserve important details and specific facts from the data\n"
             "4. Include a summary at the top\n"
-            "5. Use markdown formatting\n\n"
+            "5. Use markdown formatting\n"
+            "6. Do not add information not present in the data\n\n"
             f"RESEARCH GOAL: {user_query}\n\n"
             f"DATA:\n{analysis_content}"
         )

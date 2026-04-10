@@ -309,19 +309,18 @@ async def _extract_triplets_legacy(
             "name": "triplet_reviewer",
             "description": "Reviews extracted triplets for entity deduplication and consistency.",
             "system_prompt": (
-                "You are a Graph Quality Critic. Review the proposed triplets for quality.\n"
+                "Review proposed knowledge graph triplets for quality.\n"
                 "Focus on:\n"
                 "1. Entity Resolution: Merge duplicates (e.g. 'US' vs 'USA').\n"
                 "2. Label Consistency: Use existing labels when they fit.\n"
                 "3. Relationship Clarity: Predicates should be descriptive verbs.\n"
-                "Suggest corrections in a structured format."
+                "Only merge entities that clearly refer to the same thing. Suggest corrections in a structured format."
             ),
             "model": llm,
         }
     ]
 
     system_prompt = (
-        "You are the Neo4j Knowledge Graph Specialist.\n"
         "Extract (Subject, Predicate, Object) triplets from the text.\n\n"
         "DYNAMIC SCHEMA:\n"
         "- Invent appropriate node labels based on the content domain "

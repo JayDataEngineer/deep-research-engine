@@ -50,9 +50,9 @@ storage:
     enabled: true
   neo4j:
     enabled: true
-    uri: "bolt://neo4j.local:7687"
+    uri: "bolt://172.17.0.11:7687"
     username: "neo4j"
-    password: "${NEO4J_PASSWORD:-testpassword}"
+    password: "${NEO4J_PASSWORD:-e2e-test-neo4j-password}"
     namespace: "social_archive"
 
 llm:

@@ -128,8 +128,9 @@ class SocialArchiveWorker(BaseWorker):
         """Flash subagent to extract the overall vibe."""
         llm = await self._get_llm(state)
         prompt = (
-            "Analyze the following social archive data and describe the overall 'vibe', "
-            "common themes, and shared history of the group.\n\n"
+            "Analyze the following social archive data and identify the recurring themes, "
+            "communication patterns, and shared history of the group. "
+            "Only state observations directly supported by the messages.\n\n"
             f"Content:\n{content}"
         )
         response = await llm.ainvoke(prompt)
@@ -140,6 +141,7 @@ class SocialArchiveWorker(BaseWorker):
         llm = await self._get_llm(state)
         prompt = (
             "Identify the key people in this social archive and their relationships to each other. "
+            "Only include relationships evidenced by the messages (e.g. mutual references, shared activities). "
             "Respond with a JSON list of objects, each with 'person_a', 'person_b', and 'relationship'.\n\n"
             f"Content:\n{content}"
         )
@@ -151,9 +153,11 @@ class SocialArchiveWorker(BaseWorker):
         """Specialist sub-sub agent to create personality profiles."""
         llm = await self._get_llm(state)
         prompt = (
-            "Based on the interactions in this social archive, create personality profiles for "
-            "the main participants. Respond with a JSON list of objects, each with 'name', "
-            "'traits' (list of strings), and 'summary'.\n\n"
+            "Based on the messages in this social archive, summarize each main participant's "
+            "communication patterns and topics they discuss. Only describe patterns observable "
+            "in the messages, not inferred personality traits. "
+            "Respond with a JSON list of objects, each with 'name', "
+            "'traits' (list of observable patterns), and 'summary'.\n\n"
             f"Content:\n{content}"
         )
         response = await llm.ainvoke(prompt)
@@ -164,7 +168,8 @@ class SocialArchiveWorker(BaseWorker):
         """Specialist sub-sub agent to find key moments."""
         llm = await self._get_llm(state)
         prompt = (
-            "Extract significant shared memories, events, or inside jokes from this social archive. "
+            "Extract significant shared events or recurring topics from this social archive. "
+            "Only include events directly referenced in the messages. "
             "Respond with a JSON list of objects, each with 'event' and 'description'.\n\n"
             f"Content:\n{content}"
         )

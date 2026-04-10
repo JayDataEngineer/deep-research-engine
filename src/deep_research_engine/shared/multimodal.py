@@ -180,27 +180,17 @@ async def _transcribe_full_file(
                 if text and not text.startswith("[ASR failed"):
                     logger.info(f"Full-file transcription succeeded: {len(text)} chars")
                     return result
-                # Server errors (502/503) mean backend crashed — don't retry
-                if text and any(code in text for code in ("HTTP 502", "HTTP 503")):
-                    logger.warning("Server error in result, skipping remaining retries")
-                    return None
+                # _transcribe_segment already tried all fallbacks — no point retrying
+                logger.warning(f"All ASR models failed for full-file attempt {attempt + 1}")
                 if attempt < max_retries - 1:
-                    logger.warning(f"Attempt {attempt + 1} returned empty, retrying in 5s...")
                     await asyncio.sleep(5)
                     continue
             elif isinstance(result, str) and result and not result.startswith("[ASR failed"):
                 return result
         except Exception as e:
             logger.warning(f"Full-file attempt {attempt + 1}/{max_retries} failed: {e}")
-            error_str = str(e)
-            # Server errors (502/503) mean backend crashed — don't burn retries
-            if any(code in error_str for code in ("HTTP 502", "HTTP 503")):
-                logger.warning("Server error detected, skipping remaining retries")
-                return None
             if attempt < max_retries - 1:
                 await asyncio.sleep(5)
-                with contextlib.suppress(Exception):
-                    infra.load("asr", "vibevoice-asr", wait=True)
     return None
 
 
@@ -356,44 +346,39 @@ async def _transcribe_segment(
     include_diarization: bool,
     time_offset: float = 0.0,
 ) -> Union[str, dict[str, Any]]:
-    """Transcribe a single audio segment via InfraClient."""
-    models_to_try = ["vibevoice-asr"]
+    """Transcribe a single audio segment via InfraClient (VibeVoice ASR)."""
+    try:
+        logger.info("Attempting ASR with model: vibevoice-asr")
+        result = await asyncio.to_thread(
+            infra.transcribe,
+            audio=audio_path,
+            model="vibevoice-asr",
+            diarize=include_diarization,
+            language=language,
+        )
 
-    for model in models_to_try:
-        try:
-            logger.info(f"Attempting ASR with model: {model}")
-            result = await asyncio.to_thread(
-                infra.transcribe,
-                audio=audio_path,
-                model=model,
-                diarize=include_diarization,
-                language=language,
-            )
+        if include_diarization:
+            parsed = _parse_vibevoice_response(result)
+            # Adjust segment timestamps by time_offset
+            for seg in parsed.get("segments", []):
+                seg["start"] = seg.get("start", 0.0) + time_offset
+                seg["end"] = seg.get("end", 0.0) + time_offset
+            return parsed
 
-            if include_diarization:
-                parsed = _parse_vibevoice_response(result)
-                # Adjust segment timestamps by time_offset
-                for seg in parsed.get("segments", []):
-                    seg["start"] = seg.get("start", 0.0) + time_offset
-                    seg["end"] = seg.get("end", 0.0) + time_offset
-                return parsed
+        text = result.get("text", "")
+        logger.info(f"Transcription complete: {len(text)} chars")
+        return text
 
-            text = result.get("text", "")
-            logger.info(f"Transcription complete with {model}: {len(text)} chars")
-            return text
-
-        except InfraError as e:
-            logger.warning(f"ASR model {model} failed: {e}")
-            if model == models_to_try[-1]:
-                if include_diarization:
-                    return {
-                        "text": f"[ASR failed: {e}]",
-                        "segments": [],
-                        "speakers": 0,
-                        "error": str(e),
-                    }
-                return f"[ASR failed for {audio_path.name}: {e}]"
-            continue
+    except InfraError as e:
+        logger.warning(f"ASR model vibevoice-asr failed: {e}")
+        if include_diarization:
+            return {
+                "text": f"[ASR failed: {e}]",
+                "segments": [],
+                "speakers": 0,
+                "error": str(e),
+            }
+        return f"[ASR failed for {audio_path.name}: {e}]"
 
     if include_diarization:
         return {"text": "", "segments": [], "speakers": 0}
@@ -444,7 +429,7 @@ def _parse_vibevoice_response(result: dict) -> dict[str, Any]:
 
 async def vlm_analyze(
     image_paths: list[Path] | Path,
-    prompt: str = "Describe this image in detail.",
+    prompt: str = "List what you see in this image. State only what is visually present: objects, people, text, setting. Do not narrate, roleplay, or add context not visible in the image.",
 ) -> str:
     """Analyze one or more images using VLM via InfraClient."""
     if isinstance(image_paths, Path):
@@ -597,7 +582,7 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
             return "[No frames extracted from video]"
 
         content: list[dict[str, Any]] = [
-            {"type": "text", "text": "Analyze these video frames and describe what's happening."}
+            {"type": "text", "text": "These are sequential frames from a video. List what is visible: people, objects, actions, text, and setting changes across frames. State only what you can see, do not invent details."}
         ]
         for frame_b64 in frames:
             content.append(
@@ -784,7 +769,7 @@ async def extract_scene_frames(
 
 async def batch_vlm_video_analysis(
     frame_items: list[dict[str, Any]],
-    prompt: str = "Generate a cohesive narrative for this video segment based on these key frames. Describe the actions, characters, and environment.",
+    prompt: str = "These are key frames from a video in chronological order. State what is visible in each frame: who is present, what they are doing, and where they are. Do not invent dialogue, emotions, or details not visible in the frames.",
     batch_size: int = 15,
 ) -> str:
     """Analyze multiple frames using a VLM to generate a cohesive narrative."""
@@ -1494,7 +1479,7 @@ async def resolve_identities(
         research_response = await asyncio.to_thread(
             _get_infra().chat,
             messages=[
-                {"role": "system", "content": "You are a master identity resolution researcher."},
+                {"role": "system", "content": "Cross-reference the provided data to map speaker IDs and visual cluster IDs to real person names. Only use evidence present in the data. Map IDs to individual PERSON names only — never to organization names, group names, or movements. If a speaker mentions an organization, the speaker is still the person, not the organization. If a mapping is uncertain, say so explicitly."},
                 {"role": "user", "content": research_prompt},
             ],
             model=resolution_model,
