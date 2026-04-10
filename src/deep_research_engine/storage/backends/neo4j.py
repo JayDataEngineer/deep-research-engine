@@ -701,19 +701,25 @@ class Neo4jStorage(StorageBackend):
                 # Batch write nodes using UNWIND
                 if nodes:
                     # Group by label combination for efficient MERGE
+                    seen_label_keys: set[str] = set()
                     for node_spec in nodes:
                         labels = [
                             self._sanitize_label(lbl) for lbl in node_spec.get("labels", ["Entity"])
                         ]
+                        label_key = ":".join(sorted(labels))
+                        if label_key in seen_label_keys:
+                            continue  # already processed this label combo
+                        seen_label_keys.add(label_key)
+
                         properties = node_spec.get("properties", {})
                         merge_on = node_spec.get("merge_on", ["name"])
                         label_str = ":".join(labels)
 
-                        merge_props = ", ".join(f"{k}: $n.{k}" for k in merge_on if k in properties)
+                        merge_props = ", ".join(f"{k}: n.{k}" for k in merge_on if k in properties)
                         if not merge_props and properties:
                             first_key = next(iter(properties))
                             merge_on = [first_key]
-                            merge_props = f"{first_key}: $n.{first_key}"
+                            merge_props = f"{first_key}: n.{first_key}"
 
                         if not merge_props:
                             continue
