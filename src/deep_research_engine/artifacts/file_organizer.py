@@ -30,6 +30,12 @@ _UNSAFE = set('/\\:*?"<>|\n\r\t')
 # Raw speaker IDs that should never appear as person names
 _RAW_SPEAKER_ID = re.compile(r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+)$")
 
+# Telegram export UI assets that should not be organized as photos
+_TELEGRAM_UI_PATTERN = re.compile(
+    r"^(back|media_\w+|section_\w+|bg_\w*|.*_bubble)" r"(@2x)?\.png$",
+    re.IGNORECASE,
+)
+
 
 def _safe_name(name: str) -> str:
     """Make a name safe for use as a directory name."""
@@ -83,6 +89,10 @@ def organize_files(
         item_type = item.get("type", "unknown")
         if item_type == "message":
             continue  # text messages have no files
+
+        # Skip Telegram UI asset files (icons, section headers, etc.)
+        if _TELEGRAM_UI_PATTERN.match(Path(path_rel).name):
+            continue
 
         # Resolve absolute source path
         src = Path(path_rel)
