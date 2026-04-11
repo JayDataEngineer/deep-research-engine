@@ -8,13 +8,11 @@ Uses Neo4jStorage (async driver) exclusively. No raw GraphDatabase.
 import json
 from typing import Any
 
-from deepagents import SubAgent, create_deep_agent
-
 from ..config import get_phase_config
 from ..shared import get_langchain_llm
 from ..state import EngineState
 from ..storage.backends.neo4j import Neo4jStorage
-from ..tools.storage import initialize_storage_tools, vector_search_datastore
+from ..tools.storage import initialize_storage_tools
 from ..utils.logging import get_loguru_logger
 from ..utils.nodes import node_context
 
@@ -295,30 +293,18 @@ async def _extract_triplets_legacy(
     config: dict[str, Any],
     existing_labels: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Legacy triplet extraction via DeepAgents (fallback)."""
-    llm = get_langchain_llm(enable_thinking=False, temperature=0.3, config_data=config)
+    """Triplet extraction via direct InfraClient.chat() — avoids DeepAgents retry loops."""
+    import asyncio
+    import re
+
+    from ..shared.config import INGESTION_MODEL
+    from ..shared.infra_client import InfraClient
 
     labels_hint = ""
     if existing_labels:
         labels_hint = (
             f"\nExisting labels in the graph (REUSE these when applicable): {existing_labels}"
         )
-
-    subagents: list[SubAgent] = [
-        {
-            "name": "triplet_reviewer",
-            "description": "Reviews extracted triplets for entity deduplication and consistency.",
-            "system_prompt": (
-                "Review proposed knowledge graph triplets for quality.\n"
-                "Focus on:\n"
-                "1. Entity Resolution: Merge duplicates (e.g. 'US' vs 'USA').\n"
-                "2. Label Consistency: Use existing labels when they fit.\n"
-                "3. Relationship Clarity: Predicates should be descriptive verbs.\n"
-                "Only merge entities that clearly refer to the same thing. Suggest corrections in a structured format."
-            ),
-            "model": llm,
-        }
-    ]
 
     system_prompt = (
         "Extract (Subject, Predicate, Object) triplets from the text.\n\n"
@@ -328,48 +314,83 @@ async def _extract_triplets_legacy(
         f"{labels_hint}\n"
         "- Relationship types should be descriptive verbs in UPPERCASE_SNAKE_CASE "
         "(e.g. WORKS_AT, MENTIONED_IN, DEVELOPED_BY).\n\n"
-        "PROCESS:\n"
-        "1. Identify entities and their relationships.\n"
-        "2. Use 'vector_search_datastore' to resolve ambiguous entities.\n"
-        "3. Ask the 'triplet_reviewer' to audit proposed triplets.\n"
-        '4. Respond with JSON: {"triplets": [{"subject": {"name": "...", "label": "..."},'
-        ' "predicate": "...", "object": {"name": "...", "label": "..."}}]}\n\n'
-        f"SOURCE TEXT:\n{text[:8000]}"
+        "RULES:\n"
+        "- Deduplicate entities (e.g. 'US' vs 'USA' → use one canonical form).\n"
+        "- Only extract relationships explicitly stated in the text.\n"
+        "- Predicates should be descriptive verbs.\n\n"
+        'Respond with JSON: {"triplets": [{"subject": {"name": "...", "label": "..."},'
+        ' "predicate": "...", "object": {"name": "...", "label": "..."}}]}'
     )
 
-    agent = create_deep_agent(
-        model=llm,
-        system_prompt=system_prompt,
-        subagents=subagents,
-        tools=[vector_search_datastore],
-        debug=True,
-    )
+    # Chunk text for extraction (8K chars per chunk to fit context)
+    chunk_size = 8000
+    chunks = []
+    pos = 0
+    while pos < len(text):
+        end = min(pos + chunk_size, len(text))
+        if end < len(text):
+            para_break = text.rfind("\n\n", pos, end)
+            if para_break > pos:
+                end = para_break + 2
+        chunks.append(text[pos:end])
+        pos = end
 
-    try:
-        result = await agent.ainvoke(
-            {
-                "messages": [
-                    (
-                        "user",
-                        "Extract knowledge graph triplets from the source text and review them.",
-                    )
-                ]
-            }
-        )
-        final_output = result["messages"][-1].content
+    all_triplets: list[dict[str, Any]] = []
 
-        if "```json" in final_output:
-            final_output = final_output.split("```json")[1].split("```")[0].strip()
-        elif "```" in final_output:
-            final_output = final_output.split("```")[1].split("```")[0].strip()
+    infra = InfraClient()
+    for i, chunk in enumerate(chunks):
+        if not chunk.strip():
+            continue
+        logger.info(f"Triplet extraction chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)")
+        try:
+            response = await asyncio.to_thread(
+                infra.chat,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Extract knowledge graph triplets from the following text "
+                            f"(part {i + 1} of {len(chunks)}):\n\n{chunk}"
+                        ),
+                    },
+                ],
+                model=INGESTION_MODEL,
+                max_tokens=8000,
+            )
+            response_text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        except Exception as e:
+            logger.warning(f"Triplet extraction chunk {i + 1} failed: {e}")
+            continue
 
-        parsed = json.loads(final_output)
-        if isinstance(parsed, dict) and "triplets" in parsed:
-            return parsed["triplets"]
-        return parsed if isinstance(parsed, list) else []
-    except Exception as e:
-        logger.error(f"Failed to extract triplets (legacy): {e}")
-        return []
+        if not response_text:
+            continue
+
+        # Parse JSON from response
+        try:
+            # Extract JSON from markdown code block
+            json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", response_text, re.DOTALL)
+            if json_match:
+                response_text = json_match.group(1).strip()
+
+            parsed = json.loads(response_text)
+            if isinstance(parsed, dict) and "triplets" in parsed:
+                all_triplets.extend(parsed["triplets"])
+            elif isinstance(parsed, list):
+                all_triplets.extend(parsed)
+        except (json.JSONDecodeError, ValueError):
+            # Try to find bare JSON object
+            brace_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+            if brace_match:
+                try:
+                    parsed = json.loads(brace_match.group(0))
+                    if isinstance(parsed, dict) and "triplets" in parsed:
+                        all_triplets.extend(parsed["triplets"])
+                except (json.JSONDecodeError, ValueError):
+                    logger.warning(f"Could not parse triplets from chunk {i + 1}")
+
+    logger.info(f"Triplet extraction complete: {len(all_triplets)} triplets from {len(chunks)} chunks")
+    return all_triplets
 
 
 async def _write_triplets(

@@ -7,6 +7,7 @@ Entity Finder Agent: Builds per-entity profiles from sorted content.
 Uses the DeepAgents pattern with LangChain-compatible tool integration.
 """
 
+import re
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -182,8 +183,8 @@ async def run_sort_agent(
         "Be thorough but concise. Preserve all original information — only reorganize it."
     )
 
-    # Chunk large content to avoid truncation (process in 40K char chunks)
-    chunk_size = 40_000
+    # Chunk large content to avoid LLM disconnections on long generation
+    chunk_size = 20_000
     if len(content) <= chunk_size:
         chunks = [content]
     else:
@@ -345,7 +346,7 @@ async def run_entity_extractor_agent(
     )
 
     # Chunk large content to avoid truncation
-    chunk_size = 50_000
+    chunk_size = 20_000
     if len(content) <= chunk_size:
         chunks = [content]
     else:
@@ -1204,6 +1205,7 @@ def _build_item_contents(
 
                 if segments:
                     # Apply resolved names
+                    _raw_id = re.compile(r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+)$")
                     transcript_parts = []
                     for seg in segments:
                         raw_spk = seg.get("speaker", "")
@@ -1212,17 +1214,24 @@ def _build_item_contents(
                             resolved_identity_map.get(seg.get("mf_speaker_id", ""), raw_spk),
                         )
                         name = seg.get("resolved_name", resolved)
+                        # Sanitize any remaining raw speaker IDs
+                        if name and _raw_id.match(name):
+                            name = "Unknown"
                         transcript_parts.append(f"{name}: {seg.get('text', '')}")
 
                     transcript = " ".join(transcript_parts)
                     parts.append(f"[Voice Message Transcript: {transcript}]")
-                    unique_speakers = {
-                        resolved_identity_map.get(
-                            s.get("speaker", ""),
-                            resolved_identity_map.get(s.get("mf_speaker_id", ""), s.get("speaker", "")),
+                    unique_speakers = set()
+                    for s in segments:
+                        raw = s.get("speaker", "")
+                        resolved = resolved_identity_map.get(
+                            raw,
+                            resolved_identity_map.get(s.get("mf_speaker_id", ""), raw),
                         )
-                        for s in segments
-                    }
+                        sn = s.get("resolved_name", resolved)
+                        if sn and _raw_id.match(sn):
+                            sn = "Unknown"
+                        unique_speakers.add(sn)
                     if len(unique_speakers) > 1:
                         parts.append(f"[Speakers: {', '.join(unique_speakers)}]")
 

@@ -15,6 +15,7 @@ No LLM calls needed — pure file system operations.
 from __future__ import annotations
 
 import os
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,9 @@ logger = get_loguru_logger("artifacts.file_organizer")
 
 # Characters unsafe in directory names
 _UNSAFE = set('/\\:*?"<>|\n\r\t')
+
+# Raw speaker IDs that should never appear as person names
+_RAW_SPEAKER_ID = re.compile(r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+)$")
 
 
 def _safe_name(name: str) -> str:
@@ -94,13 +98,13 @@ def organize_files(
         # Per-person: collect from sender, speakers, faces
         people: set[str] = set()
         sender = item.get("sender", "")
-        if sender and sender != "Unknown":
+        if sender and sender != "Unknown" and not _RAW_SPEAKER_ID.match(sender):
             people.add(sender)
         for s in item.get("speakers", []):
-            if s and s != "Unknown":
+            if s and s != "Unknown" and not _RAW_SPEAKER_ID.match(s):
                 people.add(s)
         for f in item.get("faces", []):
-            if f and f != "Unknown":
+            if f and f != "Unknown" and not _RAW_SPEAKER_ID.match(f):
                 people.add(f)
         if people:
             for person in people:

@@ -303,9 +303,10 @@ async def _synthesize_ingestion_data(
         header = "\n\n".join(context_parts)
         analysis_content = f"{header}\n\n## CONTENT\n\n{analysis_content}"
 
-    # Chunk size: 100K chars (~25K tokens) leaves room for system prompt + output in 72K context
-    chunk_size = 100_000
-    max_chars = 100_000
+    # Chunk size: 50K chars (~12.5K tokens) per chunk — keeps single-pass under 72K context.
+    # Multi-pass is triggered at 50K to avoid long-generation disconnections.
+    chunk_size = 50_000
+    max_chars = 50_000
 
     if len(analysis_content) <= max_chars:
         # Small enough for single-pass synthesis
