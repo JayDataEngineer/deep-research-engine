@@ -1240,6 +1240,9 @@ def _build_item_contents(
                     faces = identity_map[media_path_rel]
                     resolved_faces = [resolved_identity_map.get(f, f) for f in faces]
                     parts.append(f"[People in Photo: {', '.join(set(resolved_faces))}]")
+                # Use VLM description as fallback when no face data
+                if not parts and item.get("_enriched_content"):
+                    parts.append(item["_enriched_content"])
 
             elif item_type == "video":
                 if media_path_rel in identity_map:
@@ -1248,6 +1251,9 @@ def _build_item_contents(
                     parts.append(f"[People in Video: {', '.join(set(resolved_faces))}]")
                 if media_path_rel in video_descriptions:
                     parts.append(f"[Video Summary: {video_descriptions[media_path_rel]}]")
+                # Use VLM description as fallback when no video description
+                if not parts and item.get("_enriched_content"):
+                    parts.append(item["_enriched_content"])
 
         contents.append(" ".join(parts))
     return contents

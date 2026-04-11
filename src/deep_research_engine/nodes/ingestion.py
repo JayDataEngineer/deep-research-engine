@@ -183,7 +183,7 @@ def _scan_input(input_dir: Path) -> ScanResult:
         "photos": _find_by_extensions(input_dir, PHOTO_EXTENSIONS),
     }
     # Exclude Telegram export sub-directories from generic scans
-    tg_dirs = {"photos", "voice_messages", "video_files", "stickers", "files"}
+    tg_dirs = {"photos", "voice_messages", "video_files", "stickers", "files", "images"}
     if result["telegram_json"] or result["telegram_html"]:
         for key in ("audio", "video", "photos"):
             result[key] = [p for p in result[key] if p.parent.name not in tg_dirs]

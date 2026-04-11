@@ -582,7 +582,7 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
             return "[No frames extracted from video]"
 
         content: list[dict[str, Any]] = [
-            {"type": "text", "text": "These are sequential frames from a video. List what is visible: people, objects, actions, text, and setting changes across frames. State only what you can see, do not invent details."}
+            {"type": "text", "text": "These are sequential frames from a video recording of a phone screen. Focus on the CONTENT being displayed: text messages, chat conversations, social media posts, and any readable text. Extract the substance of what is being shown — names, messages, URLs, profile info. Ignore the phone UI elements (battery level, status bar, Control Center). Do not describe the phone itself."}
         ]
         for frame_b64 in frames:
             content.append(
@@ -769,7 +769,7 @@ async def extract_scene_frames(
 
 async def batch_vlm_video_analysis(
     frame_items: list[dict[str, Any]],
-    prompt: str = "These are key frames from a video in chronological order. State what is visible in each frame: who is present, what they are doing, and where they are. Do not invent dialogue, emotions, or details not visible in the frames.",
+    prompt: str = "These are key frames from a video recording of a phone screen. Focus on the CONTENT: extract readable text, chat messages, profile names, URLs, and substantive information shown. Ignore phone UI elements like battery indicators, Control Center, and status bars. Summarize what the video is actually showing — who is chatting, what is being discussed, what information is being shared.",
     batch_size: int = 15,
 ) -> str:
     """Analyze multiple frames using a VLM to generate a cohesive narrative."""

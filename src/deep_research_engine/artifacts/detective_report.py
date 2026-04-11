@@ -52,13 +52,71 @@ class ReportData:
 # ---------------------------------------------------------------------------
 
 
+def _merge_people_names(names: set[str], identity_map: dict[str, str]) -> list[str]:
+    """Merge similar person names using identity map + first-name overlap.
+
+    Rules:
+    1. If identity_map maps alias X -> name Y, merge X into Y.
+    2. If name A's first word matches name B's first word AND one is a
+       prefix/substring of the other (e.g. "Scott" in "Scott Mjodr Gregorisson"),
+       merge the shorter into the longer.
+    3. NEVER merge names that are clearly different people even if they share
+       a first name (e.g. "Tyler Oliveira" stays separate from "Tyler Dipeppe").
+    """
+    # Build canonical groups from identity_map
+    canonical_for: dict[str, str] = {}
+    for raw_id, resolved in identity_map.items():
+        # Skip raw speaker IDs
+        if re.match(r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+|file\d+:)", raw_id):
+            continue
+        canonical_for[raw_id] = resolved
+
+    # Group: map canonical name -> set of aliases (including itself)
+    groups: dict[str, set[str]] = defaultdict(set)
+    for name in names:
+        if name in canonical_for:
+            groups[canonical_for[name]].add(name)
+        else:
+            groups[name].add(name)
+
+    # Merge groups where one name's first word matches and it's a substring
+    group_names = list(groups.keys())
+    for i, name_a in enumerate(group_names):
+        for name_b in group_names[i + 1:]:
+            if _names_likely_same(name_a, name_b):
+                # Merge shorter into longer
+                canon = name_a if len(name_a) >= len(name_b) else name_b
+                alias = name_b if canon == name_a else name_a
+                groups[canon] |= groups.pop(alias, set())
+                break
+
+    return sorted(groups.keys())
+
+
+def _names_likely_same(a: str, b: str) -> bool:
+    """Check if two names likely refer to the same person.
+
+    Conservative: only matches when one name is clearly a shortened form
+    of the other (e.g. "Scott" -> "Scott Mjodr Gregorisson").
+    Does NOT match "Tyler Oliveira" with "Tyler Dipeppe" or "Chris" with "Christopher".
+    """
+    a_lower = a.lower().strip()
+    b_lower = b.lower().strip()
+    if a_lower == b_lower:
+        return True
+    # Only merge if the shorter name is a complete word prefix of the longer
+    # i.e., "Scott Mjodr Gregorisson" starts with "Scott " (whole word)
+    short, long = (a_lower, b_lower) if len(a_lower) <= len(b_lower) else (b_lower, a_lower)
+    return long.startswith(short + " ")
+
+
 def _collect_people(
     identity_map: dict[str, str],
     entity_extractions: list[dict[str, Any]],
     pre_named: list[str],
     media_items: list[dict[str, Any]],
 ) -> list[str]:
-    """Deduplicate people from all sources."""
+    """Deduplicate people from all sources, merging name variations."""
     people = set(identity_map.values())
     people.update(pre_named)
     for batch in entity_extractions:
@@ -77,8 +135,11 @@ def _collect_people(
         sender = item.get("sender", "")
         if sender and sender not in ("Unknown", ""):
             people.add(sender)
-    _raw_id = re.compile(r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+)$")
-    return sorted(p for p in people if p and p != "Unknown" and not _raw_id.match(p))
+    _skip = re.compile(
+        r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+|Unknown|Unknown Speaker \d+)$"
+    )
+    people = {p for p in people if p and not _skip.match(p)}
+    return _merge_people_names(people, identity_map)
 
 
 def _collect_locations(
@@ -154,20 +215,21 @@ async def fetch_neo4j_data(config_data: dict[str, Any]) -> Neo4jReportData | Non
     try:
         neo4j = Neo4jReportData()
 
-        # Person connection counts
+        # Person connection counts — only Person nodes
+        _skip_name = re.compile(r"^(Unknown|Unknown Speaker \d+)$")
         rows = await storage.execute_cypher(
-            "MATCH (p) WHERE p.namespace = $namespace "
+            "MATCH (p:Person) WHERE p.namespace = $namespace "
             "RETURN p.name as name, count {(p)--()} as connections "
             "ORDER BY connections DESC LIMIT 50",
             {"namespace": namespace},
         )
         for r in rows:
-            if "error" not in r and r.get("name"):
+            if "error" not in r and r.get("name") and not _skip_name.match(r["name"]):
                 neo4j.person_connections[r["name"]] = r.get("connections", 0)
 
-        # Person-to-person via shared media
+        # Person-to-person via shared media — only Person nodes on both sides
         rows = await storage.execute_cypher(
-            "MATCH (p1)-[r1]-(m)-[r2]-(p2) "
+            "MATCH (p1:Person)-[r1]-(m)-[r2]-(p2:Person) "
             "WHERE p1.name < p2.name AND p1.namespace = $namespace "
             "RETURN p1.name as person_a, p2.name as person_b, "
             "count(DISTINCT m) as shared_media, "
@@ -177,6 +239,11 @@ async def fetch_neo4j_data(config_data: dict[str, Any]) -> Neo4jReportData | Non
         )
         for r in rows:
             if "error" not in r:
+                a = r.get("person_a", "")
+                b = r.get("person_b", "")
+                # Skip Unknown Speaker IDs
+                if _skip_name.match(a) or _skip_name.match(b):
+                    continue
                 neo4j.person_rels.append(r)
 
         # Topic entities
