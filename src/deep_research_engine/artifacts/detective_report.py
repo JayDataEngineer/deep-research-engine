@@ -9,6 +9,7 @@ No LLM calls needed — pure data formatting.
 
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -76,7 +77,8 @@ def _collect_people(
         sender = item.get("sender", "")
         if sender and sender not in ("Unknown", ""):
             people.add(sender)
-    return sorted(p for p in people if p and p != "Unknown")
+    _raw_id = re.compile(r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+)$")
+    return sorted(p for p in people if p and p != "Unknown" and not _raw_id.match(p))
 
 
 def _collect_locations(
@@ -265,8 +267,14 @@ def build_people_directory(data: ReportData) -> str:
             person_stats[sender][itype] += 1
 
     # Build aliases map (reverse identity_map)
+    # Skip raw speaker IDs and metadata keys that would pollute the report
+    _skip_alias = re.compile(
+        r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+)$|:name_reference"
+    )
     aliases: dict[str, list[str]] = defaultdict(list)
     for cluster_id, name in data.identity_map.items():
+        if _skip_alias.search(cluster_id):
+            continue
         aliases[name].append(cluster_id)
 
     # Sort by total appearances

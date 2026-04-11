@@ -21,6 +21,7 @@ Supports both legacy state return and LangGraph Command return.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -675,7 +676,9 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             # Rebuild file_asr_results for Phase 5 speaker unification
             for path_str, segments in audio_results.items():
                 if isinstance(segments, list) and segments:
-                    speakers_set = {seg.get("speaker", "") for seg in segments if seg.get("speaker")}
+                    speakers_set = {
+                        seg.get("speaker", "") for seg in segments if seg.get("speaker")
+                    }
                     asr_dict = {
                         "segments": segments,
                         "speakers": len(speakers_set),
@@ -771,13 +774,17 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 config_data=config_data,
             )
         except Exception as e:
-            logger.warning(f"Identity Resolver subagent failed ({e}), falling back to direct resolution")
+            logger.warning(
+                f"Identity Resolver subagent failed ({e}), falling back to direct resolution"
+            )
             resolved_identity_map = await resolve_identities(
                 asr_all_segments,
                 visual_events,
                 text_context,
                 neo4j_storage=await _try_init_neo4j(config_data),
-                namespace=config_data.get("storage", {}).get("neo4j", {}).get("namespace", "default"),
+                namespace=config_data.get("storage", {})
+                .get("neo4j", {})
+                .get("namespace", "default"),
                 pre_named_entities=sorted(pre_named_entities),
                 model=INGESTION_MODEL,
             )
@@ -874,7 +881,11 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     ) -> list[dict[str, Any]]:
         """Resolve speaker names in segments using the full mapping chain."""
         # Find the file index for this item
-        _abs_path = str(input_dir / item_path_rel) if not Path(item_path_rel).is_absolute() else item_path_rel
+        _abs_path = (
+            str(input_dir / item_path_rel)
+            if not Path(item_path_rel).is_absolute()
+            else item_path_rel
+        )
         _resolved_segments: list[dict[str, Any]] = []
         for seg in segments:
             name = seg.get("resolved_name") or seg.get("speaker", "Unknown")
@@ -885,6 +896,11 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     name = _mf_id_to_name[_mf_id]
                 elif seg.get("speaker", "") in _mf_id_to_name:
                     name = _mf_id_to_name[seg["speaker"]]
+            # Sanitize any remaining raw speaker IDs
+            if name and re.match(
+                r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+)$", name
+            ):
+                name = "Unknown"
             _resolved_segments.append({**seg, "resolved_name": name})
         return _resolved_segments
 
@@ -997,11 +1013,13 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     logger.debug(f"Rejected invalid video description for {media_path_rel}")
                     video_desc = None
 
-        vlm_enriched_items.append({
-            **item,
-            **enriched,
-            "_enriched_content": " ".join(content_parts),
-        })
+        vlm_enriched_items.append(
+            {
+                **item,
+                **enriched,
+                "_enriched_content": " ".join(content_parts),
+            }
+        )
 
         # Incremental checkpoint every N items
         if (idx + 1) % checkpoint_interval == 0:
@@ -1056,6 +1074,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         )
     except Exception as e:
         import traceback
+
         logger.warning(f"Context Enrichment subagent failed ({e}), falling back to per-item NER")
         logger.warning(f"Traceback: {traceback.format_exc()}")
         # Fallback: per-item NER (original Phase 7 behavior)
@@ -1105,18 +1124,15 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
 
     vlm_cb.flush_remaining()
 
-    # Write outputs
+    # Write outputs — single file (chat_history_processed.md) is the source of truth
+    big_dump_file = output_dir / "chat_history_processed.md"
     if processed_messages:
-        chat_history_file = output_dir / "chat_history_processed.md"
-        with chat_history_file.open("w", encoding="utf-8") as f:
-            header = "# Processed Content Archive\n\n"
-            f.write(header)
+        with big_dump_file.open("w", encoding="utf-8") as f:
+            f.write("# Processed Content Archive\n\n")
             f.write("\n\n".join(processed_messages))
-        ingested_files.append(chat_history_file)
-
-    # Produce the "big text dump"
-    big_dump_file = output_dir / "big_text_dump.md"
-    _combine_ingested_files(ingested_files, big_dump_file)
+    else:
+        # No processed messages — combine Kreuzberg docs as fallback
+        _combine_ingested_files(ingested_files, big_dump_file)
 
     logger.info(f"Ingestion completed. Big text dump: {big_dump_file}")
 

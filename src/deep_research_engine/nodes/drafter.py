@@ -184,9 +184,11 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                     f"Entity Extractor: {len(entities_content)} chars"
                 )
                 # Write sorted output for reference
-                sorted_path = dump_file.parent / "sorted_content.md"
+                pipeline_dir = dump_file.parent / "pipeline"
+                pipeline_dir.mkdir(parents=True, exist_ok=True)
+                sorted_path = pipeline_dir / "sorted_content.md"
                 sorted_path.write_text(sorted_content)
-                entities_path = dump_file.parent / "extracted_entities.md"
+                entities_path = pipeline_dir / "extracted_entities.md"
                 entities_path.write_text(entities_content)
 
                 # Phase 3: Entity Finder — build per-entity profiles
@@ -201,7 +203,7 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
                         )
                         if profiles:
                             entity_profiles_content = format_entity_profiles(profiles)
-                            profiles_path = dump_file.parent / "entity_profiles.md"
+                            profiles_path = pipeline_dir / "entity_profiles.md"
                             profiles_path.write_text(entity_profiles_content)
                             logger.info(
                                 f"Entity Finder: {len(profiles)} profiles, "
@@ -364,7 +366,9 @@ async def _synthesize_ingestion_data(
     )
 
     # Write intermediate summaries for debugging
-    summaries_path = dump_file.parent / "chunk_summaries.md"
+    pipeline_dir = dump_file.parent / "pipeline"
+    pipeline_dir.mkdir(parents=True, exist_ok=True)
+    summaries_path = pipeline_dir / "chunk_summaries.md"
     summaries_path.write_text(combined_summaries)
 
     final_prompt = (

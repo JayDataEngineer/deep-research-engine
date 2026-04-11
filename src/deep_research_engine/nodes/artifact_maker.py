@@ -39,7 +39,7 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
                 worker_id="artifact_maker_worker",
                 worker_type="artifact_maker",
                 task="Produce research artifact",
-                custom=phase_config
+                custom=phase_config,
             )
             worker = worker_class(worker_config)
             worker_result = await worker.execute(state, worker_config)
@@ -55,40 +55,64 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
                     "artifact_output": output,
                     "artifact_metadata": {
                         **metadata,
-                        "worker_count": len(state.get("worker_results", []))
+                        "worker_count": len(state.get("worker_results", [])),
                     },
-                    "__goto__": "complete"
+                    "__goto__": "complete",
                 }
             else:
-                logger.warning(f"Artifact maker worker failed: {worker_result.get('error', 'unknown')}. Falling back to basic aggregation.")
+                logger.warning(
+                    f"Artifact maker worker failed: {worker_result.get('error', 'unknown')}. Falling back to basic aggregation."
+                )
         except Exception as e:
             logger.error(f"Error executing artifact maker worker: {e}. Falling back.")
 
     # 2. Detective Report (ingestion workflows with structured data)
     if state.get("context", {}).get("ingestion_structured"):
-        try:
-            from pathlib import Path
+        from pathlib import Path
 
-            from ..artifacts.detective_report import build_detective_report
+        from ..artifacts.detective_report import build_detective_report
+
+        # 2a. Organize media files (non-fatal if it fails)
+        org_stats = {}
+        try:
             from ..artifacts.file_organizer import organize_files
 
             structured = state["context"]["ingestion_structured"]
             media_items = structured.get("media_items", [])
-
-            # 2a. Organize media files into browsable directories
             big_dump = state.get("context", {}).get("big_text_dump")
             output_dir = Path(big_dump).parent if big_dump else Path("output/artifacts")
             input_dir = Path(state.get("input_data", {}).get("path", "."))
-
             org_stats = organize_files(output_dir, media_items, input_dir)
             logger.info(f"File organization: {org_stats}")
+        except Exception as e:
+            logger.warning(f"File organization failed (non-fatal): {e}")
 
-            # 2b. Build detective report
+        # 2b. Build detective report
+        try:
             report = await build_detective_report(state)
             _write_artifact_to_disk(state, report)
             _write_report_sections(state, report)
 
             logger.info(f"Detective report generated ({len(report)} chars).")
+
+            # 2c. Validate output quality
+            try:
+                from ..artifacts.output_validator import validate_output, write_validation_report
+
+                big_dump = state.get("context", {}).get("big_text_dump")
+                output_dir = Path(big_dump).parent if big_dump else Path("output/artifacts")
+                val_warnings = validate_output(output_dir)
+                for w in val_warnings:
+                    if w.severity == "error":
+                        logger.error(f"VALIDATION [{w.check}]: {w.message} (files: {w.files})")
+                    else:
+                        logger.warning(f"VALIDATION [{w.check}]: {w.message} (files: {w.files})")
+                if val_warnings:
+                    write_validation_report(output_dir, val_warnings)
+                    logger.info(f"Validation report written: {len(val_warnings)} issues")
+            except Exception as e:
+                logger.warning(f"Output validation failed (non-fatal): {e}")
+
             return {
                 "artifact_output": report,
                 "artifact_metadata": {
@@ -108,10 +132,7 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
 
     if not successful_results:
         logger.warning("No successful worker results to turn into an artifact.")
-        return {
-            "artifact_output": "No research results were generated.",
-            "__goto__": "complete"
-        }
+        return {"artifact_output": "No research results were generated.", "__goto__": "complete"}
 
     # Aggregate results
     content_parts = []
@@ -132,9 +153,9 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
         "artifact_output": final_output,
         "artifact_metadata": {
             "format": "basic_aggregation",
-            "worker_count": len(successful_results)
+            "worker_count": len(successful_results),
         },
-        "__goto__": "complete"
+        "__goto__": "complete",
     }
 
 

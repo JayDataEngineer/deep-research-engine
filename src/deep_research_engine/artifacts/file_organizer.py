@@ -59,7 +59,9 @@ def organize_files(
         Stats dict with counts of organized files.
     """
     organized_dir = output_dir / "organized"
-    if organized_dir.exists():
+    organized_dir.mkdir(parents=True, exist_ok=True)
+    # Only skip if actual organized subdirectories exist (not just catalog.md)
+    if (organized_dir / "by_person").exists() or (organized_dir / "by_type").exists():
         logger.info(f"Organized directory already exists at {organized_dir}")
         return {"status": "already_exists", "path": str(organized_dir)}
 
@@ -86,9 +88,7 @@ def organize_files(
             continue
 
         # Per-type
-        type_key = {"voice": "voice", "photo": "photos", "video": "videos"}.get(
-            item_type, "other"
-        )
+        type_key = {"voice": "voice", "photo": "photos", "video": "videos"}.get(item_type, "other")
         by_type[type_key].append({**item, "_src": src})
 
         # Per-person: collect from sender, speakers, faces
