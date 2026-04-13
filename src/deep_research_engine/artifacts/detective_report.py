@@ -97,17 +97,19 @@ def _names_likely_same(a: str, b: str) -> bool:
     """Check if two names likely refer to the same person.
 
     Conservative: only matches when one name is clearly a shortened form
-    of the other (e.g. "Scott" -> "Scott Mjodr Gregorisson").
+    of the other (e.g. "Scott" -> "Scott Mjodr Gregorisson",
+    "semok" -> "Christopher Anthony semok").
     Does NOT match "Tyler Oliveira" with "Tyler Dipeppe" or "Chris" with "Christopher".
     """
     a_lower = a.lower().strip()
     b_lower = b.lower().strip()
     if a_lower == b_lower:
         return True
-    # Only merge if the shorter name is a complete word prefix of the longer
+    # Only merge if the shorter name is a complete word prefix OR suffix of the longer
     # i.e., "Scott Mjodr Gregorisson" starts with "Scott " (whole word)
+    # OR "Christopher Anthony semok" ends with " semok" (last name match)
     short, long = (a_lower, b_lower) if len(a_lower) <= len(b_lower) else (b_lower, a_lower)
-    return long.startswith(short + " ")
+    return long.startswith(short + " ") or long.endswith(" " + short)
 
 
 def _collect_people(
@@ -564,12 +566,16 @@ def build_relationship_map(data: ReportData) -> str:
                 pair = f"{people_list[i]} <-> {people_list[j]}"
                 pair_counts[pair] += 1
 
-    # Merge with Neo4j data
+    # Merge with Neo4j data — only include pairs where both names are known people
+    people_set = set(data.all_people) if data.all_people else set()
     neo4j_pairs: dict[str, dict[str, Any]] = {}
     if data.neo4j_data:
         for rel in data.neo4j_data.person_rels:
             a = rel.get("person_a", "")
             b = rel.get("person_b", "")
+            # Skip non-person entities (organizations, locations, dates, etc.)
+            if people_set and (a not in people_set or b not in people_set):
+                continue
             if a and b:
                 key = f"{a} <-> {b}" if a < b else f"{b} <-> {a}"
                 neo4j_pairs[key] = rel

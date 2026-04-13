@@ -57,8 +57,8 @@ storage:
 
 llm:
   models:
-    main: gemma4-e4b-vision-fast
-    tool: gemma4-e4b-vision-fast
+    main: qwen35-35b-a3b-vision
+    tool: qwen35-35b-a3b-vision
 
 output:
   destination:

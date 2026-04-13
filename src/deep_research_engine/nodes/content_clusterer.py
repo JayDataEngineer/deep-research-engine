@@ -118,7 +118,7 @@ async def content_clusterer_node(state: EngineState) -> dict[str, Any]:
             messages=[{"role": "user", "content": prompt}],
             model=model_name,
             temperature=temperature,
-            max_tokens=4000,
+            max_tokens=16000,
         )
         raw = _extract_chat_text(response)
 
@@ -160,7 +160,16 @@ def _parse_clusters(raw: str) -> list[dict[str, Any]]:
         if isinstance(parsed, list):
             return parsed
     except json.JSONDecodeError:
-        pass
+        # Try to repair truncated JSON by closing open brackets
+        for repair in [']}', '}]', '"}]}']:
+            try:
+                parsed = json.loads(text.rstrip(', "') + repair)
+                if isinstance(parsed, dict) and "clusters" in parsed:
+                    return parsed["clusters"]
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                continue
 
     logger.warning(f"Could not parse clusters from LLM output: {text[:200]}")
     return []

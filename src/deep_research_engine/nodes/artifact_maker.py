@@ -81,7 +81,7 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
             media_items = structured.get("media_items", [])
             big_dump = state.get("context", {}).get("big_text_dump")
             output_dir = Path(big_dump).parent if big_dump else Path("output/artifacts")
-            input_dir = Path(state.get("input_data", {}).get("path", "."))
+            input_dir = Path(state.get("input_data", {}).get("export_path", "."))
             org_stats = organize_files(output_dir, media_items, input_dir)
             logger.info(f"File organization: {org_stats}")
         except Exception as e:

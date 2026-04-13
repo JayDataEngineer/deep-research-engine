@@ -36,7 +36,7 @@ from ..agents.subagents import run_context_enrichment, run_identity_resolver
 from ..config import get_phase_config
 from ..ingestion.document_router import DocumentRouter
 from ..ingestion.kreuzberg_extractor import KreuzbergConfig
-from ..shared.config import INGESTION_MODEL
+from ..shared.config import DEFAULT_MODEL, INGESTION_MODEL
 from ..shared.multimodal import (
     _get_infra,
     asr_transcribe,
@@ -430,7 +430,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             text = item.get("text")
             if text and len(text.strip()) > 10:
                 try:
-                    ents = await extract_entities(text[:4000], model=INGESTION_MODEL)
+                    ents = await extract_entities(text[:4000], model=DEFAULT_MODEL)
                     for p in ents.get("people", []):
                         pre_named_entities.add(p)
                 except Exception:
@@ -720,10 +720,8 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     checkpoint_p6 = _load_checkpoint(pipeline_dir, "phase6_identity_map")
 
     if checkpoint_p6 is None and (identity_map or audio_results or video_frames):
-        # Reload LLM for identity resolution (was unloaded for ASR)
-        logger.info("Reloading LLM for identity resolution...")
-        infra = _get_infra()
-        infra.load("llm", INGESTION_MODEL, wait=True)
+        # VLM goes direct to llama.cpp (Gemma 4 26B) — no orchestrator load needed.
+        # Identity resolution uses InfraClient.chat() via LiteLLM (main model).
         logger.info("Phase 6: Performing final identity resolution and batch VLM analysis...")
 
         # Prepare metadata for LLM resolution
@@ -770,7 +768,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 visual_events=visual_events,
                 text_messages=text_context,
                 pre_named_entities=sorted(pre_named_entities),
-                model=INGESTION_MODEL,
+                model=DEFAULT_MODEL,
                 config_data=config_data,
             )
         except Exception as e:
@@ -786,7 +784,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 .get("neo4j", {})
                 .get("namespace", "default"),
                 pre_named_entities=sorted(pre_named_entities),
-                model=INGESTION_MODEL,
+                model=DEFAULT_MODEL,
             )
 
         # Batch VLM Video Analysis with circuit breaker
@@ -812,10 +810,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         _save_checkpoint(pipeline_dir, "phase6_identity_map", resolved_identity_map)
     elif checkpoint_p6 is not None:
         resolved_identity_map = checkpoint_p6
-        # Reload LLM for video VLM analysis (was unloaded for ASR)
-        logger.info("Reloading LLM for VLM video analysis...")
-        infra = _get_infra()
-        infra.load("llm", INGESTION_MODEL, wait=True)
+        # VLM goes direct to llama.cpp — no orchestrator load needed
         # Still need VLM for video descriptions
         if video_frames:
             cb = VLMBatchCircuitBreaker(pipeline_dir)
@@ -1061,7 +1056,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             audio_results=audio_results,
             video_descriptions=video_descriptions,
             identity_map=identity_map,
-            model=INGESTION_MODEL,
+            model=DEFAULT_MODEL,
             batch_size=20,
         )
         processed_messages = enrichment_result["processed_messages"]
@@ -1088,7 +1083,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
             entities: dict[str, Any] = {}
             content_parts = [item_combined] if item_combined else []
             if item_combined:
-                entities = await extract_entities(item_combined, model=INGESTION_MODEL)
+                entities = await extract_entities(item_combined, model=DEFAULT_MODEL)
                 if entities.get("people"):
                     content_parts.append(f"[Entities - People: {', '.join(entities['people'])}]")
                 has_structure = bool(entities.get("people")) or bool(entities.get("locations"))

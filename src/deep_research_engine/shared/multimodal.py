@@ -40,8 +40,8 @@ COMPREFACE_API_KEY = os.environ.get("COMPREFACE_API_KEY", "")
 
 from ..prompts import PromptRegistry, get_prompt
 from . import IdentityMapping
-from .config import DEFAULT_MODEL, VISION_MODEL
-from .infra_client import InfraClient, InfraError, InfraUnreachable
+from .config import DEFAULT_MODEL
+from .infra_client import InfraClient, InfraError
 
 # ---------------------------------------------------------------------------
 # InfraClient singleton
@@ -61,6 +61,46 @@ def _get_infra() -> InfraClient:
 def _extract_chat_text(response: dict) -> str:
     """Extract text content from InfraClient chat response dict."""
     return response["choices"][0]["message"]["content"]
+
+
+# ---------------------------------------------------------------------------
+# Direct llama.cpp VLM client (bypasses orchestrator/LiteLLM)
+# ---------------------------------------------------------------------------
+
+# Direct llama.cpp endpoint for VLM — avoids orchestrator overhead and crashes
+_LLAMACPP_VLM_URL = os.environ.get(
+    "LLAMACPP_VLM_URL", "http://172.17.0.13:8001/v1/chat/completions"
+)
+_LLAMACPP_VLM_MODEL = os.environ.get(
+    "LLAMACPP_VLM_MODEL", "gemma-4-26B-A4B-it-UD-IQ4_NL.gguf"
+)
+_VLM_TIMEOUT = int(os.environ.get("VLM_TIMEOUT", "300"))
+
+
+def _direct_vlm_chat(
+    messages: list[dict[str, Any]],
+    *,
+    max_tokens: int = 500,
+    temperature: float = 0.0,
+) -> dict:
+    """Call llama.cpp VLM directly via OpenAI-compatible API.
+
+    Bypasses orchestrator and LiteLLM for lower latency and fewer failure modes.
+    """
+    import requests
+
+    resp = requests.post(
+        _LLAMACPP_VLM_URL,
+        json={
+            "model": _LLAMACPP_VLM_MODEL,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        },
+        timeout=_VLM_TIMEOUT,
+    )
+    resp.raise_for_status()
+    return resp.json()
 
 
 # =============================================================================
@@ -463,24 +503,18 @@ async def vlm_analyze(
             return "[No valid images found for analysis]"
 
         response = await asyncio.to_thread(
-            _get_infra().chat,
+            _direct_vlm_chat,
             messages=[{"role": "user", "content": content}],
-            model=VISION_MODEL,
-            max_tokens=10000,
+            max_tokens=500,
         )
 
-        description = _extract_chat_text(response)
+        description = response["choices"][0]["message"]["content"]
+        # Truncate overly verbose descriptions
+        if len(description) > 2000:
+            description = description[:2000] + "..."
         logger.info(f"VLM analysis complete: {len(description)} chars")
         return description
 
-    except InfraUnreachable as e:
-        raise RuntimeError("VLM connection failed - endpoint unreachable") from e
-    except InfraError as e:
-        error_msg = str(e)
-        if "image input is not supported" in error_msg or "mmproj" in error_msg:
-            raise RuntimeError("VLM model does not support image input") from e
-        logger.error(f"VLM failed: {e}")
-        return f"[Image analysis failed: {e}]"
     except Exception as e:
         error_msg = str(e)
         if "image input is not supported" in error_msg or "mmproj" in error_msg:
@@ -593,27 +627,18 @@ async def video_analyze(video_path: Path, fps: float = 0.5) -> str:
             )
 
         response = await asyncio.to_thread(
-            _get_infra().chat,
+            _direct_vlm_chat,
             messages=[{"role": "user", "content": content}],
-            model=VISION_MODEL,
             max_tokens=10000,
         )
 
-        description = _extract_chat_text(response)
+        description = response["choices"][0]["message"]["content"]
         logger.info(f"Video analysis complete: {len(description)} chars")
         return description
 
     except ImportError:
         logger.warning("opencv-python not installed, video analysis limited")
         return "[Video analysis requires opencv-python]"
-    except InfraUnreachable as e:
-        raise RuntimeError("VLM connection failed - endpoint unreachable") from e
-    except InfraError as e:
-        error_msg = str(e)
-        if "image input is not supported" in error_msg or "mmproj" in error_msg:
-            raise RuntimeError("VLM model does not support image input") from e
-        logger.error(f"Video analysis failed: {e}")
-        return f"[Video analysis failed: {e}]"
     except RuntimeError:
         raise
     except Exception as e:
@@ -811,27 +836,19 @@ async def batch_vlm_video_analysis(
                 )
 
             response = await asyncio.to_thread(
-                _get_infra().chat,
+                _direct_vlm_chat,
                 messages=[{"role": "user", "content": content}],
-                model=VISION_MODEL,
                 temperature=0.0,
                 max_tokens=10000,
             )
-            all_descriptions.append(_extract_chat_text(response))
+            all_descriptions.append(response["choices"][0]["message"]["content"])
 
-        except InfraUnreachable as e:
-            logger.warning("Infra unreachable - skipping all remaining batches")
-            vlm_unavailable = True
-            all_descriptions.append(f"[Batch analysis failed: {e}]")
-        except InfraError as e:
+        except Exception as e:
             error_msg = str(e)
             logger.error(f"Batch VLM analysis failed for batch starting at {i}: {e}")
             if "image input is not supported" in error_msg or "mmproj" in error_msg:
                 logger.warning("VLM model does not support images - skipping all remaining batches")
                 vlm_unavailable = True
-            all_descriptions.append(f"[Batch analysis failed: {e}]")
-        except Exception as e:
-            logger.error(f"Batch VLM analysis failed for batch starting at {i}: {e}")
             all_descriptions.append(f"[Batch analysis failed: {e}]")
 
     if len(all_descriptions) == 1:
