@@ -35,8 +35,8 @@ except ImportError:
     hdbscan = None
 
 # Face Recognition (CompreFace)
-COMPREFACE_BASE_URL = os.environ.get("COMPREFACE_BASE_URL", "http://localhost:38080")
-COMPREFACE_API_KEY = os.environ.get("COMPREFACE_API_KEY", "")
+COMPREFACE_BASE_URL = os.environ.get("COMPREFACE_BASE_URL", "http://172.17.0.14:8080")
+COMPREFACE_API_KEY = os.environ.get("COMPREFACE_API_KEY", "00000000-0000-0000-0000-000000000002")
 
 from ..prompts import PromptRegistry, get_prompt
 from . import IdentityMapping
