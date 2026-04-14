@@ -509,7 +509,11 @@ def build_timeline(data: ReportData) -> str:
     for item in data.media_items:
         ts = item.get("timestamp", "")
         if ts:
-            date = ts[:10]
+            # Extract date portion from ISO timestamps; handle non-date strings
+            if len(ts) >= 10 and ts[4] == "-" and ts[7] == "-":
+                date = ts[:10]
+            else:
+                continue  # Skip items with non-standard timestamps ("Found in archive", etc.)
             by_date[date].append(item)
 
     if not by_date:

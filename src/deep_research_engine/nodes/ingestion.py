@@ -132,13 +132,18 @@ def _is_valid_vlm_description(text: str | None, item_type: str = "") -> bool:
 
 
 def _load_checkpoint(pipeline_dir: Path, name: str) -> Any | None:
-    """Load a phase checkpoint artifact. Returns None if not found."""
+    """Load a phase checkpoint artifact. Returns None if not found or corrupted."""
     path = pipeline_dir / f"{name}.json"
     if path.exists():
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        logger.info(f"Checkpoint loaded (skipping phase): {path}")
-        return data
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            logger.info(f"Checkpoint loaded (skipping phase): {path}")
+            return data
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error(f"Corrupted checkpoint {path}: {e} — deleting and re-running phase")
+            path.unlink(missing_ok=True)
+            return None
     return None
 
 
@@ -258,11 +263,13 @@ class VLMBatchCircuitBreaker:
         self.threshold = threshold
         self._failures: list[dict[str, Any]] = []
         self._batch_fail_count = 0
+        self._total_fail_count = 0
         self._batch_item_count = 0
 
     def record_failure(self, item: dict[str, Any], error: str) -> None:
         """Record a VLM failure."""
         self._batch_fail_count += 1
+        self._total_fail_count += 1
         self._batch_item_count += 1
         self._failures.append(
             {"item": item.get("path", "unknown"), "error": error, "type": item.get("type")}
@@ -873,6 +880,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
     if checkpoint_p7a is not None:
         vlm_enriched_items = checkpoint_p7a.get("items", [])
         vlm_cb._batch_fail_count = checkpoint_p7a.get("vlm_fail_count", 0)
+        vlm_cb._total_fail_count = checkpoint_p7a.get("vlm_fail_count", 0)
         logger.info(
             f"Phase 7a checkpoint loaded: {len(vlm_enriched_items)}/{len(items)} items enriched, resuming"
         )
@@ -1055,7 +1063,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 "phase7_vlm_enriched",
                 {
                     "items": vlm_enriched_items,
-                    "vlm_fail_count": vlm_cb._batch_fail_count,
+                    "vlm_fail_count": vlm_cb._total_fail_count,
                     "processed_count": len(vlm_enriched_items),
                     "total_count": len(items),
                 },
@@ -1072,7 +1080,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         "phase7_vlm_enriched",
         {
             "items": vlm_enriched_items,
-            "vlm_fail_count": vlm_cb._batch_fail_count,
+            "vlm_fail_count": vlm_cb._total_fail_count,
             "processed_count": len(vlm_enriched_items),
             "total_count": len(items),
         },
