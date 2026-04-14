@@ -90,7 +90,7 @@ def _make_chat_model(model: str = "gemma4-e4b-vision-fast") -> ChatOpenAI:
 
     base_url = os.environ.get(
         "LLAMACPP_DIRECT_URL",
-        "http://172.17.0.13:8001/v1/chat/completions",
+        "http://172.17.0.7:8001/v1/chat/completions",
     ).rstrip("/")
     # Strip /chat/completions if present — ChatOpenAI appends its own path
     if base_url.endswith("/chat/completions"):
@@ -723,7 +723,9 @@ IDENTITY_RESOLVER_PROMPT = (
     "- Visual face cluster events from photos/videos\n"
     "- Text messages with sender names and timestamps\n"
     "- Pre-NER detected person names\n"
-    "- Existing graph identities (queried from knowledge graph)\n\n"
+    "- Existing graph identities (queried from knowledge graph)\n"
+    "- VLM visual descriptions for each face cluster (what the person looks like, "
+    "what they're wearing, what's in the photo)\n\n"
     "RESOLUTION STRATEGY:\n"
     "1. FIRST, use the graph_query tool to look up any existing persons in the "
     "knowledge graph. Match new speaker/cluster IDs to known names.\n"
@@ -733,7 +735,10 @@ IDENTITY_RESOLVER_PROMPT = (
     "conversational flow (greetings, references to shared context) to link them.\n"
     "3. Cross-reference speaker IDs across files — speakers discussing the same "
     "people, places, and events with similar vocabulary are likely the same person.\n"
-    "4. Match face clusters to entity names when the timestamp and context align.\n"
+    "4. Match face clusters to entity names using VLM descriptions. Each Identity_Cluster "
+    "has visual descriptions from the photos where that face was detected. Use these to "
+    "determine who the person is — look for clothing, setting, activity context, and "
+    "cross-reference with known names from text messages and speaker data.\n"
     "5. Pre-NER names are high-confidence — prioritize matching to these.\n\n"
     "CRITICAL RULES:\n"
     "- Map IDs to PERSON names only — individual human beings.\n"
@@ -744,7 +749,9 @@ IDENTITY_RESOLVER_PROMPT = (
     "- Flag uncertain mappings with [?] suffix.\n"
     "- Unmapped IDs keep their raw form (Speaker_0, Identity_Cluster_1, etc.).\n"
     "- Multiple raw IDs can map to the same resolved name.\n"
-    "- Resolved names must come from the provided text data — do not invent names.\n\n"
+    "- Resolved names must come from the provided text data — do not invent names.\n"
+    "- Face clusters MUST be mapped to names when visual descriptions provide enough "
+    "context to identify the person. Do NOT leave all Identity_Cluster_N unmapped.\n\n"
     "OUTPUT: A JSON object mapping raw IDs to resolved names.\n"
     "Example: {\"Speaker_0\": \"Alice\", \"Speaker_1\": \"Bob\", "
     "\"Identity_Cluster_2\": \"Alice\", \"file0:Speaker_0\": \"Alice\"}\n"
@@ -798,14 +805,16 @@ def _format_asr_summary(asr_segments: list[dict[str, Any]], max_segments: int = 
     return "\n".join(lines)
 
 
-def _format_visual_summary(visual_events: list[dict[str, Any]], max_events: int = 100) -> str:
-    """Format visual events into a compact summary."""
+def _format_visual_summary(visual_events: list[dict[str, Any]], max_events: int = 100, cluster_descriptions: str = "") -> str:
+    """Format visual events into a compact summary with optional cluster descriptions."""
     if not visual_events:
         return "No visual events available."
     events = visual_events[:max_events]
     lines = [f"[{v.get('timestamp', 'N/A')}] {v['cluster']} in {v.get('path', 'unknown')}" for v in events]
     if len(visual_events) > max_events:
         lines.append(f"... ({len(visual_events) - max_events} more events)")
+    if cluster_descriptions:
+        lines.append(f"\n## Cluster Visual Descriptions (from VLM analysis)\n{cluster_descriptions}")
     return "\n".join(lines)
 
 
@@ -827,6 +836,7 @@ async def run_identity_resolver(
     pre_named_entities: list[str] | None = None,
     model: str = "gemma4-e4b-vision-fast",
     config_data: dict[str, Any] | None = None,
+    cluster_descriptions: str = "",
 ) -> dict[str, str]:
     """Run the Identity Resolver Agent for Phase 6.
 
@@ -841,6 +851,7 @@ async def run_identity_resolver(
         pre_named_entities: Pre-NER detected person names.
         model: Model to use.
         config_data: Config for storage tools.
+        cluster_descriptions: VLM visual descriptions per face cluster.
 
     Returns:
         Identity mapping from raw IDs to resolved names.
@@ -853,7 +864,7 @@ async def run_identity_resolver(
 
     # Build context with smart chunking
     asr_summary = _format_asr_summary(asr_segments)
-    visual_summary = _format_visual_summary(visual_events)
+    visual_summary = _format_visual_summary(visual_events, cluster_descriptions=cluster_descriptions)
     text_summary = _format_text_summary(text_messages)
 
     # Pre-fetch graph context for known entities (replaces tool-based lookup)

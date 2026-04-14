@@ -69,12 +69,12 @@ def _extract_chat_text(response: dict) -> str:
 
 # Direct llama.cpp endpoint for VLM — avoids orchestrator overhead and crashes
 _LLAMACPP_VLM_URL = os.environ.get(
-    "LLAMACPP_VLM_URL", "http://172.17.0.13:8001/v1/chat/completions"
+    "LLAMACPP_VLM_URL", "http://172.17.0.7:8001/v1/chat/completions"
 )
 _LLAMACPP_VLM_MODEL = os.environ.get(
     "LLAMACPP_VLM_MODEL", "gemma-4-26B-A4B-it-UD-IQ4_NL.gguf"
 )
-_VLM_TIMEOUT = int(os.environ.get("VLM_TIMEOUT", "300"))
+_VLM_TIMEOUT = int(os.environ.get("VLM_TIMEOUT", "600"))
 
 
 def _direct_vlm_chat(
@@ -538,7 +538,7 @@ async def face_recognize(image_path: Path, min_similarity: float = 0.8) -> list[
 
     url = f"{COMPREFACE_BASE_URL}/api/v1/recognition/recognize"
     headers = {"x-api-key": COMPREFACE_API_KEY}
-    params = {"face_plugins": "embedding"}
+    params = {"face_plugins": "calculator"}
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -553,22 +553,28 @@ async def face_recognize(image_path: Path, min_similarity: float = 0.8) -> list[
         data = response.json()
         results = []
 
+        raw_count = 0
         for face_data in data.get("result", []):
+            raw_count += 1
             subjects = face_data.get("subjects", [])
             subject = subjects[0]["subject"] if subjects else None
             similarity = subjects[0]["similarity"] if subjects else 0.0
 
-            if similarity >= min_similarity:
-                results.append(
-                    {
-                        "name": subject or "Unknown",
-                        "confidence": similarity,
-                        "box": face_data.get("box", {}),
-                        "embedding": face_data.get("embedding"),
-                    }
-                )
+            # Always include faces with embeddings for clustering.
+            # Recognition match is optional — clustering handles identity grouping.
+            results.append(
+                {
+                    "name": subject or "Unknown",
+                    "confidence": similarity,
+                    "box": face_data.get("box", {}),
+                    "embedding": face_data.get("embedding"),
+                }
+            )
 
-        logger.info(f"Detected {len(results)} faces in {image_path.name}")
+        logger.info(
+            f"Detected {raw_count} faces in {image_path.name}, "
+            f"{sum(1 for r in results if r['confidence'] >= min_similarity)} recognized"
+        )
         return results
 
     except Exception as e:
@@ -1425,6 +1431,7 @@ async def resolve_identities(
     namespace: str = "default",
     pre_named_entities: list[str] | None = None,
     model: str | None = None,
+    cluster_descriptions: str = "",
 ) -> dict[str, str]:
     """Use a two-pass Research-then-Format approach to resolve identities.
 
@@ -1443,6 +1450,8 @@ async def resolve_identities(
         visual_summary = "\n".join(
             [f"[{v.get('timestamp', 'N/A')}] {v['cluster']}" for v in visual_events[:50]]
         )
+        if cluster_descriptions:
+            visual_summary += f"\n\n## Cluster Visual Descriptions (from VLM analysis)\n{cluster_descriptions}"
         text_summary = "\n".join(
             [f"[{t['timestamp']}] {t['sender']}: {t['text']}" for t in text_messages[:50]]
         )

@@ -138,7 +138,7 @@ def _collect_people(
         if sender and sender not in ("Unknown", ""):
             people.add(sender)
     _skip = re.compile(
-        r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+|Unknown|Unknown Speaker \d+)$"
+        r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+|Identity_Cluster_\d+|Unknown|Unknown Speaker \d+)$"
     )
     people = {p for p in people if p and not _skip.match(p)}
     return _merge_people_names(people, identity_map)
@@ -338,7 +338,7 @@ def build_people_directory(data: ReportData) -> str:
     # Build aliases map (reverse identity_map)
     # Skip raw speaker IDs and metadata keys that would pollute the report
     _skip_alias = re.compile(
-        r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+)$|:name_reference"
+        r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+|Identity_Cluster_\d+)$|:name_reference"
     )
     aliases: dict[str, list[str]] = defaultdict(list)
     for cluster_id, name in data.identity_map.items():

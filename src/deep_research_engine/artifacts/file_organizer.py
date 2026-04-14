@@ -28,7 +28,7 @@ logger = get_loguru_logger("artifacts.file_organizer")
 _UNSAFE = set('/\\:*?"<>|\n\r\t')
 
 # Raw speaker IDs that should never appear as person names
-_RAW_SPEAKER_ID = re.compile(r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+)$")
+_RAW_SPEAKER_ID = re.compile(r"^(SPEAKER_\d+|Global_Speaker_\d+|Speaker_\d+|Identity_Cluster_\d+)$")
 
 # Telegram export UI assets that should not be organized as photos
 _TELEGRAM_UI_PATTERN = re.compile(

@@ -195,7 +195,7 @@ def get_langchain_llm(
     # Point directly at llama.cpp
     base_url = os.environ.get(
         "LLAMACPP_DIRECT_URL",
-        "http://172.17.0.13:8001/v1/chat/completions",
+        "http://172.17.0.7:8001/v1/chat/completions",
     ).rstrip("/")
     if base_url.endswith("/chat/completions"):
         base_url = base_url[: -len("/chat/completions")]

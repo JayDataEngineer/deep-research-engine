@@ -67,7 +67,7 @@ _CLOUD_MODEL_PREFIXES = ("qwen35-", "qwen-35-", "qwen-cloud", "google/", "or-")
 # Direct llama.cpp bypass — avoids orchestrator model-loading which kills the running model.
 # Used for ALL text LLM calls when Gemma 4 26B is the only model in use.
 _LLAMACPP_DIRECT_URL = os.environ.get(
-    "LLAMACPP_DIRECT_URL", "http://172.17.0.13:8001/v1/chat/completions"
+    "LLAMACPP_DIRECT_URL", "http://172.17.0.7:8001/v1/chat/completions"
 )
 _LLAMACPP_DIRECT_MODEL = os.environ.get(
     "LLAMACPP_DIRECT_MODEL", "gemma-4-26B-A4B-it-UD-IQ4_NL.gguf"

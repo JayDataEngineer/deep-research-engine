@@ -729,6 +729,36 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
         for _, asr_output in file_asr_results:
             asr_all_segments.extend(asr_output.get("segments", []))
 
+        # Load Phase 7 VLM checkpoint (if available from a previous run)
+        # to provide visual descriptions for face clusters to the identity resolver.
+        cluster_descriptions: dict[str, list[str]] = {}
+        checkpoint_p7 = _load_checkpoint(pipeline_dir, "phase7_vlm_enriched")
+        if checkpoint_p7 and isinstance(checkpoint_p7, dict):
+            p7_items = checkpoint_p7.get("items", [])
+            for item in p7_items:
+                desc = item.get("description", "")
+                faces = item.get("faces", [])
+                path = item.get("path", "")
+                if desc and faces:
+                    for face_id in faces:
+                        cluster_descriptions.setdefault(face_id, []).append(
+                            f"[{path}]: {desc[:300]}"
+                        )
+            if cluster_descriptions:
+                logger.info(
+                    f"Phase 6: Loaded {len(cluster_descriptions)} cluster descriptions "
+                    f"from Phase 7 VLM checkpoint"
+                )
+
+        # Build cluster description summaries for the identity resolver
+        cluster_desc_lines: list[str] = []
+        for cid in sorted(cluster_descriptions):
+            descs = cluster_descriptions[cid][:5]
+            cluster_desc_lines.append(
+                f"### {cid}\n" + "\n".join(f"- {d}" for d in descs)
+            )
+        cluster_description_text = "\n\n".join(cluster_desc_lines)
+
         visual_events: list[dict[str, Any]] = []
         for path, clusters in identity_map.items():
             visual_events.extend(
@@ -770,6 +800,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 pre_named_entities=sorted(pre_named_entities),
                 model=DEFAULT_MODEL,
                 config_data=config_data,
+                cluster_descriptions=cluster_description_text,
             )
         except Exception as e:
             logger.warning(
@@ -785,6 +816,7 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 .get("namespace", "default"),
                 pre_named_entities=sorted(pre_named_entities),
                 model=DEFAULT_MODEL,
+                cluster_descriptions=cluster_description_text,
             )
 
         # Batch VLM Video Analysis with circuit breaker
