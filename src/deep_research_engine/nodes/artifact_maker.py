@@ -27,7 +27,68 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
         logger.info("Artifact maker node disabled. Skipping.")
         return {"__goto__": "complete"}
 
-    # 1. Try to use ArtifactMakerWorker if available
+    # 1. Detective Report (ingestion workflows with structured data)
+    # Must run BEFORE generic artifact worker to avoid early return.
+    if state.get("context", {}).get("ingestion_structured"):
+        from pathlib import Path
+
+        from ..artifacts.detective_report import build_detective_report
+
+        # 1a. Organize media files (non-fatal if it fails)
+        org_stats = {}
+        try:
+            from ..artifacts.file_organizer import organize_files
+
+            structured = state["context"]["ingestion_structured"]
+            media_items = structured.get("media_items", [])
+            big_dump = state.get("context", {}).get("big_text_dump")
+            output_dir = Path(big_dump).parent if big_dump else Path("output/artifacts")
+            input_dir = Path(state.get("input_data", {}).get("export_path", "."))
+            org_stats = organize_files(output_dir, media_items, input_dir)
+            logger.info(f"File organization: {org_stats}")
+        except Exception as e:
+            logger.warning(f"File organization failed (non-fatal): {e}")
+
+        # 1b. Build detective report
+        try:
+            report = await build_detective_report(state)
+            _write_artifact_to_disk(state, report)
+            _write_report_sections(state, report)
+
+            logger.info(f"Detective report generated ({len(report)} chars).")
+
+            # 1c. Validate output quality
+            try:
+                from ..artifacts.output_validator import validate_output, write_validation_report
+
+                big_dump = state.get("context", {}).get("big_text_dump")
+                output_dir = Path(big_dump).parent if big_dump else Path("output/artifacts")
+                val_warnings = validate_output(output_dir)
+                for w in val_warnings:
+                    if w.severity == "error":
+                        logger.error(f"VALIDATION [{w.check}]: {w.message} (files: {w.files})")
+                    else:
+                        logger.warning(f"VALIDATION [{w.check}]: {w.message} (files: {w.files})")
+                if val_warnings:
+                    write_validation_report(output_dir, val_warnings)
+                    logger.info(f"Validation report written: {len(val_warnings)} issues")
+            except Exception as e:
+                logger.warning(f"Output validation failed (non-fatal): {e}")
+
+            return {
+                "artifact_output": report,
+                "artifact_metadata": {
+                    "format": "detective_report",
+                    "organized_files": org_stats,
+                    "worker_count": len(state.get("worker_results", [])),
+                },
+                "__goto__": "complete",
+            }
+        except Exception as e:
+            logger.error(f"Detective report failed: {e}", exc_info=True)
+            # Fall through to generic worker / basic aggregation
+
+    # 2. Try generic ArtifactMakerWorker if available (non-ingestion fallback)
     worker_class = WorkerRegistry.get("artifact_maker")
     # Fallback for backwards compatibility
     if not worker_class:
@@ -65,66 +126,6 @@ async def artifact_maker_node(state: EngineState) -> dict[str, Any]:
                 )
         except Exception as e:
             logger.error(f"Error executing artifact maker worker: {e}. Falling back.")
-
-    # 2. Detective Report (ingestion workflows with structured data)
-    if state.get("context", {}).get("ingestion_structured"):
-        from pathlib import Path
-
-        from ..artifacts.detective_report import build_detective_report
-
-        # 2a. Organize media files (non-fatal if it fails)
-        org_stats = {}
-        try:
-            from ..artifacts.file_organizer import organize_files
-
-            structured = state["context"]["ingestion_structured"]
-            media_items = structured.get("media_items", [])
-            big_dump = state.get("context", {}).get("big_text_dump")
-            output_dir = Path(big_dump).parent if big_dump else Path("output/artifacts")
-            input_dir = Path(state.get("input_data", {}).get("export_path", "."))
-            org_stats = organize_files(output_dir, media_items, input_dir)
-            logger.info(f"File organization: {org_stats}")
-        except Exception as e:
-            logger.warning(f"File organization failed (non-fatal): {e}")
-
-        # 2b. Build detective report
-        try:
-            report = await build_detective_report(state)
-            _write_artifact_to_disk(state, report)
-            _write_report_sections(state, report)
-
-            logger.info(f"Detective report generated ({len(report)} chars).")
-
-            # 2c. Validate output quality
-            try:
-                from ..artifacts.output_validator import validate_output, write_validation_report
-
-                big_dump = state.get("context", {}).get("big_text_dump")
-                output_dir = Path(big_dump).parent if big_dump else Path("output/artifacts")
-                val_warnings = validate_output(output_dir)
-                for w in val_warnings:
-                    if w.severity == "error":
-                        logger.error(f"VALIDATION [{w.check}]: {w.message} (files: {w.files})")
-                    else:
-                        logger.warning(f"VALIDATION [{w.check}]: {w.message} (files: {w.files})")
-                if val_warnings:
-                    write_validation_report(output_dir, val_warnings)
-                    logger.info(f"Validation report written: {len(val_warnings)} issues")
-            except Exception as e:
-                logger.warning(f"Output validation failed (non-fatal): {e}")
-
-            return {
-                "artifact_output": report,
-                "artifact_metadata": {
-                    "format": "detective_report",
-                    "organized_files": org_stats,
-                    "worker_count": len(state.get("worker_results", [])),
-                },
-                "__goto__": "complete",
-            }
-        except Exception as e:
-            logger.error(f"Detective report failed: {e}", exc_info=True)
-            # Fall through to basic aggregation
 
     # 3. Basic fallback aggregation
     worker_results = state.get("worker_results", [])

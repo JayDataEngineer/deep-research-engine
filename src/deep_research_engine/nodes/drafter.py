@@ -40,18 +40,31 @@ async def drafter_node(state: EngineState) -> dict[str, Any]:
         logger.info("Drafter node disabled. Skipping.")
         return {"__goto__": "critic"}
 
-    # Reload LLM — may have been unloaded by ASR during ingestion
+    # Reload LLM — may have been unloaded by ASR during ingestion.
+    # For ingestion workflows (big_text_dump present), skip loading to avoid
+    # killing the VLM model (Gemma 4 26B) that's running on llama.cpp.
+    # Use the main model (cloud-routed via LiteLLM) instead.
     king_model_name = phase_config.get("model")
     if not king_model_name:
         king_model_name = "gemma4-e4b-vision-fast"
-    try:
-        from ..shared.infra_client import InfraClient
 
-        infra = InfraClient()
-        infra.load("llm", king_model_name, wait=True)
-        logger.info(f"LLM reloaded for drafter: {king_model_name}")
-    except Exception as e:
-        logger.warning(f"Failed to reload LLM for drafter (may use cloud model): {e}")
+    # Check if this is an ingestion workflow — don't disrupt VLM
+    big_dump_path = state.get("context", {}).get("big_text_dump")
+    if big_dump_path:
+        # Use main model (routes through LiteLLM cloud, doesn't touch llama.cpp)
+        main_model = config_data.get("llm", {}).get("models", {}).get("main")
+        if main_model:
+            king_model_name = main_model
+            logger.info(f"Ingestion workflow — using cloud model {king_model_name} (preserving VLM)")
+        else:
+            logger.info("Ingestion workflow — skipping LLM reload to preserve VLM")
+    else:
+        try:
+            infra = InfraClient()
+            infra.load("llm", king_model_name, wait=True)
+            logger.info(f"LLM reloaded for drafter: {king_model_name}")
+        except Exception as e:
+            logger.warning(f"Failed to reload LLM for drafter (may use cloud model): {e}")
 
     # Initialize storage tools with current config
     initialize_storage_tools(config_data)

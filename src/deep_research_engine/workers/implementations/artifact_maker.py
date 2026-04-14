@@ -11,6 +11,7 @@ Usage:
 
 import asyncio
 import importlib.util
+import os
 from pathlib import Path
 from typing import Any
 
@@ -297,21 +298,38 @@ class ArtifactMakerWorker(BaseWorker):
         raise ValueError(f"No Pydantic BaseModel found in schema module {schema_module}")
 
     async def _create_llm(self, model_config: dict[str, Any]) -> Any:
-        """Create LLM from model configuration."""
-        from ...shared import get_chat_llm
-        from ...shared.infra_client import InfraClient
+        """Create LLM from model configuration.
+
+        Routes directly to llama.cpp (bypasses orchestrator) to avoid
+        the orchestrator restarting the container.
+        """
+        from langchain_openai import ChatOpenAI
 
         # Config uses "model" key, not "name"
         model_name = model_config.get("model") or model_config.get(
             "name", "qwen-35-35b-a3b-vision-fast"
         )
-        enable_thinking = model_config.get("enable_thinking", False)
 
-        # Ensure LLM is loaded (may have been unloaded by ASR)
-        infra = InfraClient()
-        infra.load("llm", model_name, wait=True)
+        # Point directly at llama.cpp — same as InfraClient.chat() and _make_chat_model()
+        base_url = os.environ.get(
+            "LLAMACPP_DIRECT_URL",
+            "http://172.17.0.13:8001/v1/chat/completions",
+        ).rstrip("/")
+        if base_url.endswith("/chat/completions"):
+            base_url = base_url[: -len("/chat/completions")]
 
-        return await get_chat_llm(model=model_name, enable_thinking=enable_thinking)
+        api_model = os.environ.get(
+            "LLAMACPP_DIRECT_MODEL",
+            "gemma-4-26B-A4B-it-UD-IQ4_NL.gguf",
+        )
+
+        return ChatOpenAI(
+            model=api_model,
+            base_url=base_url,
+            api_key="not-needed",
+            temperature=0.3,
+            max_tokens=16000,
+        )
 
     async def _extract_structured_output(
         self, llm: Any, agent_output: str, pydantic_model: type[BaseModel]

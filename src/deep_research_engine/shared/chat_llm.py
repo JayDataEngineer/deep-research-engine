@@ -186,33 +186,31 @@ def get_langchain_llm(
 ) -> ChatOpenAI:
     """Get a raw LangChain ChatOpenAI instance.
 
-    Routes through the model orchestrator by default (manages GPU lifecycle).
-    Falls back to LiteLLM if ORCHESTRATOR_BASE_URL is overridden.
+    Routes directly to llama.cpp (bypasses orchestrator) to avoid the
+    orchestrator restarting the container with a different model.
 
     Use this when you need the actual ChatOpenAI (e.g., for deepagents,
     with_structured_output, bind_tools). For general chat, prefer get_chat_llm().
     """
-    resolved = _resolve_model(model, config_data)
+    # Point directly at llama.cpp
+    base_url = os.environ.get(
+        "LLAMACPP_DIRECT_URL",
+        "http://172.17.0.13:8001/v1/chat/completions",
+    ).rstrip("/")
+    if base_url.endswith("/chat/completions"):
+        base_url = base_url[: -len("/chat/completions")]
 
-    # Handle thinking mode
-    if not enable_thinking:
-        from .config import THINKING_TO_FAST
-        resolved = THINKING_TO_FAST.get(resolved, resolved)
-
-    # Determine base URL and headers for the orchestrator
-    base_url = LITELLM_BASE_URL
-    default_headers = {}
-    if "localhost" in base_url or "127.0.0.1" in base_url:
-        # Route through Traefik to model-orchestrator
-        default_headers["Host"] = "api.orchestrator.local"
+    api_model = os.environ.get(
+        "LLAMACPP_DIRECT_MODEL",
+        "gemma-4-26B-A4B-it-UD-IQ4_NL.gguf",
+    )
 
     return ChatOpenAI(
-        model=resolved,
-        api_key=LITELLM_API_KEY,
+        model=api_model,
+        api_key="not-needed",
         base_url=base_url,
         temperature=temperature,
         streaming=streaming,
-        default_headers=default_headers or None,
     )
 
 

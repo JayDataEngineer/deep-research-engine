@@ -71,42 +71,41 @@ SORT_AGENT_PROMPT = (
 
 
 def _ensure_llm_loaded(model: str) -> None:
-    """Ensure the LLM is loaded before running a sub-agent."""
-    try:
-        infra = InfraClient()
-        infra.load("llm", model, wait=True)
-    except Exception as e:
-        logger.warning(f"Could not reload LLM {model} for sub-agent (may be cloud): {e}")
+    """No-op: all LLM calls go directly to llama.cpp (bypasses orchestrator).
+
+    Previously called infra.load("llm", ...) which restarted llama.cpp
+    and killed whatever model was running. Since chat() now routes
+    directly to llama.cpp, model loading is unnecessary.
+    """
+    pass
 
 
 def _make_chat_model(model: str = "gemma4-e4b-vision-fast") -> ChatOpenAI:
-    """Create a ChatOpenAI instance pointing at the local orchestrator.
+    """Create a ChatOpenAI instance pointing directly at llama.cpp.
 
-    Maps infra model keys to the orchestrator's OpenAI-compatible endpoint,
-    avoiding LangChain's provider resolution which can't handle bare names.
+    Routes to llama.cpp directly (bypasses orchestrator) to avoid the
+    orchestrator restarting the container when loading a different model.
     """
     import os
 
-    # Map infra model key to the API model name the orchestrator expects
-    model_name_map = {
-        "gemma4-e4b-vision-fast": "gemma-4-e4b",
-        "gemma4-e4b-vision": "gemma-4-e4b",
-        "qwen35-35b-a3b-vision-fast": "qwen35-35b-a3b-vision-fast",
-    }
-    api_model = model_name_map.get(model, model)
-
-    # Build the base URL — use the same discovery logic as InfraClient
     base_url = os.environ.get(
-        "INFRA_ORCHESTRATOR_URL",
-        "http://localhost:18880",
+        "LLAMACPP_DIRECT_URL",
+        "http://172.17.0.13:8001/v1/chat/completions",
     ).rstrip("/")
-    api_key = os.environ.get("LITELLM_PROXY_KEY", "sk-litellm-e2e-test-master-key")
+    # Strip /chat/completions if present — ChatOpenAI appends its own path
+    if base_url.endswith("/chat/completions"):
+        base_url = base_url[: -len("/chat/completions")]
+
+    # Use the actual model loaded in llama.cpp
+    api_model = os.environ.get(
+        "LLAMACPP_DIRECT_MODEL",
+        "gemma-4-26B-A4B-it-UD-IQ4_NL.gguf",
+    )
 
     return ChatOpenAI(
         model=api_model,
-        base_url=f"{base_url}/v1",
-        api_key=api_key,
-        default_headers={"Host": "api.orchestrator.local"},
+        base_url=base_url,
+        api_key="not-needed",
         temperature=0.3,
         max_tokens=16000,
     )

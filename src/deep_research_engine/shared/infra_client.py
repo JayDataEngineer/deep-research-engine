@@ -47,6 +47,8 @@ logger = logging.getLogger("infra_client")
 
 _TRAEFIK_PORTS = [18880, 8880, 80]
 _DOCKER_HOSTNAMES = ["orchestrator:8000", "shared-orchestrator-orchestrator-1:8000"]
+# Docker bridge IPs — used when running on host (not inside a container)
+_DOCKER_BRIDGE_IPS = ["172.17.0.12:8000"]
 _DISCOVER_TIMEOUT = 2  # seconds per probe
 _HEALTH_POLL_INTERVAL = 3  # seconds between health checks
 _LOAD_TIMEOUT = 1800  # 30 minutes for model loading
@@ -59,6 +61,17 @@ SLOT_TYPES = ("llm", "asr", "tts", "image-gen")
 # LiteLLM cloud routing (cloud models route through litellm.local, not orchestrator)
 _LITELLM_HOST = "litellm.local"
 _LITELLM_KEY = os.environ.get("LITELLM_PROXY_KEY", "sk-litellm-e2e-test-master-key")
+# Models that route through LiteLLM cloud instead of local GPU
+_CLOUD_MODEL_PREFIXES = ("qwen35-", "qwen-35-", "qwen-cloud", "google/", "or-")
+
+# Direct llama.cpp bypass — avoids orchestrator model-loading which kills the running model.
+# Used for ALL text LLM calls when Gemma 4 26B is the only model in use.
+_LLAMACPP_DIRECT_URL = os.environ.get(
+    "LLAMACPP_DIRECT_URL", "http://172.17.0.13:8001/v1/chat/completions"
+)
+_LLAMACPP_DIRECT_MODEL = os.environ.get(
+    "LLAMACPP_DIRECT_MODEL", "gemma-4-26B-A4B-it-UD-IQ4_NL.gguf"
+)
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -141,6 +154,17 @@ class InfraClient:
                 )
                 if resp.ok:
                     return f"http://{host}"
+            except requests.RequestException:
+                pass
+
+        # 2b. Docker bridge IPs (running on host, containers on bridge network)
+        for addr in _DOCKER_BRIDGE_IPS:
+            try:
+                resp = requests.get(
+                    f"http://{addr}/health", timeout=_DISCOVER_TIMEOUT
+                )
+                if resp.ok:
+                    return f"http://{addr}"
             except requests.RequestException:
                 pass
 
@@ -380,75 +404,37 @@ class InfraClient:
         stream: bool = False,
         **kwargs,
     ) -> Union[dict[str, Any], Any]:
-        """Chat with an LLM. Auto-loads the model if needed.
+        """Chat with an LLM. Routes directly to llama.cpp (bypasses orchestrator).
+
+        All LLM calls go directly to llama.cpp to avoid the orchestrator
+        restarting the container with a different model. The orchestrator's
+        load() would kill whatever model is currently running.
 
         Args:
             messages: A string (single user message) or OpenAI-format messages list.
-            model: Model key. Defaults to the GPU LLM.
+            model: Model key (ignored — always uses the loaded model).
             stream: If True, returns a streaming response iterator.
             **kwargs: Passed to the OpenAI chat completions API.
 
         Returns:
             OpenAI-format chat completion response.
         """
-        is_cloud = model and "-cloud" in model
+        is_cloud = model and ("-cloud" in model or model.startswith(_CLOUD_MODEL_PREFIXES))
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
-        # Map orchestrator load model names to LiteLLM model names
-        model_name_map = {
-            "gemma4-e4b-vision-fast": "gemma-4-e4b",
-            "gemma4-e4b-vision": "gemma-4-e4b",
-        }
-        api_model = model_name_map.get(model, model)
-        payload = {"model": api_model, "messages": messages, "stream": stream, **kwargs}
+        # ALL text LLM calls go directly to llama.cpp — bypass orchestrator entirely.
+        # The orchestrator's model loading kills the running model, which we can't allow.
+        payload = {"model": _LLAMACPP_DIRECT_MODEL, "messages": messages, "stream": stream, **kwargs}
 
-        # Disable thinking mode for text-only local models (prevents token waste on reasoning)
-        # Skip for image/multimodal calls as extra_body breaks VLM
-        has_images = any(
-            isinstance(c, dict) and c.get("type") == "image_url"
-            for m in messages
-            for c in (m.get("content", []) if isinstance(m.get("content"), list) else [])
+        resp = self._session.post(
+            _LLAMACPP_DIRECT_URL,
+            json=payload,
+            timeout=_REQUEST_TIMEOUT,
         )
-        if not has_images and not is_cloud:
-            payload["extra_body"] = {"thinking": {"type": "disabled"}}
-
-        for attempt in range(2):
-            # Load model if it's a GPU model (skip for CPU/cloud models)
-            if model and not model.endswith("-cpu") and not is_cloud:
-                self._ensure_service("llm", model)
-
-            # Cloud models route through LiteLLM proxy, local models through orchestrator
-            if is_cloud:
-                resp = self._session.post(
-                    f"{self._base}/v1/chat/completions",
-                    json=payload,
-                    timeout=_REQUEST_TIMEOUT,
-                    headers={"Host": _LITELLM_HOST, "Authorization": f"Bearer {_LITELLM_KEY}"},
-                )
-            else:
-                resp = self._post(
-                    "/v1/chat/completions",
-                    json=payload,
-                    timeout=_REQUEST_TIMEOUT,
-                )
-
-            if resp.ok:
-                return resp.json()
-
-            # On 404/502/503, invalidate cache and retry once (orchestrator may have restarted / model busy)
-            if resp.status_code in (404, 502, 503) and attempt == 0 and not is_cloud:
-                logger.warning(
-                    "chat got HTTP %d - invalidating model cache and retrying",
-                    resp.status_code,
-                )
-                self._loaded_models.clear()
-                continue
-
-            self._raise_for_status(resp, "chat")
-
-        # Should not reach here, but just in case
-        self._raise_for_status(resp, "chat")
+        if resp.ok:
+            return resp.json()
+        self._raise_for_status(resp, "chat (llama.cpp)")
 
     # ------------------------------------------------------------------
     # High-level API: Transcription (ASR)
