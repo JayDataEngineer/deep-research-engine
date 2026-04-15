@@ -762,6 +762,41 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     f"from Phase 7 VLM checkpoint"
                 )
 
+        # If no Phase 7 checkpoint available, run inline VLM on a sample of
+        # photos per cluster to provide visual context for identity resolution.
+        if not cluster_descriptions and identity_map:
+            # Build cluster_id -> list of photo paths mapping
+            cluster_photos: dict[str, list[str]] = {}
+            for photo_path, clusters in identity_map.items():
+                for cid in clusters:
+                    cluster_photos.setdefault(cid, []).append(photo_path)
+
+            if cluster_photos:
+                logger.info(
+                    f"Phase 6: No Phase 7 checkpoint. Running inline VLM sampling "
+                    f"for {len(cluster_photos)} face clusters..."
+                )
+                for cid, photo_paths in sorted(cluster_photos.items()):
+                    # Sample up to 2 photos per cluster
+                    sample_paths = photo_paths[:2]
+                    for rel_path in sample_paths:
+                        media_path = Path(rel_path)
+                        if not media_path.exists():
+                            continue
+                        try:
+                            desc = await vlm_analyze(media_path)
+                            if desc and not desc.startswith("[Image analysis failed"):
+                                cluster_descriptions.setdefault(cid, []).append(
+                                    f"[{rel_path}]: {desc[:300]}"
+                                )
+                        except Exception as e:
+                            logger.debug(f"Inline VLM failed for {rel_path}: {e}")
+                if cluster_descriptions:
+                    logger.info(
+                        f"Phase 6: Inline VLM produced {len(cluster_descriptions)} "
+                        f"cluster descriptions"
+                    )
+
         # Build cluster description summaries for the identity resolver
         cluster_desc_lines: list[str] = []
         for cid in sorted(cluster_descriptions):
