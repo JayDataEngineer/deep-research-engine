@@ -122,6 +122,11 @@ def _is_valid_vlm_description(text: str | None, item_type: str = "") -> bool:
     """Sanity-check a VLM description. Returns False for garbage/refusals/roleplay."""
     if not text or len(text.strip()) < 20:
         return False
+    # Reject error strings from failed VLM/ASR calls
+    if text.strip().startswith("[Image analysis failed") or text.strip().startswith("[Video analysis failed"):
+        return False
+    if text.strip().startswith("[No frames") or text.strip().startswith("[VLM unavailable"):
+        return False
     lower = text.lower().strip()
     if any(phrase in lower for phrase in _VLM_GARBAGE_PHRASES):
         return False
@@ -1007,7 +1012,11 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 if not vlm_cb.is_tripped() and media_path.exists():
                     try:
                         photo_desc = await vlm_analyze(media_path)
-                        vlm_cb.record_success()
+                        if photo_desc and photo_desc.strip().startswith("[Image analysis failed"):
+                            vlm_cb.record_failure(item, photo_desc[:200])
+                            photo_desc = None
+                        else:
+                            vlm_cb.record_success()
                     except RuntimeError:
                         vlm_cb.record_failure(item, "VLM unavailable for photo")
                         logger.warning("VLM unavailable - skipping photo descriptions")
@@ -1033,7 +1042,11 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                 elif not vlm_cb.is_tripped() and media_path.exists():
                     try:
                         video_desc = await video_analyze(media_path)
-                        vlm_cb.record_success()
+                        if video_desc and video_desc.strip().startswith("[Video analysis failed"):
+                            vlm_cb.record_failure(item, video_desc[:200])
+                            video_desc = None
+                        else:
+                            vlm_cb.record_success()
                     except RuntimeError:
                         vlm_cb.record_failure(item, "VLM unavailable for video")
                         video_desc = None

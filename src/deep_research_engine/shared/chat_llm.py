@@ -16,6 +16,8 @@ Usage:
     result = await structured_llm.ainvoke([{"role": "user", "content": "..."}])
 """
 
+import os
+
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
