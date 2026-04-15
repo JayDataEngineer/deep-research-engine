@@ -781,6 +781,8 @@ async def ingestion_node(state: EngineState) -> dict[str, Any]:
                     sample_paths = photo_paths[:2]
                     for rel_path in sample_paths:
                         media_path = Path(rel_path)
+                        if not media_path.is_absolute():
+                            media_path = input_dir / rel_path
                         if not media_path.exists():
                             continue
                         try:
