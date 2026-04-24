@@ -24,9 +24,14 @@ from .chat_llm import ChatLLM, get_chat_llm, get_langchain_llm
 # Configuration
 from .config import (
     DEFAULT_MODEL,
+    INGESTION_MODEL,
     LITELLM_API_KEY,
     LITELLM_BASE_URL,
+    OPENROUTER_API_KEY,
+    OPENROUTER_BASE_URL,
     TOOL_MODEL,
+    get_llm_endpoint,
+    is_cloud_model,
     map_model_name,
 )
 
@@ -41,6 +46,11 @@ __all__ = [
     "LITELLM_BASE_URL",
     "LITELLM_API_KEY",
     "DEFAULT_MODEL",
+    "INGESTION_MODEL",
     "TOOL_MODEL",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_BASE_URL",
+    "get_llm_endpoint",
+    "is_cloud_model",
     "map_model_name",
 ]

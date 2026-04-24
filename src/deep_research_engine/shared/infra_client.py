@@ -62,7 +62,10 @@ SLOT_TYPES = ("llm", "asr", "tts", "image-gen")
 _LITELLM_HOST = "litellm.local"
 _LITELLM_KEY = os.environ.get("LITELLM_PROXY_KEY", "sk-litellm-e2e-test-master-key")
 # Models that route through LiteLLM cloud instead of local GPU
-_CLOUD_MODEL_PREFIXES = ("qwen35-", "qwen-35-", "qwen-cloud", "google/", "or-")
+_CLOUD_MODEL_PREFIXES = (
+    "deepseek/", "openai/", "anthropic/", "google/", "meta-llama/", "or-",
+    "qwen35-", "qwen-35-", "qwen-cloud",
+)
 
 # Direct llama.cpp bypass — avoids orchestrator model-loading which kills the running model.
 # Used for ALL text LLM calls when Gemma 4 26B is the only model in use.
@@ -124,16 +127,26 @@ class InfraClient:
         if url:
             self._base = url.rstrip("/")
         else:
-            self._base = self._discover_endpoint()
+            try:
+                self._base = self._discover_endpoint()
+            except InfraUnreachable:
+                # Orchestrator not found — OK if using cloud models (OpenRouter)
+                self._base = ""
+                logger.warning(
+                    "Orchestrator not reachable. Cloud model calls (OpenRouter) "
+                    "will still work. Local model calls and ASR will fail."
+                )
 
-        # If going through Traefik on localhost, set Host header on every request
-        if "localhost" in self._base or "127.0.0.1" in self._base:
-            self._session.headers.update({
-                "Host": "api.orchestrator.local",
-                "Authorization": f"Bearer {_LITELLM_KEY}",
-            })
-
-        logger.info("InfraClient connected to %s", self._base)
+        if self._base:
+            # If going through Traefik on localhost, set Host header on every request
+            if "localhost" in self._base or "127.0.0.1" in self._base:
+                self._session.headers.update({
+                    "Host": "api.orchestrator.local",
+                    "Authorization": f"Bearer {_LITELLM_KEY}",
+                })
+            logger.info("InfraClient connected to %s", self._base)
+        else:
+            logger.info("InfraClient running in cloud-only mode (no orchestrator)")
 
     # ------------------------------------------------------------------
     # Discovery
@@ -404,27 +417,40 @@ class InfraClient:
         stream: bool = False,
         **kwargs,
     ) -> Union[dict[str, Any], Any]:
-        """Chat with an LLM. Routes directly to llama.cpp (bypasses orchestrator).
+        """Chat with an LLM. Routes to the appropriate provider.
 
-        All LLM calls go directly to llama.cpp to avoid the orchestrator
-        restarting the container with a different model. The orchestrator's
-        load() would kill whatever model is currently running.
+        Cloud models (deepseek/, openai/, etc.) → OpenRouter
+        Local models → llama.cpp direct (bypasses orchestrator)
 
         Args:
             messages: A string (single user message) or OpenAI-format messages list.
-            model: Model key (ignored — always uses the loaded model).
+            model: Model key. Cloud prefixes route to OpenRouter.
             stream: If True, returns a streaming response iterator.
             **kwargs: Passed to the OpenAI chat completions API.
 
         Returns:
             OpenAI-format chat completion response.
         """
-        is_cloud = model and ("-cloud" in model or model.startswith(_CLOUD_MODEL_PREFIXES))
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
-        # ALL text LLM calls go directly to llama.cpp — bypass orchestrator entirely.
-        # The orchestrator's model loading kills the running model, which we can't allow.
+        # Route cloud models to OpenRouter
+        if model and any(model.startswith(p) for p in _CLOUD_MODEL_PREFIXES):
+            or_key = os.environ.get("OPENROUTER_API_KEY", "")
+            or_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+            if or_key:
+                payload = {"model": model, "messages": messages, "stream": stream, **kwargs}
+                resp = self._session.post(
+                    f"{or_url}/chat/completions",
+                    json=payload,
+                    headers={"Authorization": f"Bearer {or_key}"},
+                    timeout=_REQUEST_TIMEOUT,
+                )
+                if resp.ok:
+                    return resp.json()
+                self._raise_for_status(resp, f"chat (OpenRouter/{model})")
+
+        # Local: go directly to llama.cpp — bypass orchestrator entirely.
         payload = {"model": _LLAMACPP_DIRECT_MODEL, "messages": messages, "stream": stream, **kwargs}
 
         resp = self._session.post(

@@ -64,17 +64,22 @@ def _extract_chat_text(response: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Direct llama.cpp VLM client (bypasses orchestrator/LiteLLM)
+# VLM client — routes to OpenRouter (cloud) or llama.cpp (local)
 # ---------------------------------------------------------------------------
 
-# Direct llama.cpp endpoint for VLM — avoids orchestrator overhead and crashes
+# Cloud VLM via OpenRouter (default — frees GPU VRAM)
+_VLM_MODEL = os.environ.get("VLM_MODEL", "google/gemma-3-27b-it")
+
+# Local VLM fallback (llama.cpp direct)
 _LLAMACPP_VLM_URL = os.environ.get(
     "LLAMACPP_VLM_URL", "http://172.17.0.7:8001/v1/chat/completions"
 )
 _LLAMACPP_VLM_MODEL = os.environ.get(
     "LLAMACPP_VLM_MODEL", "gemma-4-26B-A4B-it-UD-IQ4_NL.gguf"
 )
-_VLM_TIMEOUT = int(os.environ.get("VLM_TIMEOUT", "600"))
+_VLM_TIMEOUT = int(os.environ.get("VLM_TIMEOUT", "120"))
+
+_CLOUD_VLM_PREFIXES = ("deepseek/", "openai/", "anthropic/", "google/", "meta-llama/", "or-")
 
 
 def _direct_vlm_chat(
@@ -83,12 +88,32 @@ def _direct_vlm_chat(
     max_tokens: int = 500,
     temperature: float = 0.0,
 ) -> dict:
-    """Call llama.cpp VLM directly via OpenAI-compatible API.
-
-    Bypasses orchestrator and LiteLLM for lower latency and fewer failure modes.
-    """
+    """Call VLM — routes to OpenRouter for cloud models, llama.cpp for local."""
     import requests
 
+    # Cloud VLM via OpenRouter
+    if any(_VLM_MODEL.startswith(p) for p in _CLOUD_VLM_PREFIXES):
+        or_key = os.environ.get("OPENROUTER_API_KEY", "")
+        or_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        if or_key:
+            resp = requests.post(
+                f"{or_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {or_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": _VLM_MODEL,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                },
+                timeout=_VLM_TIMEOUT,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    # Local VLM via llama.cpp
     resp = requests.post(
         _LLAMACPP_VLM_URL,
         json={

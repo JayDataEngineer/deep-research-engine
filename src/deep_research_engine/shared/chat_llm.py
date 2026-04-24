@@ -25,6 +25,8 @@ from .config import (
     DEFAULT_MODEL,
     LITELLM_API_KEY,
     LITELLM_BASE_URL,
+    get_llm_endpoint,
+    is_cloud_model,
     map_model_name,
 )
 
@@ -74,15 +76,27 @@ class ChatLLM:
         if extra_body:
             model_kwargs["extra_body"] = extra_body
 
-        # Create LangChain ChatOpenAI client pointing to LiteLLM
-        self._llm = ChatOpenAI(
-            model=model,
-            api_key=LITELLM_API_KEY,
-            base_url=LITELLM_BASE_URL,
-            temperature=temperature,
-            model_kwargs=model_kwargs,
-            streaming=True,
-        )
+        # Route cloud models to OpenRouter, local models to LiteLLM
+        if is_cloud_model(model):
+            from .config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
+
+            self._llm = ChatOpenAI(
+                model=model,
+                api_key=OPENROUTER_API_KEY,
+                base_url=OPENROUTER_BASE_URL,
+                temperature=temperature,
+                model_kwargs=model_kwargs,
+                streaming=True,
+            )
+        else:
+            self._llm = ChatOpenAI(
+                model=model,
+                api_key=LITELLM_API_KEY,
+                base_url=LITELLM_BASE_URL,
+                temperature=temperature,
+                model_kwargs=model_kwargs,
+                streaming=True,
+            )
 
         logger.debug(
             f"[ChatLLM] Initialized: model={model}, "
@@ -188,13 +202,27 @@ def get_langchain_llm(
 ) -> ChatOpenAI:
     """Get a raw LangChain ChatOpenAI instance.
 
-    Routes directly to llama.cpp (bypasses orchestrator) to avoid the
-    orchestrator restarting the container with a different model.
+    Routes to the appropriate provider:
+    - Cloud models (deepseek/, openai/, etc.) → OpenRouter
+    - Local models → llama.cpp direct
 
     Use this when you need the actual ChatOpenAI (e.g., for deepagents,
     with_structured_output, bind_tools). For general chat, prefer get_chat_llm().
     """
-    # Point directly at llama.cpp
+    resolved = _resolve_model(model, config_data)
+
+    if is_cloud_model(resolved):
+        from .config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
+
+        return ChatOpenAI(
+            model=resolved,
+            api_key=OPENROUTER_API_KEY,
+            base_url=OPENROUTER_BASE_URL,
+            temperature=temperature,
+            streaming=streaming,
+        )
+
+    # Local: point directly at llama.cpp
     base_url = os.environ.get(
         "LLAMACPP_DIRECT_URL",
         "http://172.17.0.7:8001/v1/chat/completions",

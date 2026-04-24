@@ -81,22 +81,35 @@ def _ensure_llm_loaded(model: str) -> None:
 
 
 def _make_chat_model(model: str = "gemma4-e4b-vision-fast") -> ChatOpenAI:
-    """Create a ChatOpenAI instance pointing directly at llama.cpp.
+    """Create a ChatOpenAI instance for the appropriate provider.
 
-    Routes to llama.cpp directly (bypasses orchestrator) to avoid the
-    orchestrator restarting the container when loading a different model.
+    Cloud models (deepseek/, etc.) → OpenRouter
+    Local models → llama.cpp direct
     """
     import os
 
+    # Cloud models route to OpenRouter
+    _CLOUD_PREFIXES = ("deepseek/", "openai/", "anthropic/", "google/", "meta-llama/", "or-")
+    if any(model.startswith(p) for p in _CLOUD_PREFIXES):
+        or_key = os.environ.get("OPENROUTER_API_KEY", "")
+        or_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        if or_key:
+            return ChatOpenAI(
+                model=model,
+                base_url=or_url,
+                api_key=or_key,
+                temperature=0.3,
+                max_tokens=16000,
+            )
+
+    # Local: route to llama.cpp direct
     base_url = os.environ.get(
         "LLAMACPP_DIRECT_URL",
         "http://172.17.0.7:8001/v1/chat/completions",
     ).rstrip("/")
-    # Strip /chat/completions if present — ChatOpenAI appends its own path
     if base_url.endswith("/chat/completions"):
         base_url = base_url[: -len("/chat/completions")]
 
-    # Use the actual model loaded in llama.cpp
     api_model = os.environ.get(
         "LLAMACPP_DIRECT_MODEL",
         "gemma-4-26B-A4B-it-UD-IQ4_NL.gguf",

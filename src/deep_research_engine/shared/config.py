@@ -1,16 +1,32 @@
-"""Shared configuration for LLM access via LiteLLM.
+"""Shared configuration for LLM access.
 
-This module provides configuration constants for connecting to LiteLLM proxy.
-All LLM calls are routed through LiteLLM for:
-- Unified model routing
-- Automatic Langfuse tracing
-- Rate limiting
+Routes text LLM calls to the configured provider:
+- Cloud models (deepseek/, openai/, etc.) → OpenRouter or direct API
+- Local models → llama.cpp direct or LiteLLM proxy
 """
 
 import os
+from pathlib import Path
+
+# Load .env from project root (before reading any env vars)
+try:
+    from dotenv import load_dotenv
+
+    _project_root = Path(__file__).resolve().parent.parent.parent.parent
+    _env_file = _project_root / ".env"
+    if _env_file.exists():
+        load_dotenv(_env_file)
+except ImportError:
+    pass
 
 # =============================================================================
-# Core LiteLLM Configuration
+# Cloud LLM Provider (OpenRouter)
+# =============================================================================
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+# =============================================================================
+# Local Inference (llama.cpp / LiteLLM)
 # =============================================================================
 
 # Primary: Model Orchestrator (direct, manages GPU lifecycle)
@@ -30,6 +46,32 @@ VISION_MODEL = os.getenv("VISION_MODEL", "gemma4-e4b-vision-fast")
 # Ingestion-specific model (tiny model for NER, identity resolution)
 # gemma4-e4b-vision-fast is ~6GB VRAM, no thinking mode — fast for text tasks
 INGESTION_MODEL = os.getenv("INGESTION_MODEL", "gemma4-e4b-vision-fast")
+
+# =============================================================================
+# Provider Detection
+# =============================================================================
+
+# Prefixes that indicate cloud models → route to OpenRouter
+_CLOUD_PREFIXES = ("deepseek/", "openai/", "anthropic/", "google/", "meta-llama/", "or-")
+
+
+def is_cloud_model(model: str | None) -> bool:
+    """Check if a model should route through OpenRouter."""
+    if not model:
+        return False
+    return any(model.startswith(p) for p in _CLOUD_PREFIXES)
+
+
+def get_llm_endpoint(model: str | None = None) -> tuple[str, str]:
+    """Get (base_url, api_key) for the appropriate LLM provider.
+
+    Returns:
+        Tuple of (base_url, api_key) ready for OpenAI client.
+    """
+    m = model or DEFAULT_MODEL
+    if is_cloud_model(m) and OPENROUTER_API_KEY:
+        return (OPENROUTER_BASE_URL, OPENROUTER_API_KEY)
+    return (LITELLM_BASE_URL, LITELLM_API_KEY)
 
 
 # =============================================================================
@@ -99,13 +141,18 @@ def map_model_name(model: str | None, enable_thinking: bool = True) -> str:
 
 __all__ = [
     "DEFAULT_MODEL",
+    "INGESTION_MODEL",
     "LITELLM_API_KEY",
     "LITELLM_BASE_URL",
     "MODEL_MAPPING",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_BASE_URL",
     "ORCHESTRATOR_API_KEY",
     "ORCHESTRATOR_BASE_URL",
     "THINKING_TO_FAST",
     "TOOL_MODEL",
     "VISION_MODEL",
+    "get_llm_endpoint",
+    "is_cloud_model",
     "map_model_name",
 ]
