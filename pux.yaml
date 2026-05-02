@@ -1,0 +1,72 @@
+# Pux App Manifest — Deep Research Engine
+name: deep-research-engine
+version: "0.2.0"
+description: "Config-driven multi-agent research engine with web search, document RAG, and community sentiment analysis"
+
+# Tools the app exposes to the OS (other Pux apps can call these)
+tools:
+  - name: deep_research
+    handler: "python -m deep_research_engine research {query}"
+    description: "Run a full multi-agent deep research pipeline on a topic"
+  - name: analyze_document
+    handler: "python -m deep_research_engine pdf {path}"
+    description: "Analyze and summarize a PDF document"
+  - name: ingest_telegram
+    handler: "python -m deep_research_engine ingest {export_path}"
+    description: "Ingest and analyze a Telegram chat export"
+  - name: scrape_url
+    handler: "python -m deep_research_engine scrape {url}"
+    description: "Scrape and extract structured data from a URL"
+
+# Tools the app requires from the OS
+requires:
+  - bash
+  - file_read
+  - file_write
+  - mcp_research
+  - mcp_search
+  - mcp_scrape
+  - mcp_crawl
+  - mcp_extract
+  - mcp_analyze_image
+  - mcp_transcribe_audio
+
+# Prompt templates for agent-driven sessions
+prompts:
+  deep_research:
+    file: prompts/deep_research.md
+  document_analysis:
+    file: prompts/document_analysis.md
+  quick_summary:
+    text: |
+      Research {topic} and provide a concise 3-paragraph summary.
+      Include 3-5 key sources. Focus on the most recent developments.
+
+# No scheduled jobs — research is on-demand
+schedule: {}
+
+# Sandbox initialization
+sandbox:
+  init_files:
+    - src/deep_research_engine/
+
+# CLI commands — maps to DRE's argparse CLI
+commands:
+  research:
+    description: "Run multi-agent deep research on a query"
+    exec: "python -m deep_research_engine research {query} --config configs/rag.yaml"
+  research-quick:
+    description: "Quick research (single agent, no critic)"
+    exec: "python -m deep_research_engine research {query} --config configs/chat.yaml"
+  pdf:
+    description: "Summarize a PDF document"
+    exec: "python -m deep_research_engine pdf {path} --config configs/pdf_summarizer.yaml"
+  ingest:
+    description: "Ingest Telegram export for analysis"
+    exec: "python -m deep_research_engine ingest {export_path} --config configs/telegram_ingest.yaml"
+  scrape:
+    description: "Scrape URL and extract structured data"
+    exec: "python -m deep_research_engine scrape {url} --config configs/skill_generator.yaml"
+  resume:
+    description: "Resume a workflow from checkpoint"
+    exec: "python -m deep_research_engine resume {thread_id}"
