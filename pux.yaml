@@ -6,16 +6,16 @@ description: "Config-driven multi-agent research engine with web search, documen
 # Tools the app exposes to the OS (other Pux apps can call these)
 tools:
   - name: deep_research
-    handler: "python -m deep_research_engine research {query}"
+    handler: "python3 -m deep_research_engine research {query}"
     description: "Run a full multi-agent deep research pipeline on a topic"
   - name: analyze_document
-    handler: "python -m deep_research_engine pdf {path}"
+    handler: "python3 -m deep_research_engine pdf {path}"
     description: "Analyze and summarize a PDF document"
   - name: ingest_telegram
-    handler: "python -m deep_research_engine ingest {export_path}"
+    handler: "python3 -m deep_research_engine ingest {export_path}"
     description: "Ingest and analyze a Telegram chat export"
   - name: scrape_url
-    handler: "python -m deep_research_engine scrape {url}"
+    handler: "python3 -m deep_research_engine scrape {url}"
     description: "Scrape and extract structured data from a URL"
 
 # Tools the app requires from the OS
