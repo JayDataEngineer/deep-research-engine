@@ -35,6 +35,19 @@ from .config import (
     map_model_name,
 )
 
+# Orchestrator SDK bridge
+from .orch_client import (
+    get_orch,
+    is_available as orch_is_available,
+    orch_bash,
+    orch_crawl,
+    orch_deep_research,
+    orch_extract,
+    orch_research,
+    orch_scrape,
+    orch_search,
+)
+
 __all__ = [
     # Types
     "IdentityMapping",
@@ -53,4 +66,14 @@ __all__ = [
     "get_llm_endpoint",
     "is_cloud_model",
     "map_model_name",
+    # Orchestrator SDK
+    "get_orch",
+    "orch_is_available",
+    "orch_search",
+    "orch_scrape",
+    "orch_research",
+    "orch_crawl",
+    "orch_extract",
+    "orch_bash",
+    "orch_deep_research",
 ]

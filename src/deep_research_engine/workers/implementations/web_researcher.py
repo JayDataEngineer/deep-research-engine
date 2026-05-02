@@ -1,15 +1,11 @@
-"""Web Researcher Worker - Autonomous web research using Flash Explorer pattern.
+"""Web Researcher Worker - Autonomous web research using orchestrator SDK.
 
-This worker wraps the Flash Explorer agent for autonomous web research.
-It spawns deep agents (web_deep_agent, pdf_deep_agent, community_deep_agent)
-to research from multiple angles in parallel.
+Routes web research through the orchestrator's /api/tools/exec endpoint,
+giving access to MCP tools (search, scrape, research, crawl, extract)
+without direct MCP client management.
 
-Key Features:
-- Spawns web_deep_agent for parallel research angles
-- Supports RAG with local documents (pdf_deep_agent)
-- Detects sentiment queries and spawns community_deep_agent
-- Parallel execution of all research angles
-- Structured findings with citations
+The orchestrator handles tool routing, timeout management, and provides
+access to 37+ tools through a single SDK client.
 
 Usage:
     worker = WebResearcherWorker(config)
@@ -22,6 +18,14 @@ from typing import Any
 
 from langgraph.types import Command
 
+from ...shared.orch_client import (
+    is_available as orch_is_available,
+    orch_deep_research,
+    orch_extract,
+    orch_research,
+    orch_scrape,
+    orch_search,
+)
 from ...state import EngineState, WorkerResult
 from ...utils.logging import get_loguru_logger
 from ..base import BaseWorker, WorkerConfig, WorkerRegistry
@@ -48,7 +52,7 @@ class WebResearcherWorker(BaseWorker):
 
     worker_type = "web_researcher"
     description = "Autonomous web research agent with parallel deep agents"
-    required_tools = ["web_search", "web_get", "web_research_agent"]
+    required_tools = ["orch_search", "orch_scrape", "orch_research"]
 
     def __init__(self, config: WorkerConfig):
         super().__init__(config)
@@ -211,10 +215,11 @@ class WebResearcherWorker(BaseWorker):
         yaml_config: dict[str, Any],
         session_id: str,
     ) -> str:
-        """Run web deep agent for research.
+        """Run web research via orchestrator SDK.
 
-        Uses the web_research_agent tool which runs the full graph:
-        plan → search → select → scrape → extract → critic → write_results
+        Uses the orchestrator's MCP tools (research, search, scrape)
+        to gather web findings. Falls back gracefully if orchestrator
+        is unavailable.
 
         Args:
             state: Engine state
@@ -225,37 +230,22 @@ class WebResearcherWorker(BaseWorker):
         Returns:
             Web research findings
         """
+        if not orch_is_available():
+            self._log("Orchestrator not available, skipping web research", level="warning")
+            return "Web research skipped: orchestrator not reachable."
+
         try:
-            from src.shared.tools.ulli_langchain.web.web_agent import web_research_agent
-
-            # Get tool model from config
-            llm = await self._get_llm(state, role="worker")
-            tool_model = getattr(llm, "model_name", None) or getattr(llm, "model", None)
-
-            # Run web research agent
-            result = await web_research_agent.ainvoke(
-                {
-                    "query": query,
-                    "num_results": 10,
-                    "max_urls": 5,
-                    "max_steps": self.max_steps,
-                    "max_refinements": 1,
-                    "tool_model": tool_model,
-                }
-            )
-
-            # Extract content from result
-            if isinstance(result, Command) and result.update:
-                messages = result.update.get("messages", [])
-                if messages:
-                    return str(messages[0].content)
-                return "Web research completed."
-            else:
-                return str(result)
-
+            # Use deep research (search + scrape in one call) for maximum coverage
+            findings = await orch_deep_research(query, max_results=self.max_steps)
+            self._log(f"Orchestrator web research returned {len(findings)} chars")
+            return findings
         except Exception as e:
-            self._log(f"Web deep agent failed: {e}", level="warning")
-            return f"Web research failed: {e}"
+            self._log(f"Web research via orchestrator failed: {e}", level="warning")
+            # Fallback to basic search
+            try:
+                return await orch_search(query, max_results=5)
+            except Exception as e2:
+                return f"Web research failed: {e2}"
 
     async def _run_pdf_agent(
         self,
@@ -264,7 +254,9 @@ class WebResearcherWorker(BaseWorker):
         documents: list[str],
         session_id: str,
     ) -> str:
-        """Run PDF deep agent for document RAG.
+        """Run document research via orchestrator sandbox.
+
+        Reads documents from sandbox filesystem and extracts key information.
 
         Args:
             query: Research query
@@ -274,22 +266,38 @@ class WebResearcherWorker(BaseWorker):
         Returns:
             Document research findings
         """
+        if not documents:
+            return ""
+
+        if not orch_is_available():
+            self._log("Orchestrator not available, skipping PDF research", level="warning")
+            return ""
+
         try:
-            from src.shared.tools.ulli_langchain.memory.pdf_agent import pdf_deep_agent
+            # Use sandbox file_read to access documents
+            from ...shared.orch_client import get_orch
 
-            result = await pdf_deep_agent.ainvoke(
-                {
-                    "query": query,
-                    "documents": documents,
-                    "top_k": 10,
-                    "max_attempts": 3,
-                }
-            )
+            orch = get_orch()
+            sandboxes = await asyncio.to_thread(orch.list_sandboxes)
+            if not sandboxes:
+                self._log("No sandboxes available for PDF research", level="warning")
+                return ""
 
-            return str(result) if result else ""
+            sandbox_id = sandboxes[0]["id"]
+            doc_contents = []
+            for doc_path in documents[:5]:  # Limit to 5 documents
+                result = await asyncio.to_thread(
+                    orch.file_read, sandbox_id, doc_path
+                )
+                if result.success:
+                    doc_contents.append(f"### {doc_path}\n\n{result.text[:5000]}")
+
+            if doc_contents:
+                return "\n\n".join(doc_contents)
+            return ""
 
         except Exception as e:
-            self._log(f"PDF deep agent failed: {e}", level="warning")
+            self._log(f"PDF research via orchestrator failed: {e}", level="warning")
             return ""
 
     async def _run_community_agent(
@@ -298,7 +306,10 @@ class WebResearcherWorker(BaseWorker):
         query: str,
         session_id: str,
     ) -> str:
-        """Run community deep agent for sentiment research.
+        """Run community sentiment research via orchestrator MCP.
+
+        Uses the orchestrator's research tool with community-focused
+        query modifications to find forum/reddit/social discussions.
 
         Args:
             query: Research query
@@ -307,21 +318,18 @@ class WebResearcherWorker(BaseWorker):
         Returns:
             Community sentiment findings
         """
+        if not orch_is_available():
+            self._log("Orchestrator not available, skipping community research", level="warning")
+            return ""
+
         try:
-            from src.shared.tools.ulli_langchain.web.community_deep_agent import (
-                simple_community_research,
-            )
-
-            findings, _ = await simple_community_research(
-                query=query,
-                platform="auto",
-                limit=20,
-            )
-
-            return findings if findings else ""
-
+            # Search for community discussions with targeted query
+            community_query = f"{query} site:reddit.com OR site:news.ycombinator.com OR opinion OR discussion"
+            findings = await orch_research(community_query, max_results=3)
+            self._log(f"Community research returned {len(findings)} chars")
+            return findings
         except Exception as e:
-            self._log(f"Community deep agent failed: {e}", level="warning")
+            self._log(f"Community research via orchestrator failed: {e}", level="warning")
             return ""
 
 
