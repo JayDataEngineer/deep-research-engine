@@ -146,3 +146,6 @@ Thumbs.db
 .DS_Store
 .AppleDouble
 .LSOverride
+# Next.js build output in the docs site
+docs-site/.next/
+docs-site/out/

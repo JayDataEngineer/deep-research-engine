@@ -6,6 +6,7 @@ timestamps to produce speaker-attributed transcriptions.
 """
 
 import json
+import os
 import time
 import csv
 import torch
@@ -15,9 +16,9 @@ from pyannote.audio import Pipeline
 from faster_whisper import WhisperModel
 
 # Configuration
-AUDIO_DIR = Path("/home/ubuntu/Documents/programs/deep-research-engine/data/ChatExport_2026-03-13/extracted_audio")
-OUTPUT_DIR = Path("/home/ubuntu/Documents/programs/deep-research-engine/output/transcripts/pyannote_new")
-HF_TOKEN = "REDACTED_HF_TOKEN"
+AUDIO_DIR = Path(os.environ.get("AUDIO_DIR", "data/extracted_audio"))
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "output/transcripts/pyannote_new"))
+HF_TOKEN = os.environ.get("HF_TOKEN")  # never hardcode — export HF_TOKEN
 
 # Diarization config
 PYANNOTE_MODEL = "pyannote/speaker-diarization-community-1"
